@@ -708,48 +708,81 @@ Target profit margin: ~50-85% depending on tier
 ## File Structure
 ```
 trongate-cloud/
-├── app/
-│   ├── controllers/
-│   │   ├── Customer.php
-│   │   ├── Team.php
-│   │   ├── Project.php
-│   │   ├── Server.php
-│   │   └── Deployment.php
-│   ├── models/
-│   │   ├── Customer_model.php
-│   │   ├── Team_model.php
-│   │   ├── Project_model.php
-│   │   ├── Server_model.php
-│   │   └── Deployment_model.php
-│   └── views/
-│       ├── customer/
-│       ├── team/
-│       ├── project/
-│       └── deployment/
-├── libraries/
-│   ├── Hcloud.php              # Hetzner API client
-│   ├── Encryption.php           # libsodium wrapper
-│   ├── DeploymentEngine.php     # Core deployment logic
-│   └── TemplateEngine.php       # docker-compose generation
-├── templates/
-│   ├── docker-compose/
-│   │   ├── trongate_v1.yml
-│   │   └── trongate_v2.yml
-│   ├── deployment-scripts/
-│   │   └── deploy.sh.template
-│   └── cloud-init/
-│       └── ubuntu-24.04.yml
-├── docker/
-│   ├── prometheus/
-│   │   └── prometheus.yml
-│   └── alertmanager/
-│       └── alertmanager.yml
-└── migrations/
-    ├── 001_create_customers.sql
-    ├── 002_create_teams.sql
-    ├── 003_create_projects.sql
-    ├── 004_create_servers.sql
-    └── 005_create_deployments.sql
+├── config/                         # Framework configuration
+│   ├── config.php
+│   ├── database.php
+│   └── routes.php
+├── db/                             # Database migrations (load in order)
+│   ├── 001_customers.sql
+│   ├── 002_teams.sql
+│   ├── 003_projects.sql
+│   ├── 004_servers.sql
+│   └── 005_deployments.sql
+├── engine/                         # Trongate core (do not modify)
+├── modules/                        # Application modules
+│   ├── customers/
+│   │   ├── Customers.php           # Controller
+│   │   ├── Customers_model.php     # Model
+│   │   └── views/
+│   │       ├── signup.php
+│   │       ├── signin.php
+│   │       └── panel.php
+│   ├── teams/
+│   │   ├── Teams.php
+│   │   ├── Teams_model.php
+│   │   └── views/
+│   │       ├── create.php
+│   │       ├── manage.php
+│   │       └── members.php
+│   ├── projects/
+│   │   ├── Projects.php
+│   │   ├── Projects_model.php
+│   │   └── views/
+│   │       ├── wizard.php
+│   │       ├── show.php
+│   │       └── list.php
+│   ├── servers/
+│   │   ├── Servers.php
+│   │   ├── Servers_model.php
+│   │   └── views/
+│   │       ├── show.php
+│   │       └── environment.php
+│   ├── deployments/
+│   │   ├── Deployments.php
+│   │   ├── Deployments_model.php
+│   │   ├── views/
+│   │   │   ├── show.php
+│   │   │   ├── logs.php
+│   │   │   └── history.php
+│   │   └── scripts/
+│   │       ├── docker-compose/
+│   │       │   ├── trongate_v1.yml
+│   │       │   └── trongate_v2.yml
+│   │       ├── cloud-init/
+│   │       │   └── ubuntu-24.04.yml
+│   │       └── deploy.sh.template
+│   ├── hcloud/                     # Hetzner Cloud API integration
+│   │   ├── Hcloud.php
+│   │   └── Hcloud_model.php
+│   ├── encryption/                 # libsodium wrapper
+│   │   └── Encryption.php
+│   ├── deployment_engine/          # Core deployment logic
+│   │   ├── Deployment_engine.php
+│   │   └── Deployment_engine_model.php
+│   └── templates/                  # Template rendering (extends framework)
+│       ├── Templates.php
+│       └── views/
+│           ├── admin.php
+│           └── public.php
+├── public/                         # Web root & static assets
+│   ├── index.php
+│   ├── css/
+│   └── js/
+└── docker/                         # Local development / monitoring configs
+    ├── prometheus/
+    │   └── prometheus.yml
+    └── alertmanager/
+        └── alertmanager.yml
 ```
 
 ## Environment Variables
