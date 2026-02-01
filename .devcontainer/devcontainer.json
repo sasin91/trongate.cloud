@@ -1,0 +1,17 @@
+{
+  "name": "Trongate Cloud - Devcontainer",
+  "dockerComposeFile": ["../docker-compose.yml", "../docker-compose.dev.yml"],
+  "service": "tcloud_app",
+  "workspaceFolder": "/var/www/html",
+  "extensions": [
+    "bmewburn.vscode-intelephense-client",
+    "ms-azuretools.vscode-docker",
+    "xdebug.php-debug",
+    "jc-sf.trongate"
+  ],
+  "forwardPorts": [9003],
+  "settings": {
+    "terminal.integrated.shell.linux": "/bin/bash"
+  },
+  "shutdownAction": "stopCompose"
+}

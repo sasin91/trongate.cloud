@@ -1,0 +1,92 @@
+services:
+  tcloud_traefik:
+    image: traefik:v3.6.7
+    container_name: tcloud_traefik
+    networks:
+      - tcloud_net
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--entrypoints.web.address=:80"
+      - "--metrics.prometheus=true"
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+
+  tcloud_app:
+    build:
+      context: .
+      target: prod
+    container_name: tcloud_app
+    environment:
+      - DB_HOST=tcloud_db
+      - DB_USER=tcloud_user
+      - DB_PASSWORD=tcloud_password
+      - DB_NAME=trongate_cloud
+      - ENV=production
+      - BASE_URL=https://trongate.cloud/
+    depends_on:
+      - tcloud_db
+    networks:
+      - tcloud_net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.tcloud_app.rule=Host(`localhost`) || Host(`127.0.0.1`)"
+      - "traefik.http.services.tcloud_app.loadbalancer.server.port=80"
+      - "traefik.http.services.tcloud_app.loadbalancer.server.weight=90"
+    logging:
+      driver: "json-file"
+
+  tcloud_node-exporter:
+    image: prom/node-exporter:latest
+    container_name: tcloud_node-exporter
+    networks:
+      - tcloud_net
+    ports:
+      - "9100:9100"
+    command:
+      - "--path.rootfs=/host"
+
+  tcloud_db:
+    image: mariadb:11.2
+    container_name: tcloud_db
+    environment:
+      - MYSQL_ROOT_PASSWORD=root_password
+      - MYSQL_DATABASE=trongate_cloud
+      - MYSQL_USER=tcloud_user
+      - MYSQL_PASSWORD=tcloud_password
+      - MARIADB_BUFFER_POOL_SIZE=256M
+      - MARIADB_MAX_CONNECTIONS=50
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./db:/docker-entrypoint-initdb.d:ro
+    networks:
+      - tcloud_net
+
+  tcloud_prometheus:
+    image: prom/prometheus:latest
+    container_name: tcloud_prometheus
+    networks:
+      - tcloud_net
+    volumes:
+      - ./docker/prometheus:/etc/prometheus:ro
+    ports:
+      - "9090:9090"
+
+  tcloud_alertmanager:
+    image: prom/alertmanager:latest
+    container_name: tcloud_alertmanager
+    networks:
+      - tcloud_net
+    volumes:
+      - ./docker/alertmanager:/etc/alertmanager:ro
+    ports:
+      - "9093:9093"
+networks:
+  tcloud_net:
+    driver: bridge
+
+volumes:
+  db_data:
