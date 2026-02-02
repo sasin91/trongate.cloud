@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS team_member (
   customer_id INT NOT NULL,
   role ENUM('owner', 'admin', 'member', 'billing') NOT NULL,
   status ENUM('active', 'suspended') DEFAULT 'active',
+  providers JSON DEFAULT '[]', -- JSON array of provider IDs
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (team_id) REFERENCES team(id),
   FOREIGN KEY (customer_id) REFERENCES customer(id),
