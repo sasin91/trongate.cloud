@@ -5,6 +5,6 @@ $databases = [
         'port' => getenv('DB_PORT') ?: '3306',
         'user' => getenv('DB_USER') ?: 'root',
         'password' => getenv('DB_PASSWORD') ?: '',
-        'database' => getenv('DB_NAME') ?: 'trongate_v2'
+        'database' => getenv('DB_NAME') ?: 'tcloud'
     ]
 ];
