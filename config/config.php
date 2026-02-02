@@ -9,7 +9,7 @@
  */
 
 //The main config file
-define('BASE_URL', getenv('BASE_URL') ?: 'https://trongate.cloud/');
+define('BASE_URL', getenv('BASE_URL') ?: 'https://trongate.cloud.test/');
 define('ENV', 'dev');
 define('DEFAULT_MODULE', 'welcome');
 define('DEFAULT_METHOD', 'index');
