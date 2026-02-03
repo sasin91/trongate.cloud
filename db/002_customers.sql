@@ -7,6 +7,7 @@ CREATE TABLE customer (
   email varchar(65) DEFAULT NULL,
   password varchar(60) DEFAULT NULL,
   active tinyint(1) NOT NULL DEFAULT 0,
+  onboarded_at TIMESTAMP DEFAULT NULL,
   failed_login_attempts int(11) NOT NULL DEFAULT 0,
   last_failed_attempt int(11) NOT NULL DEFAULT 0,
   login_blocked_until int(11) NOT NULL DEFAULT 0,

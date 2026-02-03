@@ -70,7 +70,6 @@ class Customer extends Trongate
 
             $this->model->create_account($data);
             $this->log_user_in($data['email'], 1);
-            redirect('customer');
         } else {
             $this->register();
         }
@@ -151,7 +150,7 @@ class Customer extends Trongate
             die();
         }
 
-        redirect('customer');
+        redirect('customer-onboarding');
     }
 
     public function _login_check($submitted_username)
@@ -190,21 +189,22 @@ class Customer extends Trongate
     {
         $token = $this->trongate_tokens->attempt_get_valid_token(2);
 
-        // Handle API/MX requests
-        if (from_trongate_mx()) {
-            if ($token === false) {
-                http_response_code(401);
-            } else {
-                http_response_code(200);
-                echo $token;
-            }
-
-            die();
-        }
-
         // Handle web requests with no valid token
         if ($token === false) {
             redirect('customer/login');
+        }
+
+        $customer = $this->model->_get_current_customer();
+
+        if ($customer === false) {
+            redirect('customer/login');
+        }
+
+        if ($customer->active === false || $customer->onboarded_at === null) {
+            var_dump($customer->onboarded_at);
+            echo json($customer);
+            die($customer->active);
+            redirect('customer-onboarding');
         }
 
         return $token;

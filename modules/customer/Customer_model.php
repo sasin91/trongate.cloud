@@ -1,10 +1,13 @@
 <?php
 
+require_once __DIR__ . '/traits/Current_customer.php';
+
 /**
  * @property-read Db $db
  */
 class Customer_model extends Model
 {
+    use Current_customer;
 
     private string $table_name = 'customer';
     private int $max_failed_attempts = 3;
@@ -311,24 +314,6 @@ class Customer_model extends Model
     }
 
     /**
-     * Get the current customer ID based on the active token.
-     * 
-     * @return int|false The customer ID or false if not found/logged in
-     */
-    private function _get_current_customer_id(): int|false
-    {
-        $this->module('trongate_tokens');
-        $trongate_user_id = $this->trongate_tokens->get_user_id();
-
-        if ($trongate_user_id === false) {
-            return false;
-        }
-
-        $customer = $this->find_one('trongate_user_id', $trongate_user_id);
-        return $customer ? (int) $customer->id : false;
-    }
-
-    /**
      * Get recent projects (applications) for the current customer.
      * 
      * @param int $limit
@@ -336,21 +321,23 @@ class Customer_model extends Model
      */
     public function recent_applications(int $limit = 5): array
     {
-        $customer_id = $this->_get_current_customer_id();
-        if ($customer_id === false) {
+        $customer = $this->_get_current_customer();
+        if ($customer === false) {
             return [];
         }
 
         $sql = <<<SQL
             SELECT p.* FROM project p
-            JOIN team_member tm ON p.team_id = tm.team_id
+            LEFT JOIN team_member tm ON p.team_id = tm.team_id
+            LEFT JOIN team t ON p.team_id = t.id
             WHERE tm.customer_id = :customer_id
+            OR t.owner_id = :customer_id
             ORDER BY p.created_at DESC
             LIMIT :limit
         SQL;
 
         return $this->db->query_bind($sql, [
-            'customer_id' => $customer_id,
+            'customer_id' => $customer->id,
             'limit' => $limit
         ], 'object');
     }
@@ -363,8 +350,8 @@ class Customer_model extends Model
      */
     public function recent_servers(int $limit = 5): array
     {
-        $customer_id = $this->_get_current_customer_id();
-        if ($customer_id === false) {
+        $customer = $this->_get_current_customer();
+        if ($customer === false) {
             return [];
         }
 
@@ -377,7 +364,7 @@ class Customer_model extends Model
         SQL;
 
         return $this->db->query_bind($sql, [
-            'customer_id' => $customer_id,
+            'customer_id' => $customer->id,
             'limit' => $limit
         ], 'object');
     }
@@ -390,8 +377,8 @@ class Customer_model extends Model
      */
     public function recent_deployments(int $limit = 10): array
     {
-        $customer_id = $this->_get_current_customer_id();
-        if ($customer_id === false) {
+        $customer = $this->_get_current_customer();
+        if ($customer === false) {
             return [];
         }
 
@@ -407,7 +394,7 @@ class Customer_model extends Model
         SQL;
 
         return $this->db->query_bind($sql, [
-            'customer_id' => $customer_id,
+            'customer_id' => $customer->id,
             'limit' => $limit
         ], 'object');
     }
