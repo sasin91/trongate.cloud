@@ -264,6 +264,24 @@ class Db extends Trongate {
     }
 
     /**
+     * Checks if a record exists in the database based on the provided SQL query and parameters.
+     *
+     * This method is used to determine the existence of a record in the database without retrieving the actual data.
+     * It uses prepared statements to prevent SQL injection vulnerabilities.
+     *
+     * @param string $sql The SQL query to execute. This query should return a result set where the first column can be evaluated as a boolean (e.g., COUNT(*) > 0).
+     * @param array $params An array of parameters to bind to the SQL query.
+     * @return bool Returns true if a record exists (the query returns a truthy value), false otherwise.
+     * 
+     * Example:
+     * $exists = $db->exists('SELECT 1 FROM trongate_administrators WHERE username = ?', ['admin']);
+     */
+    public function exists(string $sql, array $params): bool {
+        $this->prepare($sql, $params);
+        return (bool) $this->stmt->fetchColumn();
+    }
+
+    /**
      * Insert multiple records into the specified table in a batch.
      *
      * This method inserts multiple records into the specified table using a batch insert
@@ -580,6 +598,11 @@ class Db extends Trongate {
      * Prepare and execute SQL statement with parameter binding
      */
     private function prepare_and_execute(string $sql, array $data = []): bool {
+        $this->prepare($sql, $data);
+        return $this->stmt->execute();
+    }
+
+    private function prepare(string $sql, array $data = []): void {
         $this->stmt = $this->dbh->prepare($sql);
 
         foreach ($data as $key => $value) {
@@ -593,8 +616,6 @@ class Db extends Trongate {
             $param_key = (str_starts_with($key, ':')) ? $key : ":$key";
             $this->stmt->bindValue($param_key, $value, $type);
         }
-
-        return $this->stmt->execute();
     }
 
     /**
