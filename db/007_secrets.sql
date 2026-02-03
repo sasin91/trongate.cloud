@@ -9,5 +9,5 @@ CREATE TABLE IF NOT EXISTS secrets (
   variables TEXT NOT NULL, -- Encrypted JSON with team DEK
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY unique_module (module, module_id)
+  INDEX idx_module_module_id (module, module_id)
 );
