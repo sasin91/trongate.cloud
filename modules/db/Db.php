@@ -282,6 +282,43 @@ class Db extends Trongate {
     }
 
     /**
+     * Executes a callback function within a database transaction.
+     *
+     * This method provides a way to execute a block of code that involves database operations
+     * within a transaction. If the callback function completes successfully, the transaction
+     * is committed. If any exception occurs within the callback, the transaction is rolled back,
+     * ensuring data integrity.
+     *
+     * @param callable $callback The callback function to execute within the transaction.
+     *                           This callback will receive the database instance as its only argument.
+     * 
+     * Example:
+     * $db->transaction(function($db) {
+     *     $db->insert('users', ['name' => 'John Doe', 'email' => [EMAIL_ADDRESS]']);
+     *     $db->insert('orders', ['user_id' => 1, 'amount' => 100]);
+     * });
+     * 
+     * @throws \Exception If any exception occurs within the callback function.
+     */
+    public function transaction(callable $callback): mixed {
+        $this->dbh->beginTransaction();
+        try {
+            $result = $callback($this);
+            
+            if ($result) {
+                $this->dbh->commit();
+            } else {
+                $this->dbh->rollBack();
+            }
+            
+            return $result;
+        } catch (\Exception $e) {
+            $this->dbh->rollBack();
+            throw $e;
+        }
+    }
+
+    /**
      * Insert multiple records into the specified table in a batch.
      *
      * This method inserts multiple records into the specified table using a batch insert
