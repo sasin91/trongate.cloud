@@ -138,25 +138,35 @@ class Hetzner {
         return $regions;
     }
 
-    function list_server_types(): array {
+    function list_server_types(string $location = 'fsn1'): array {
         $response = $this->_request('GET', '/server_types');
         $types = [];
 
         foreach ($response['server_types'] as $type) {
-            // Filter to shared CPU types for cost efficiency
-            if ($type['cpu_type'] !== 'shared') {
+            if (isset($types[$type['id']])) {
                 continue;
             }
 
-            $types[] = [
+            $price_monthly = $this->_get_monthly_price($type['prices'], $location);
+
+            if ($price_monthly === false) {
+                continue;
+            }
+
+            $data = [
                 'id' => $type['name'],
                 'name' => $type['description'],
                 'vcpus' => $type['cores'],
                 'memory' => $type['memory'] * 1024, // GB to MB
                 'disk' => $type['disk'],
-                'price_monthly' => $this->_get_monthly_price($type['prices']),
+                'architecture' => $type['architecture'],
+                'price_monthly' => $price_monthly,
             ];
+
+            $types[$type['id']] = $data;
         }
+
+        usort($types, fn($a, $b) => $a['price_monthly'] <=> $b['price_monthly']);
 
         return $types;
     }
@@ -246,12 +256,13 @@ class Hetzner {
     /**
      * Extract monthly price from Hetzner pricing array
      */
-    function _get_monthly_price(array $prices): float {
+    function _get_monthly_price(array $prices, string $location): float | false {
         foreach ($prices as $price) {
-            if ($price['location'] === 'fsn1') { // Use Falkenstein as reference
+            if ($price['location'] === $location) {
                 return (float) $price['price_monthly']['gross'];
             }
         }
-        return 0.0;
+
+        return false;
     }
 }

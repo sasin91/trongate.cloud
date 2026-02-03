@@ -155,11 +155,22 @@ class Customer_model extends Model {
         });
     }
 
-    function recent_applications(int $limit = 5): array {
+    function recent_projects(int $limit = 5): array {
         $customer = $this->_get_current_customer();
         if ($customer === false) return [];
         $sql = <<<SQL
-            SELECT p.* FROM project p
+            SELECT p.*,
+            (SELECT s.address 
+             FROM deployment d 
+             JOIN server s ON d.server_id = s.id 
+             WHERE d.project_id = p.id 
+             ORDER BY d.created_at DESC LIMIT 1) as server_address,
+            (SELECT s.status 
+             FROM deployment d 
+             JOIN server s ON d.server_id = s.id 
+             WHERE d.project_id = p.id 
+             ORDER BY d.created_at DESC LIMIT 1) as server_status
+            FROM project p
             LEFT JOIN team_member tm ON p.team_id = tm.team_id
             LEFT JOIN team t ON p.team_id = t.id
             WHERE tm.customer_id = :customer_id OR t.owner_id = :customer_id
@@ -193,5 +204,54 @@ class Customer_model extends Model {
             ORDER BY d.created_at DESC LIMIT :limit
         SQL;
         return $this->db->query_bind($sql, ['customer_id' => $customer->id, 'limit' => $limit], 'object');
+    }
+
+    /**
+     * Get all teams for the current customer
+     */
+    function get_customer_teams(): array {
+        $customer = $this->_get_current_customer();
+        if ($customer === false) return [];
+
+        $sql = <<<SQL
+            SELECT t.id, t.name FROM team t
+            LEFT JOIN team_member tm ON t.id = tm.team_id
+            WHERE t.owner_id = :customer_id OR tm.customer_id = :customer_id
+            GROUP BY t.id
+            ORDER BY t.name ASC
+        SQL;
+        return $this->db->query_bind($sql, ['customer_id' => $customer->id], 'object');
+    }
+
+    /**
+     * Get the current customer's selected team ID
+     */
+    function get_current_team_id(): int|false {
+        $customer = $this->_get_current_customer();
+        if ($customer === false) return false;
+
+        // If already set, return it
+        if (!empty($customer->current_team_id)) {
+            return (int) $customer->current_team_id;
+        }
+
+        // Fallback: get first available team
+        $teams = $this->get_customer_teams();
+        if (empty($teams)) return false;
+
+        // Auto-set and return
+        $team_id = (int) $teams[0]->id;
+        $this->set_current_team($team_id);
+        return $team_id;
+    }
+
+    /**
+     * Set the current team for the customer
+     */
+    function set_current_team(int $team_id): bool {
+        $customer = $this->_get_current_customer();
+        if ($customer === false) return false;
+
+        return (bool) $this->db->update((int) $customer->id, ['current_team_id' => $team_id], $this->table_name);
     }
 }

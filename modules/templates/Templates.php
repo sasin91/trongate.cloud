@@ -46,6 +46,24 @@ class Templates extends Trongate {
     }
 
     /**
+     * Display customer dashboard template with provided data.
+     *
+     * @param array $data The data to pass to the template view
+     * @return void
+     */
+    public function customer(array $data): void {
+        $data['additional_includes_top'] = $this->build_additional_includes($data['additional_includes_top'] ?? []);
+        $data['additional_includes_btm'] = $this->build_additional_includes($data['additional_includes_btm'] ?? []);
+        
+        // Fetch team data for header selector
+        $this->module('customer');
+        $data['teams'] = $this->customer->model->get_customer_teams();
+        $data['current_team_id'] = $this->customer->model->get_current_team_id();
+
+        $this->display('customer', $data);
+    }
+
+    /**
      * Display 404 error page.
      *
      * @return void

@@ -10,11 +10,15 @@ class Customer extends Trongate {
     function index(): void {
         $this->_make_sure_allowed();
 
-        $this->view('index', [
-            'applications' => $this->model->recent_applications(),
-            'servers' => $this->model->recent_servers(),
-            'deployments' => $this->model->recent_deployments()
-        ]);
+        $data = [
+            'view_module' => 'customer',
+            'view_file' => 'index',
+            'projects' => $this->model->recent_projects(),
+            // Add any additional CSS/JS inclusions specific to this page here
+            // 'additional_includes_top' => ['customer_module/css/custom.css']
+        ];
+        $this->module('templates');
+        $this->templates->customer($data);
     }
 
     function login(): void {
@@ -85,6 +89,12 @@ class Customer extends Trongate {
             die($fail_msg);
         }
 
+        // Store customer ID in session for quick lookup
+        $customer = $this->model->_find_one('email', $email);
+        if ($customer !== false) {
+            $_SESSION['customer_id'] = (int) $customer->id;
+        }
+
         $this->model->after_login_tasks($email);
         $is_mx_request = from_trongate_mx();
 
@@ -138,5 +148,19 @@ class Customer extends Trongate {
         $this->module('trongate_tokens');
         $this->trongate_tokens->destroy();
         redirect('customer/login');
+    }
+
+    function switch_team(): void {
+        $this->_make_sure_allowed();
+        
+        $team_id = (int) post('team_id');
+        
+        if ($team_id > 0) {
+            $this->model->set_current_team($team_id);
+        }
+
+        // Redirect back to referrer or dashboard
+        $referrer = $_SERVER['HTTP_REFERER'] ?? BASE_URL . 'customer';
+        redirect($referrer);
     }
 }
