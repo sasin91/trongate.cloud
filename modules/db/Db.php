@@ -264,24 +264,6 @@ class Db extends Trongate {
     }
 
     /**
-     * Checks if a record exists in the database based on the provided SQL query and parameters.
-     *
-     * This method is used to determine the existence of a record in the database without retrieving the actual data.
-     * It uses prepared statements to prevent SQL injection vulnerabilities.
-     *
-     * @param string $sql The SQL query to execute. This query should return a result set where the first column can be evaluated as a boolean (e.g., COUNT(*) > 0).
-     * @param array $params An array of parameters to bind to the SQL query.
-     * @return bool Returns true if a record exists (the query returns a truthy value), false otherwise.
-     * 
-     * Example:
-     * $exists = $db->exists('SELECT 1 FROM trongate_administrators WHERE username = ?', ['admin']);
-     */
-    public function exists(string $sql, array $params): bool {
-        $this->prepare($sql, $params);
-        return (bool) $this->stmt->fetchColumn();
-    }
-
-    /**
      * Executes a callback function within a database transaction.
      *
      * This method provides a way to execute a block of code that involves database operations
