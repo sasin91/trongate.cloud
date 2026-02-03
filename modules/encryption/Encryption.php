@@ -4,17 +4,14 @@
  * Encryption Module
  * libsodium wrapper for encrypting sensitive data at rest
  */
-class Encryption extends Trongate
-{
+class Encryption extends Trongate {
 
-    public function __construct(?string $module_name = null)
-    {
+    function __construct(?string $module_name = null) {
         parent::__construct($module_name);
         block_url_invocation($module_name);
     }
 
-    public function validate_key(string $key): string
-    {
+    function validate_key(string $key): string {
         if (empty($key)) {
             throw new InvalidArgumentException('key must not be empty.');
         }
@@ -42,8 +39,7 @@ class Encryption extends Trongate
      * @param string $key
      * @return string Base64 encoded (nonce + ciphertext)
      */
-    public function encrypt(string $plaintext, string $key): string
-    {
+    function encrypt(string $plaintext, string $key): string {
         $key = $this->validate_key($key);
         $nonce = random_bytes(SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
         $ciphertext = sodium_crypto_secretbox($plaintext, $nonce, $key);
@@ -57,8 +53,7 @@ class Encryption extends Trongate
      * @param string $key
      * @return string|false Plaintext or false on failure
      */
-    public function decrypt(string $encrypted, string $key): string|false
-    {
+    function decrypt(string $encrypted, string $key): string|false {
         $decoded = base64_decode($encrypted);
         if ($decoded === false) {
             return false;
@@ -79,8 +74,7 @@ class Encryption extends Trongate
      * Generate a new encryption key
      * @return string Base64 encoded key
      */
-    public static function generate_key(): string
-    {
+    static function generate_key(): string {
         return base64_encode(sodium_crypto_secretbox_keygen());
     }
 }

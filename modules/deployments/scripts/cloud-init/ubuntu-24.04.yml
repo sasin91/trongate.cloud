@@ -1,0 +1,19 @@
+#cloud-config
+
+packages:
+  - docker.io
+  - docker-compose-v2
+
+runcmd:
+  - systemctl enable docker
+  - systemctl start docker
+  - mkdir -p /var/www/${PROJECT_ID}
+  - mkdir -p /var/backups
+
+write_files:
+  - path: /etc/cron.daily/backup-db
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      docker exec ${PROJECT_ID}_db mysqldump -u root -p${DB_ROOT_PASSWORD} ${DB_NAME} | gzip > /var/backups/db-$(date +%Y%m%d).sql.gz
+      find /var/backups -name "db-*.sql.gz" -mtime +7 -delete

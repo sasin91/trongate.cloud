@@ -6,11 +6,9 @@
  * @property-read Secrets_model $model
  * @property-read Encryption $encryption
  */
-class Secrets extends Trongate
-{
+class Secrets extends Trongate {
 
-    public function __construct(?string $module_name = null)
-    {
+    function __construct(?string $module_name = null) {
         parent::__construct($module_name);
         block_url_invocation($module_name);
     }
@@ -22,8 +20,7 @@ class Secrets extends Trongate
      * @param string|null $service e.g. 'hetzner', 'github' (optional)
      * @return array Key-value pairs or empty array
      */
-    public function get(string $module, int $module_id, ?string $service = null): array
-    {
+    function get(string $module, int $module_id, ?string $service = null): array {
         $row = $this->model->get_secrets($module, $module_id, $service);
 
         if ($row === null) {
@@ -62,8 +59,7 @@ class Secrets extends Trongate
      * @param array $variables Key-value pairs
      * @return bool
      */
-    public function save(string $module, int $module_id, ?string $service, string $encryption_key, array $variables): bool
-    {
+    function save(string $module, int $module_id, ?string $service, string $encryption_key, array $variables): bool {
         $this->module('encryption');
         $encrypted = $this->encryption->encrypt(json_encode($variables), $encryption_key);
 
@@ -78,8 +74,7 @@ class Secrets extends Trongate
      * @param array $variables Key-value pairs to merge
      * @return bool
      */
-    public function update(string $module, int $module_id, ?string $service, array $variables): bool
-    {
+    function update(string $module, int $module_id, ?string $service, array $variables): bool {
         $existing = $this->get($module, $module_id, $service);
         $merged = array_merge($existing, $variables);
         return $this->save($module, $module_id, $service, $existing['encryption_key'], $merged);
@@ -92,8 +87,7 @@ class Secrets extends Trongate
      * @param string|null $service
      * @return bool
      */
-    public function delete(string $module, int $module_id, ?string $service = null): bool
-    {
+    function delete(string $module, int $module_id, ?string $service = null): bool {
         return $this->model->delete_secrets($module, $module_id, $service);
     }
 
@@ -104,8 +98,7 @@ class Secrets extends Trongate
      * @param string|null $service
      * @return bool
      */
-    public function exists(string $module, int $module_id, ?string $service = null): bool
-    {
+    function exists(string $module, int $module_id, ?string $service = null): bool {
         return $this->model->get_secrets($module, $module_id, $service) !== null;
     }
 }

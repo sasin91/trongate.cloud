@@ -5,7 +5,8 @@
  * Provides centralized access control with configurable security scenarios.
  */
 class Trongate_security extends Trongate {
-    
+    const SCENARIO_CUSTOMER = 'customer';
+
     /**
      * Class constructor.
      *
@@ -31,6 +32,10 @@ class Trongate_security extends Trongate {
     public function make_sure_allowed(string $scenario = 'admin panel', array $params = []): mixed {
 
         switch ($scenario) {
+            case self::SCENARIO_CUSTOMER:
+                $this->module('customer');
+                $result = $this->customer->_make_sure_allowed($params);
+                break;
             // case 'members area':
             //     $result = $this->members->_make_sure_allowed($scenario, $params);
             //     break;

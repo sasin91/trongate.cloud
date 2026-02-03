@@ -4,32 +4,27 @@
  * GitHub Source Control Provider
  * https://docs.github.com/en/rest
  */
-class Github
-{
+class Github {
 
     private string $api_base = 'https://api.github.com';
 
-    public function __construct(private string $token) {}
+    function __construct(private string $token) {}
 
     // --- Static metadata ---
 
-    public static function get_id(): string
-    {
+    static function get_id(): string {
         return 'github';
     }
 
-    public static function get_label(): string
-    {
+    static function get_label(): string {
         return 'GitHub';
     }
 
-    public static function get_url(): string
-    {
+    static function get_url(): string {
         return 'https://github.com';
     }
 
-    public static function get_credential_fields(): array
-    {
+    static function get_credential_fields(): array {
         return [
             ['name' => 'token', 'label' => 'Personal Access Token', 'type' => 'password'],
         ];
@@ -37,23 +32,21 @@ class Github
 
     // --- Instance methods ---
 
-    public function validate_credentials(): bool
-    {
+    function validate_credentials(): bool {
         if (empty($this->token)) {
             return false;
         }
         try {
-            $this->request('GET', '/user');
+            $this->_request('GET', '/user');
             return true;
         } catch (Exception $e) {
             return false;
         }
     }
 
-    public function list_repositories(?string $owner = null): array
-    {
+    function list_repositories(?string $owner = null): array {
         $endpoint = $owner ? "/users/{$owner}/repos" : '/user/repos';
-        $response = $this->request('GET', $endpoint . '?per_page=100&sort=updated');
+        $response = $this->_request('GET', $endpoint . '?per_page=100&sort=updated');
 
         $repos = [];
         foreach ($response as $repo) {
@@ -69,10 +62,9 @@ class Github
         return $repos;
     }
 
-    public function get_repository(string $repo): ?array
-    {
+    function get_repository(string $repo): ?array {
         try {
-            $response = $this->request('GET', "/repos/{$repo}");
+            $response = $this->_request('GET', "/repos/{$repo}");
             return [
                 'id' => (string) $response['id'],
                 'name' => $response['name'],
@@ -92,8 +84,7 @@ class Github
     /**
      * Make API request to GitHub
      */
-    private function request(string $method, string $endpoint, array $data = []): array
-    {
+    function _request(string $method, string $endpoint, array $data = []): array {
         $url = $this->api_base . $endpoint;
 
         $headers = [

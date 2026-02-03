@@ -4,32 +4,27 @@
  * Hetzner Cloud Provider
  * https://docs.hetzner.cloud/
  */
-class Hetzner
-{
+class Hetzner {
 
     private string $api_base = 'https://api.hetzner.cloud/v1';
 
-    public function __construct(private string $token) {}
+    function __construct(private string $token) {}
 
     // --- Static metadata ---
 
-    public static function get_id(): string
-    {
+    static function get_id(): string {
         return 'hetzner';
     }
 
-    public static function get_label(): string
-    {
+    static function get_label(): string {
         return 'Hetzner Cloud';
     }
 
-    public static function get_url(): string
-    {
+    static function get_url(): string {
         return 'https://www.hetzner.com/cloud';
     }
 
-    public static function get_credential_fields(): array
-    {
+    static function get_credential_fields(): array {
         return [
             ['name' => 'token', 'label' => 'API Token', 'type' => 'password'],
         ];
@@ -37,21 +32,19 @@ class Hetzner
 
     // --- Instance methods ---
 
-    public function validate_credentials(): bool
-    {
+    function validate_credentials(): bool {
         if (empty($this->token)) {
             return false;
         }
         try {
-            $this->request('GET', '/locations?per_page=1');
+            $this->_request('GET', '/locations?per_page=1');
             return true;
         } catch (Exception $e) {
             return false;
         }
     }
 
-    public function create_server(array $config): array
-    {
+    function create_server(array $config): array {
         $payload = [
             'name' => $config['name'],
             'server_type' => $config['type'],
@@ -65,25 +58,24 @@ class Hetzner
             $payload['user_data'] = $config['user_data'];
         }
 
-        $response = $this->request('POST', '/servers', $payload);
+        $response = $this->_request('POST', '/servers', $payload);
 
         return [
             'provider_id' => (string) $response['server']['id'],
             'ip' => $response['server']['public_net']['ipv4']['ip'] ?? '',
-            'status' => $this->map_status($response['server']['status']),
+            'status' => $this->_map_status($response['server']['status']),
         ];
     }
 
-    public function get_server(string $provider_id): ?array
-    {
+    function get_server(string $provider_id): ?array {
         try {
-            $response = $this->request('GET', "/servers/{$provider_id}");
+            $response = $this->_request('GET', "/servers/{$provider_id}");
             $server = $response['server'];
 
             return [
                 'provider_id' => (string) $server['id'],
                 'ip' => $server['public_net']['ipv4']['ip'] ?? '',
-                'status' => $this->map_status($server['status']),
+                'status' => $this->_map_status($server['status']),
                 'type' => $server['server_type']['name'],
                 'region' => $server['datacenter']['location']['name'],
             ];
@@ -95,29 +87,26 @@ class Hetzner
         }
     }
 
-    public function delete_server(string $provider_id): bool
-    {
+    function delete_server(string $provider_id): bool {
         try {
-            $this->request('DELETE', "/servers/{$provider_id}");
+            $this->_request('DELETE', "/servers/{$provider_id}");
             return true;
         } catch (Exception $e) {
             return false;
         }
     }
 
-    public function reboot_server(string $provider_id): bool
-    {
+    function reboot_server(string $provider_id): bool {
         try {
-            $this->request('POST', "/servers/{$provider_id}/actions/reboot");
+            $this->_request('POST', "/servers/{$provider_id}/actions/reboot");
             return true;
         } catch (Exception $e) {
             return false;
         }
     }
 
-    public function upload_ssh_key(string $name, string $public_key): string
-    {
-        $response = $this->request('POST', '/ssh_keys', [
+    function upload_ssh_key(string $name, string $public_key): string {
+        $response = $this->_request('POST', '/ssh_keys', [
             'name' => $name,
             'public_key' => $public_key,
         ]);
@@ -125,19 +114,17 @@ class Hetzner
         return (string) $response['ssh_key']['id'];
     }
 
-    public function delete_ssh_key(string $key_id): bool
-    {
+    function delete_ssh_key(string $key_id): bool {
         try {
-            $this->request('DELETE', "/ssh_keys/{$key_id}");
+            $this->_request('DELETE', "/ssh_keys/{$key_id}");
             return true;
         } catch (Exception $e) {
             return false;
         }
     }
 
-    public function list_regions(): array
-    {
-        $response = $this->request('GET', '/locations');
+    function list_regions(): array {
+        $response = $this->_request('GET', '/locations');
         $regions = [];
 
         foreach ($response['locations'] as $loc) {
@@ -151,9 +138,8 @@ class Hetzner
         return $regions;
     }
 
-    public function list_server_types(): array
-    {
-        $response = $this->request('GET', '/server_types');
+    function list_server_types(): array {
+        $response = $this->_request('GET', '/server_types');
         $types = [];
 
         foreach ($response['server_types'] as $type) {
@@ -168,16 +154,15 @@ class Hetzner
                 'vcpus' => $type['cores'],
                 'memory' => $type['memory'] * 1024, // GB to MB
                 'disk' => $type['disk'],
-                'price_monthly' => $this->get_monthly_price($type['prices']),
+                'price_monthly' => $this->_get_monthly_price($type['prices']),
             ];
         }
 
         return $types;
     }
 
-    public function list_images(): array
-    {
-        $response = $this->request('GET', '/images?type=system');
+    function list_images(): array {
+        $response = $this->_request('GET', '/images?type=system');
         $images = [];
 
         foreach ($response['images'] as $img) {
@@ -198,8 +183,7 @@ class Hetzner
     /**
      * Make API request to Hetzner
      */
-    private function request(string $method, string $endpoint, array $data = []): array
-    {
+    function _request(string $method, string $endpoint, array $data = []): array {
         $url = $this->api_base . $endpoint;
 
         $headers = [
@@ -243,8 +227,7 @@ class Hetzner
     /**
      * Map Hetzner status to normalized status
      */
-    private function map_status(string $status): string
-    {
+    function _map_status(string $status): string {
         $map = [
             'initializing' => 'provisioning',
             'starting' => 'provisioning',
@@ -263,8 +246,7 @@ class Hetzner
     /**
      * Extract monthly price from Hetzner pricing array
      */
-    private function get_monthly_price(array $prices): float
-    {
+    function _get_monthly_price(array $prices): float {
         foreach ($prices as $price) {
             if ($price['location'] === 'fsn1') { // Use Falkenstein as reference
                 return (float) $price['price_monthly']['gross'];

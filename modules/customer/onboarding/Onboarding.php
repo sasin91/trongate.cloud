@@ -8,16 +8,14 @@
  * @property-read Secrets $secrets
  * @property-read Encryption $encryption
  */
-class Onboarding extends Trongate
-{
-    public function __construct(string $module_name = '')
-    {
+class Onboarding extends Trongate {
+
+    function __construct(string $module_name = '') {
         parent::__construct($module_name);
         $this->_make_sure_allowed();
     }
 
-    public function index(): void
-    {
+    function index(): void {
         $customer = $this->model->_get_current_customer();
 
         if ($customer === false) {
@@ -54,13 +52,11 @@ class Onboarding extends Trongate
         exit;
     }
 
-    public function team(): void
-    {
+    function team(): void {
         $this->view('team');
     }
 
-    public function submit_team(): void
-    {
+    function submit_team(): void {
         $customer = $this->model->_get_current_customer();
 
         if (!$customer) {
@@ -88,13 +84,11 @@ class Onboarding extends Trongate
 
     // --- Hosting Provider (Hetzner) ---
 
-    public function provider(): void
-    {
+    function provider(): void {
         $this->view('provider');
     }
 
-    public function submit_provider(): void
-    {
+    function submit_provider(): void {
         $customer = $this->model->_get_current_customer();
         if (!$customer) {
             redirect('customer/login');
@@ -128,13 +122,11 @@ class Onboarding extends Trongate
 
     // --- Source Control (GitHub) ---
 
-    public function source(): void
-    {
+    function source(): void {
         $this->view('source');
     }
 
-    public function submit_source(): void
-    {
+    function submit_source(): void {
         $customer = $this->model->_get_current_customer();
         if (!$customer) {
             redirect('customer/login');
@@ -166,8 +158,7 @@ class Onboarding extends Trongate
         redirect('customer-onboarding/project');
     }
 
-    public function skip_source(): void
-    {
+    function skip_source(): void {
         // User chose to skip GitHub - they'll upload zip files instead
         // We don't store anything, just proceed to project
         redirect('customer-onboarding/project');
@@ -175,13 +166,11 @@ class Onboarding extends Trongate
 
     // --- Project ---
 
-    public function project(): void
-    {
+    function project(): void {
         $this->view('project');
     }
 
-    public function submit_project(): void
-    {
+    function submit_project(): void {
         $customer = $this->model->_get_current_customer();
         if (!$customer) {
             redirect('customer/login');
@@ -216,8 +205,7 @@ class Onboarding extends Trongate
 
     // --- Validation Callbacks ---
 
-    public function _validate_hetzner_token(string $token): bool|string
-    {
+    function _validate_hetzner_token(string $token): bool|string {
         if (empty($token)) {
             return 'API Token is required.';
         }
@@ -232,8 +220,7 @@ class Onboarding extends Trongate
         return true;
     }
 
-    public function _validate_github_token(string $token): bool|string
-    {
+    function _validate_github_token(string $token): bool|string {
         if (empty($token)) {
             return 'Personal Access Token is required.';
         }
@@ -251,8 +238,7 @@ class Onboarding extends Trongate
     /**
      * Ensure the current user has appropriate access permissions.
      */
-    public function _make_sure_allowed(): ?string
-    {
+    function _make_sure_allowed(): ?string {
         $token = $this->trongate_tokens->attempt_get_valid_token(2);
 
         if ($token === false) {
