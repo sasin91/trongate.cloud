@@ -1,0 +1,132 @@
+:root {
+  /* --- Foundation (Soft Grays) --- */
+  --bg-main: #f4f6f8;        /* Base canvas: subtle cool-gray */
+  --bg-panel: #ffffff;       /* Cards/Sections: pure white for clarity */
+  --bg-subtle: #e9ecef;      /* Sidebars/Wells: defines functional areas */
+  
+  /* --- Structure & Borders --- */
+  --border-dim: #d8dee9;     /* Default borders: visible but gentle */
+  --border-med: #adb5bd;     /* Focus/Active: communicates solid construction */
+
+  /* --- Typography (High Legibility) --- */
+  --text-bold: #2e3440;      /* Near-black: for headers and primary data */
+  --text-muted: #4c566a;     /* Slate gray: for labels and secondary info */
+
+  /* --- Accents (Indigo & Teal) --- */
+  --accent-primary: #5e81ac; /* Indigo: used for primary actions and brand */
+  --accent-success: #8fbcbb; /* Teal: used for "Deployed" states and success */
+  
+  /* --- Utility --- */
+  --status-error: #bf616a;   /* Muted red: alert without panic */
+  --shadow-tactile: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-inset: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+body {
+    background-color: var(--bg-main);
+    color: var(--text-bold);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    margin: 0;
+}
+
+main {
+    background-color: var(--bg-panel);
+    border: 1px solid var(--border-dim);
+    box-shadow: var(--shadow-tactile);
+    border-radius: 6px;
+    padding: 2.5rem;
+    width: 100%;
+    max-width: 400px;
+}
+
+h1 {
+    margin-top: 0;
+    margin-bottom: 1.5rem;
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--text-bold);
+    text-align: center;
+}
+
+.form-group {
+    margin-bottom: 1.25rem;
+}
+
+label {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+input[type="text"],
+input[type="password"] {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid var(--border-dim);
+    border-radius: 4px;
+    background-color: #fff;
+    box-shadow: var(--shadow-inset);
+    font-size: 1rem;
+    color: var(--text-bold);
+    transition: border-color 0.2s, box-shadow 0.2s;
+    box-sizing: border-box; /* Ensure padding doesn't affect width */
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus {
+    border-color: var(--accent-primary);
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(94, 129, 172, 0.15);
+}
+
+label:has(input[type="checkbox"]) {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    cursor: pointer;
+}
+
+button[type="submit"], input[type="submit"] {
+    width: 100%;
+    padding: 0.75rem;
+    background-color: var(--accent-primary);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 1.5rem;
+    box-shadow: var(--shadow-tactile);
+    transition: background-color 0.2s, transform 0.1s;
+}
+
+button[type="submit"]:hover, input[type="submit"]:hover {
+    filter: brightness(110%);
+}
+
+button[type="submit"]:active, input[type="submit"]:active {
+    transform: translateY(1px);
+    box-shadow: none;
+}
+
+.validation-errors {
+    background-color: rgba(191, 97, 106, 0.1);
+    border: 1px solid var(--status-error);
+    color: var(--status-error);
+    padding: 0.75rem;
+    border-radius: 4px;
+    margin-bottom: 1.5rem;
+    font-size: 0.9rem;
+}
+
+.validation-errors p {
+    margin: 0;
+}
