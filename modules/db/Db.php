@@ -201,6 +201,8 @@ class Db extends Trongate {
             return $this->stmt->fetchAll(PDO::FETCH_OBJ);
         } elseif ($return_type === 'array') {
             return $this->stmt->fetchAll(PDO::FETCH_ASSOC);
+        } elseif ($return_type === 'column') {
+            return $this->stmt->fetchColumn();
         }
 
         return null;
@@ -232,6 +234,8 @@ class Db extends Trongate {
             return $this->stmt->fetchAll(PDO::FETCH_OBJ);
         } elseif ($return_type === 'array') {
             return $this->stmt->fetchAll(PDO::FETCH_ASSOC);
+        } elseif ($return_type === 'column') {
+            return $this->stmt->fetchColumn();
         }
 
         return null;
