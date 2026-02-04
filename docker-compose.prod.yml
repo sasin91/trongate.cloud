@@ -1,4 +1,7 @@
 services:
   tcloud_app:
+    environment:
+      - ENV=production
+      - BASE_URL=https://trongate.cloud/
     labels:
       - "traefik.http.routers.tcloud_app.rule=Host(`trongate.cloud`)"

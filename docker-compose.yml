@@ -24,11 +24,12 @@ services:
       - DB_HOST=tcloud_db
       - DB_USER=tcloud_user
       - DB_PASSWORD=tcloud_password
-      - DB_NAME=trongate_cloud
-      - ENV=production
-      - BASE_URL=https://trongate.cloud/
+      - DB_NAME=tcloud
+      - ENV=dev
+      - BASE_URL=http://localhost/
     depends_on:
-      - tcloud_db
+      tcloud_db:
+        condition: service_healthy
     networks:
       - tcloud_net
     labels:
@@ -44,6 +45,8 @@ services:
     container_name: tcloud_node-exporter
     networks:
       - tcloud_net
+    labels:
+      - "traefik.enable=false"
     ports:
       - "9100:9100"
     command:
@@ -54,22 +57,32 @@ services:
     container_name: tcloud_db
     environment:
       - MYSQL_ROOT_PASSWORD=root_password
-      - MYSQL_DATABASE=trongate_cloud
+      - MYSQL_DATABASE=tcloud
       - MYSQL_USER=tcloud_user
       - MYSQL_PASSWORD=tcloud_password
       - MARIADB_BUFFER_POOL_SIZE=256M
       - MARIADB_MAX_CONNECTIONS=50
+    labels:
+      - "traefik.enable=false"
     volumes:
       - db_data:/var/lib/mysql
       - ./db:/docker-entrypoint-initdb.d:ro
     networks:
       - tcloud_net
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   tcloud_prometheus:
     image: prom/prometheus:latest
     container_name: tcloud_prometheus
     networks:
       - tcloud_net
+    labels:
+      - "traefik.enable=false"
     volumes:
       - ./docker/prometheus:/etc/prometheus:ro
     ports:
@@ -80,6 +93,8 @@ services:
     container_name: tcloud_alertmanager
     networks:
       - tcloud_net
+    labels:
+      - "traefik.enable=false"
     volumes:
       - ./docker/alertmanager:/etc/alertmanager:ro
     ports:
@@ -94,11 +109,14 @@ services:
       - DB_HOST=tcloud_db
       - DB_USER=tcloud_user
       - DB_PASSWORD=tcloud_password
-      - DB_NAME=trongate_cloud
+      - DB_NAME=tcloud
     depends_on:
-      - tcloud_db
+      tcloud_db:
+        condition: service_healthy
     networks:
       - tcloud_net
+    labels:
+      - "traefik.enable=false"
     # Grace period for in-flight tasks to finish on deploy.
     # MUST match Runtime::STALE_THRESHOLD_SECONDS — tasks still running
     # after this period are marked stale on next worker startup.

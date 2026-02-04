@@ -35,9 +35,10 @@ CREATE TABLE IF NOT EXISTS `trongate_tokens` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE IF NOT EXISTS `trongate_users` (
-  `id` int(11) NOT NULL,
+  `id` int(11) NOT NULL AUTO_INCREMENT,
   `code` varchar(32) DEFAULT NULL,
-  `user_level_id` int(11) DEFAULT 0
+  `user_level_id` int(11) DEFAULT 0,
+  PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 INSERT INTO `trongate_users` (`id`, `code`, `user_level_id`) VALUES
@@ -58,22 +59,15 @@ ALTER TABLE `trongate_administrators`
 ALTER TABLE `trongate_tokens`
   ADD PRIMARY KEY (`id`);
 
-ALTER TABLE `trongate_users`
-  ADD PRIMARY KEY (`id`);
-
 ALTER TABLE `trongate_user_levels`
   ADD PRIMARY KEY (`id`);
-
 
 ALTER TABLE `trongate_administrators`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 ALTER TABLE `trongate_tokens`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
-
-ALTER TABLE `trongate_users`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
-
+  
 ALTER TABLE `trongate_user_levels`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 COMMIT;

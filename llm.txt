@@ -1,4 +1,3 @@
-- **[Project Brief](docs/project.md)**: High-level overview, user stories, and technical requirements.
 - **[Agent Instructions](docs/agents.md)**: Coding standards and framework guidelines for AI agents.
 - **[System Prompt](docs/system-prompt.md)**: Contextual persona for a Senior PHP Developer working on this project.
 - **External Resources**:
@@ -27,7 +26,6 @@ define('DEFAULT_METHOD', 'index');
 ```
 
 ## Relevant Files
-- ./docs/project.md
 - ./docs/agents.md
 - ./docs/system-prompt.md
 - ./docs/ui-design.md

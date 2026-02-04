@@ -3,7 +3,7 @@
 
 CREATE TABLE customer (
   id INT PRIMARY KEY AUTO_INCREMENT,
-  trongate_user_id INT NOT NULL,
+  trongate_user_id INT(11) NOT NULL,
   email varchar(65) DEFAULT NULL,
   password varchar(60) DEFAULT NULL,
   active tinyint(1) NOT NULL DEFAULT 0,
