@@ -11,5 +11,6 @@ CREATE TABLE IF NOT EXISTS server_tasks (
     error_message TEXT,
     error_code INT,
     error_trace TEXT,
-    INDEX idx_pending (started_at, completed_at, failed_at)
+    INDEX idx_pending (started_at, completed_at, failed_at),
+    FOREIGN KEY (server_id) REFERENCES server(id)
 );
