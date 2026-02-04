@@ -93,6 +93,7 @@ class Customer extends Trongate {
         $customer = $this->model->_find_one('email', $email);
         if ($customer !== false) {
             $_SESSION['customer_id'] = (int) $customer->id;
+            $_SESSION['current_team_id'] = (int) $customer->current_team_id;
         }
 
         $this->model->after_login_tasks($email);

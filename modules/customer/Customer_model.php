@@ -227,6 +227,10 @@ class Customer_model extends Model {
      * Get the current customer's selected team ID
      */
     function get_current_team_id(): int|false {
+        if (isset($_SESSION['current_team_id'])) {
+            return (int) $_SESSION['current_team_id'];
+        }
+
         $customer = $this->_get_current_customer();
         if ($customer === false) return false;
 
@@ -252,6 +256,18 @@ class Customer_model extends Model {
         $customer = $this->_get_current_customer();
         if ($customer === false) return false;
 
-        return (bool) $this->db->update((int) $customer->id, ['current_team_id' => $team_id], $this->table_name);
+        $updated = (bool) $this->db->update(
+            (int) $customer->id, 
+            [
+                'current_team_id' => $team_id
+            ], 
+            $this->table_name
+        );
+
+        if ($updated) {
+            $_SESSION['current_team_id'] = $team_id;
+        }
+
+        return $updated;
     }
 }
