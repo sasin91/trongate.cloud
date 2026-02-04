@@ -84,6 +84,31 @@ services:
       - ./docker/alertmanager:/etc/alertmanager:ro
     ports:
       - "9093:9093"
+
+  tcloud_tasks:
+    build:
+      context: .
+      dockerfile: Dockerfile.server-tasks
+    container_name: tcloud_tasks
+    environment:
+      - DB_HOST=tcloud_db
+      - DB_USER=tcloud_user
+      - DB_PASSWORD=tcloud_password
+      - DB_NAME=trongate_cloud
+    depends_on:
+      - tcloud_db
+    networks:
+      - tcloud_net
+    # Grace period for in-flight tasks to finish on deploy.
+    # MUST match Runtime::STALE_THRESHOLD_SECONDS — tasks still running
+    # after this period are marked stale on next worker startup.
+    stop_grace_period: 300s
+    restart: unless-stopped
+    volumes:
+      - ./modules/servers/tasks:/var/www/modules/servers/tasks:ro
+    logging:
+      driver: "json-file"
+
 networks:
   tcloud_net:
     driver: bridge
