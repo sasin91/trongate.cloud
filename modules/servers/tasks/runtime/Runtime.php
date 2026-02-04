@@ -90,24 +90,6 @@ class Runtime
         $this->running = true;
 
         while ($this->running) {
-            if (!$this->db->ping()) {
-                error_log('Database connection lost, reconnecting...');
-                $this->db->close();
-                $this->db = new mysqli(
-                    getenv('DB_HOST') ?: '127.0.0.1',
-                    getenv('DB_USER') ?: 'root',
-                    getenv('DB_PASSWORD') ?: '',
-                    getenv('DB_NAME') ?: 'tcloud',
-                    (int) (getenv('DB_PORT') ?: 3306)
-                );
-
-                if ($this->db->connect_errno) {
-                    error_log("Reconnect failed: {$this->db->connect_error}");
-                    sleep(self::POLL_INTERVAL_SECONDS);
-                    continue;
-                }
-            }
-
             $task = $this->pick_task();
 
             if ($task === null) {
@@ -120,6 +102,36 @@ class Runtime
     }
 
     /**
+     * Reconnect to the database.
+     *
+     * Called when a query fails due to a dead connection (e.g. MariaDB restarted).
+     * Returns true if reconnection succeeded.
+     */
+    private function reconnect(): bool
+    {
+        error_log('Database connection lost, reconnecting...');
+
+        try {
+            $this->db->close();
+        } catch (\Throwable) {}
+
+        $this->db = new mysqli(
+            getenv('DB_HOST') ?: '127.0.0.1',
+            getenv('DB_USER') ?: 'root',
+            getenv('DB_PASSWORD') ?: '',
+            getenv('DB_NAME') ?: 'tcloud',
+            (int) (getenv('DB_PORT') ?: 3306)
+        );
+
+        if ($this->db->connect_errno) {
+            error_log("Reconnect failed: {$this->db->connect_error}");
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
      * Atomically pick the oldest pending task.
      *
      * Uses FOR UPDATE SKIP LOCKED so multiple workers (if scaled)
@@ -129,7 +141,18 @@ class Runtime
      */
     private function pick_task(): ?array
     {
-        $this->db->begin_transaction();
+        try {
+            $this->db->begin_transaction();
+        } catch (\mysqli_sql_exception $e) {
+            // Connection dead (e.g. MariaDB restarted) — errno 2006/2013
+            if (!$this->reconnect()) return null;
+
+            try {
+                $this->db->begin_transaction();
+            } catch (\mysqli_sql_exception) {
+                return null;
+            }
+        }
 
         $result = $this->db->query(
             'SELECT id, server_id, script, payload
