@@ -1,3 +1,7 @@
+@view-transition {
+    navigation: auto;
+}
+
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
@@ -32,6 +36,65 @@ header {
     display: flex;
     align-items: center;
     justify-content: space-between;
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.header-separator {
+    width: 1px;
+    height: 1.5rem;
+    background-color: var(--border);
+    margin: 0 1.5rem;
+}
+
+.header-logo-link {
+    text-decoration: none;
+}
+
+.team-switcher-form {
+    margin: 0;
+}
+
+.team-switcher-select {
+    appearance: none;
+    -webkit-appearance: none;
+    padding: 0.5rem 2.5rem 0.5rem 1.25rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M8 9l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 1.25rem;
+    min-width: 8.5rem;
+    max-width: 16rem;
+    text-overflow: ellipsis;
+}
+
+.team-switcher-select:hover {
+    color: var(--text-main);
+    background-color: rgba(0, 0, 0, 0.04);
+}
+
+.team-switcher-select:focus {
+    outline: none;
+    background-color: rgba(0, 0, 0, 0.04);
+    box-shadow: 0 0 0 2px var(--border);
 }
 
 .header-title {
@@ -146,37 +209,52 @@ a.card:hover {
     margin: 0;
 }
 
-/* Form Elements */
+/* Material Design Inspired Form Elements */
 .form-group {
-    margin-bottom: 1.5rem;
+    margin-bottom: 2rem;
+    position: relative;
 }
 
 .form-label {
     display: block;
-    font-size: 0.875rem;
-    font-weight: 500;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted);
     margin-bottom: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+    transition: color 0.2s;
 }
 
 .form-input,
 .form-select {
     display: block;
     width: 100%;
-    padding: 0.625rem 0.875rem;
-    font-size: 0.875rem;
+    padding: 1rem 0;
+    font-size: 1rem;
     color: var(--text-main);
-    background-color: var(--white);
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    background-color: transparent;
+    border: none;
+    border-bottom: 2px solid var(--border);
+    border-radius: 0;
     box-sizing: border-box;
-    transition: all 0.2s;
+    transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .form-input:focus,
 .form-select:focus {
     outline: none;
     border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+/* Custom Select Arrow for Material Style */
+select.form-select {
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right center;
+    background-size: 1.25rem;
 }
 
 /* Buttons */
@@ -185,7 +263,7 @@ a.card:hover {
     display: inline-flex;
     justify-content: center;
     align-items: center;
-    padding: 0.5rem 1rem;
+    padding: 0.75rem 1.5rem;
     font-size: 0.875rem;
     font-weight: 600;
     color: var(--white);
@@ -194,12 +272,15 @@ a.card:hover {
     border-radius: 8px;
     cursor: pointer;
     text-decoration: none;
-    transition: background-color 0.2s;
+    transition: all 0.2s;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .btn-primary:hover,
 .btn-create:hover {
     background-color: var(--primary-hover);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    transform: translateY(-1px);
 }
 
 .btn-secondary {
