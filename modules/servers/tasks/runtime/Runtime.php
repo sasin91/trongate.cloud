@@ -90,6 +90,24 @@ class Runtime
         $this->running = true;
 
         while ($this->running) {
+            if (!$this->db->ping()) {
+                error_log('Database connection lost, reconnecting...');
+                $this->db->close();
+                $this->db = new mysqli(
+                    getenv('DB_HOST') ?: '127.0.0.1',
+                    getenv('DB_USER') ?: 'root',
+                    getenv('DB_PASSWORD') ?: '',
+                    getenv('DB_NAME') ?: 'tcloud',
+                    (int) (getenv('DB_PORT') ?: 3306)
+                );
+
+                if ($this->db->connect_errno) {
+                    error_log("Reconnect failed: {$this->db->connect_error}");
+                    sleep(self::POLL_INTERVAL_SECONDS);
+                    continue;
+                }
+            }
+
             $task = $this->pick_task();
 
             if ($task === null) {
@@ -182,8 +200,11 @@ class Runtime
 
             return is_string($result) ? $result : false;
         } catch (\Throwable $e) {
-            ob_end_clean();
+            $buffered = ob_get_clean();
             error_log("render_script error: " . $e->getMessage());
+            if ($buffered !== '') {
+                error_log("render_script output: " . $buffered);
+            }
             return false;
         }
     }
@@ -217,27 +238,22 @@ class Runtime
         stream_set_blocking($pipes[1], false);
         stream_set_blocking($pipes[2], false);
 
-        while (true) {
-            $read = [];
-            if (is_resource($pipes[1])) $read[] = $pipes[1];
-            if (is_resource($pipes[2])) $read[] = $pipes[2];
+        $open = [1 => $pipes[1], 2 => $pipes[2]];
 
-            if (empty($read)) break;
-
+        while (!empty($open)) {
+            $read = array_values($open);
             $write = null;
             $except = null;
             $changed = @stream_select($read, $write, $except, 1);
 
             if ($changed === false) break;
 
-            foreach ($read as $pipe) {
+            foreach ($open as $fd => $pipe) {
                 $line = fgets($pipe);
                 if ($line === false) {
                     if (feof($pipe)) {
                         fclose($pipe);
-                        // null out the closed pipe
-                        if ($pipe === $pipes[1]) $pipes[1] = null;
-                        if ($pipe === $pipes[2]) $pipes[2] = null;
+                        unset($open[$fd]);
                     }
                     continue;
                 }
@@ -245,13 +261,10 @@ class Runtime
                 $line = rtrim($line, "\n\r");
                 if ($line === '') continue;
 
-                $level = ($pipe === $pipes[2]) ? 'error' : 'info';
+                $level = ($fd === 2) ? 'error' : 'info';
                 $log_stmt->bind_param('iss', $server_id, $level, $line);
                 $log_stmt->execute();
             }
-
-            // Check if process has exited and pipes are drained
-            if (!is_resource($pipes[1]) && !is_resource($pipes[2])) break;
         }
 
         $log_stmt->close();
