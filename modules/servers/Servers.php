@@ -8,8 +8,7 @@ class Servers extends Trongate {
         $team_id = $this->model->get_customer_team_id();
         
         if ($team_id === false) {
-            // Handle error - user not in a team?
-             redirect('customer');
+            redirect('customer-onboarding/team');
         }
 
         // Get Hetzner API Key
@@ -18,9 +17,7 @@ class Servers extends Trongate {
         $token = $secret['token'] ?? null;
 
         if (empty($token)) {
-             // Redirect to secrets/settings page or show error
-             // For now, let's just die or redirect to dashboard
-             die('No Hetzner API key found for this team.');
+            redirect('customer-onboarding/provider');
         }
 
         // Init Hetzner

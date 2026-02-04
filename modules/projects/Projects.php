@@ -1,4 +1,10 @@
 <?php
+
+/**
+ * @property-read Projects_model $model
+ * @property-read Trongate_tokens $trongate_tokens
+ * @property-read Templates $templates
+ */
 class Projects extends Trongate {
  
     function create(): void {
@@ -15,16 +21,19 @@ class Projects extends Trongate {
         $id = segment(3, 'int');
         $this->_make_sure_allowed();
         
-        $project = $this->model->get_where($id);
+        $project = $this->model->find($id);
         
         if ($project === false) {
             redirect('customer');
         }
 
+        $servers = $this->model->get_team_servers($_SESSION['current_team_id']);
+
         $data = [
             'view_module' => 'projects',
             'view_file' => 'show',
-            'project' => $project
+            'project' => $project,
+            'servers' => $servers
         ];
         $this->module('templates');
         $this->templates->customer($data);

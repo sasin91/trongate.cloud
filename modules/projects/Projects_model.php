@@ -1,12 +1,25 @@
 <?php
+
+/**
+ * @property-read Db $db
+ */
 class Projects_model extends Model {
     
     public string $table_name = 'project';
 
-    public function get_where(int $id): object|bool {
-        $sql = "SELECT * FROM {$this->table_name} WHERE id = :id";
-        $data['id'] = $id;
-        $result = $this->db->query_bind($sql, $data, 'object');
-        return $result[0] ?? false;
+    public function find(int $id): object|bool {
+        return $this->db->get_where($id, $this->table_name);
+    }
+
+    public function get_team_servers(int $team_id): array {
+        return $this->db->query_bind(
+            <<<SQL
+                SELECT *
+                FROM server
+                WHERE team_id = :team_id
+            SQL,
+            ['team_id' => $team_id],
+            'object'
+        );
     }
 }

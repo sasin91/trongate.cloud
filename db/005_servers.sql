@@ -4,6 +4,7 @@
 CREATE TABLE server (
   id INT PRIMARY KEY AUTO_INCREMENT,
   team_id INT NOT NULL,
+  label VARCHAR(255) NOT NULL,
   provider VARCHAR(50) NOT NULL, -- 'hetzner', 'linode', 'digitalocean'
   provider_id VARCHAR(50), -- Provider's server ID
   type VARCHAR(50) NOT NULL, -- 'cx23', 's-1vcpu-1gb', etc.
