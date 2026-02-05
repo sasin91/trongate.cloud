@@ -2,6 +2,7 @@
 <html lang="en">
 
 <head>
+    <base href="<?= BASE_URL ?>">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Create Team - Trongate Cloud</title>
@@ -27,6 +28,8 @@
 
         <div class="steps">
             <div class="step-dot active"></div>
+            <div class="step-dot"></div>
+            <div class="step-dot"></div>
             <div class="step-dot"></div>
             <div class="step-dot"></div>
         </div>

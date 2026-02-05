@@ -45,6 +45,7 @@
             <div class="step-dot completed"></div>
             <div class="step-dot completed"></div>
             <div class="step-dot completed"></div>
+            <div class="step-dot completed"></div>
             <div class="step-dot active"></div>
         </div>
 

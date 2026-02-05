@@ -46,6 +46,12 @@ class Onboarding extends Trongate {
             exit;
         }
 
+        // Check for SSH key - required for server access
+        if (!$this->secrets->exists('team', $team->id, 'ssh_key')) {
+            redirect('customer-onboarding/ssh-key');
+            exit;
+        }
+
         // Source control (GitHub) is optional - user can skip and use zip upload
         // So we go straight to project step
         redirect('customer-onboarding/project');
@@ -116,6 +122,49 @@ class Onboarding extends Trongate {
 
         $encryption_key = $this->encryption->generate_key();
         $this->secrets->save('team', $team_id, 'hetzner', $encryption_key, ['token' => $token]);
+
+        redirect('customer-onboarding/ssh-key');
+    }
+
+    // --- SSH Key ---
+
+    function ssh_key(): void {
+        $this->view('ssh_key');
+    }
+
+    function submit_ssh_key(): void {
+        $customer = $this->model->_get_current_customer();
+        if (!$customer) {
+            redirect('customer/login');
+            exit;
+        }
+
+        $teams = $this->model->get_owned_teams($customer->id);
+        if (empty($teams)) {
+            redirect('customer-onboarding/team');
+            exit;
+        }
+        $team_id = $teams[0]->id;
+
+        $this->validation->set_rules('public_key', 'SSH Public Key', 'required|callback_validate_ssh_key');
+        $this->validation->set_rules('label', 'Key Label', 'max_length[50]');
+
+        if ($this->validation->run() === false) {
+            $this->ssh_key();
+            exit;
+        }
+
+        $public_key = post('public_key', true);
+        $label = post('label', true) ?: 'Default SSH Key';
+
+        $this->module('encryption');
+        $this->module('secrets');
+
+        $encryption_key = $this->encryption->generate_key();
+        $this->secrets->save('team', $team_id, 'ssh_key', $encryption_key, [
+            'public_key' => $public_key,
+            'label' => $label
+        ]);
 
         redirect('customer-onboarding/source');
     }
@@ -230,6 +279,45 @@ class Onboarding extends Trongate {
 
         if (!$client->validate_credentials()) {
             return 'Invalid token. Please check your GitHub Personal Access Token.';
+        }
+
+        return true;
+    }
+
+    function _validate_ssh_key(string $public_key): bool|string {
+        if (empty($public_key)) {
+            return 'SSH Public Key is required.';
+        }
+
+        // Trim whitespace
+        $public_key = trim($public_key);
+
+        // Valid SSH key types
+        $valid_types = ['ssh-rsa', 'ssh-ed25519', 'ecdsa-sha2-nistp256', 'ecdsa-sha2-nistp384', 'ecdsa-sha2-nistp521'];
+
+        // Check if the key starts with a valid type
+        $starts_with_valid_type = false;
+        foreach ($valid_types as $type) {
+            if (str_starts_with($public_key, $type . ' ')) {
+                $starts_with_valid_type = true;
+                break;
+            }
+        }
+
+        if (!$starts_with_valid_type) {
+            return 'Invalid SSH key format. Key must start with ssh-rsa, ssh-ed25519, or ecdsa-sha2-*.';
+        }
+
+        // Basic structure check: should have at least 2 parts (type and key data)
+        $parts = explode(' ', $public_key);
+        if (count($parts) < 2) {
+            return 'Invalid SSH key structure. Expected format: [type] [key-data] [optional-comment]';
+        }
+
+        // Validate the key data part is base64
+        $key_data = $parts[1];
+        if (!preg_match('/^[A-Za-z0-9+\/]+=*$/', $key_data)) {
+            return 'Invalid SSH key data. Key must be base64 encoded.';
         }
 
         return true;
