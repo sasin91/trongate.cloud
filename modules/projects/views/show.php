@@ -34,7 +34,7 @@
                     <?php endif; ?>
                 </select>
                 <div style="margin-top: 0.5rem; font-size: 0.875rem;">
-                    Don't see your server? <a href="servers/create?label=<?= urlencode(url_title($project->label)) ?>" style="color: var(--primary); text-decoration: none;">Provision a new server</a>
+                    Don't see your server? <a href="servers/create?label=<?= urlencode(url_title($project->label)) ?>&project_id=<?= $project->id ?>" style="color: var(--primary); text-decoration: none;">Provision a new server</a>
                 </div>
             </div>
             <div style="margin-top: 1rem; text-align: right; display: flex; gap: 1rem; justify-content: flex-end;">

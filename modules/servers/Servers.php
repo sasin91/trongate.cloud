@@ -19,6 +19,11 @@ class Servers extends Trongate {
             redirect('customer-onboarding/team');
         }
 
+        $label = trim($_GET['label'] ?? '');
+        $project_id = filter_var($_GET['project_id'] ?? null, FILTER_VALIDATE_INT);
+
+        $project = $this->model->find_project($project_id);
+
         // Get Hetzner API Key
         $this->module('secrets');
         $secret = $this->secrets->get('team', $team_id, 'hetzner');
@@ -38,7 +43,10 @@ class Servers extends Trongate {
             'view_module' => 'servers',
             'view_file' => 'create',
             'regions' => $regions,
-            'server_types' => $server_types
+            'server_types' => $server_types,
+            'project' => $project,
+            'projects' => $project === null ? $this->model->get_team_project($team_id) : null,
+            'label' => $label
         ];
         $this->module('templates');
         $this->templates->customer($data);
@@ -47,7 +55,7 @@ class Servers extends Trongate {
     function server_types_options(): void {
         $this->_make_sure_allowed();
         
-        $location = $_GET['location'] ?? 'fsn1';
+        $location = htmlspecialchars(trim($_GET['location'] ?? 'fsn1'));
         
         // Get team ID
         $team_id = $this->model->get_customer_team_id();
@@ -91,7 +99,8 @@ class Servers extends Trongate {
         $this->validation->set_rules('provider', 'Cloud Provider', 'required|callback_validate_provider'); // For now we only support Hetzner, but this allows for future expansion
         $this->validation->set_rules('region', 'Region', 'required|min_length[3]|max_length[5]'); // Hetzner region codes are short, e.g. "fsn1", "nbg1", "hel1" so 4 + 1 characters should be enough
         $this->validation->set_rules('server_type', 'Server Type', 'required|min_length[4]|max_length[6]'); // Hetzner server type names can be long, e.g. "cpx31", "ccx51", "cx41"
-        
+        $this->validation->set_rules('project_id', 'Project', 'integer|callback_validate_project_id');
+
         if ($this->validation->run() == false) {
             redirect('servers/create');
             exit;
@@ -102,6 +111,7 @@ class Servers extends Trongate {
         $region = post('region');
         $server_type = post('server_type');
         $provider = post('provider', true);
+        $project_id = post('project_id', true);
 
         // Validate required fields
         if (empty($label) || empty($region) || empty($server_type)) {
@@ -157,10 +167,96 @@ class Servers extends Trongate {
             'status' => $server['status']
         ];
 
-        $this->model->insert($data);
+        $server_id = $this->model->insert($data);
 
-        // Redirect to server details or dashboard
-        redirect('customer');
+        redirect("servers/show/$server_id?project_id=$project_id");
+    }
+
+    function show(): void {
+        $this->_make_sure_allowed();
+        
+        // Get team ID
+        $team_id = $this->model->get_customer_team_id();
+        
+        if ($team_id === false) {
+            redirect('customer-onboarding/team');
+        }
+
+        $server_id = segment(3, 'int');
+        $project_id = filter_var($_GET['project_id'] ?? null, FILTER_VALIDATE_INT);
+
+        $server = $this->model->db->query_bind(
+            'SELECT * FROM server WHERE id = :server_id AND team_id = :team_id LIMIT 1',
+            ['server_id' => $server_id, 'team_id' => $team_id],
+            'object'
+        );
+
+        if (empty($server)) {
+            redirect('customer');
+        }
+
+        $data = [
+            'view_module' => 'servers',
+            'view_file' => 'show',
+            'server' => $server,
+            'project_id' => $project_id
+        ];
+        $this->module('templates');
+        $this->templates->customer($data);
+    }
+
+    function deploy(): void {
+        $this->_make_sure_allowed();
+
+        $team_id = $this->model->_get_current_team_id();
+
+        if ($team_id === false) {
+            redirect('customer-onboarding/team');
+        }
+
+        $this->validation->set_rules('server_id', 'Server', 'required|integer|callback_validate_server_id');
+        $this->validation->set_rules('project_id', 'Project', 'required|integer|callback_validate_project_id');
+
+        if ($this->validation->run() == false) {
+            redirect('customer');
+            exit;
+        }
+
+        $server_id = filter_var(post('server_id'), FILTER_VALIDATE_INT);
+        $project_id = filter_var(post('project_id'), FILTER_VALIDATE_INT);
+        
+        // Get project for this team to check for repository
+        $project = $this->model->find_project($project_id);
+
+        // Create deployment record
+        $deployment_id = $this->model->create_deployment([
+            'team_id' => $team_id,
+            'customer_id' => $_SESSION['customer_id'],
+            'project_id' => $project->id,
+            'server_id' => $server_id,
+            'status' => 'pending',
+            'source_type' => 'git',
+            'source_url' => $project->source_url,
+            'metadata' => json_encode([
+                'source_provider' => $project->source_provider,
+                'repository' => $project->repository_full_name,
+                'branch' => $project->repository_branch ?? 'main'
+            ])
+        ]);
+
+        // Queue deployment task
+        $this->model->queue_task($server_id, 'deploy_repository', [
+            'deployment_id' => $deployment_id,
+            'source_provider' => $project->source_provider,
+            'repository' => $project->repository_full_name,
+            'branch' => $project->repository_branch ?? 'main',
+            'project_id' => $project->id,
+            'project_type' => $project->type,
+            'server_ip' => $server['ip'] ?? null
+        ], $deployment_id);
+
+        // Redirect to deployment status page
+        redirect("deployments/show/{$deployment_id}");
     }
 
     function _validate_provider(string $provider): bool|string {
@@ -168,6 +264,27 @@ class Servers extends Trongate {
         
         if ($this->services->exists($provider) === false) {
             return 'Invalid provider.';
+        }
+
+        return true;
+    }
+
+    function _validate_project_id($project_id): bool|string {
+        if (empty($project_id)) {
+            return "Please select a project.";
+        }
+
+        $this->module('servers');
+        $project = $this->model->find_project($project_id);
+
+        if ($project === null) {
+            return 'Selected project does not exist.';
+        }
+
+        $team_id = $this->model->get_customer_team_id();
+
+        if ($project->team_id != $team_id) {
+            return 'Selected project does not belong to your team.';
         }
 
         return true;

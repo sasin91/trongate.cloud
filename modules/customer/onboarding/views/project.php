@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Create Project - Trongate Cloud</title>
     <link rel="stylesheet" href="<?= BASE_URL ?>customer-onboarding_module/css/onboarding.css">
+    <script src="<?= BASE_URL ?>js/trongate-mx.min.js"></script>
 </head>
 
 <body>
@@ -19,6 +20,44 @@
         <?= validation_errors() ?>
 
         <?= form_open('customer-onboarding/submit_project') ?>
+        
+        <?= form_hidden('provider', $provider) ?>
+
+        <div class="form-group">
+            <label for="repository" class="form-label">Repository</label>
+            <select 
+                name="repository" 
+                id="repository" 
+                class="form-select" 
+                required
+                mx-get="customer-onboarding/repository_branch_options?repository=${this.value}&provider=<?= $provider ?>"
+                mx-trigger="change"
+                mx-target="#repository_branch"
+                mx-swap="innerHTML"
+            >
+                <option value="">-- Select a repository --</option>
+                <?php foreach ($repositories as $repo): ?>
+                    <option value="<?= htmlspecialchars($repo['full_name']) ?>">
+                        <?= htmlspecialchars($repo['full_name']) ?>
+                        <?= $repo['private'] ? '(private)' : '' ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="repository_branch" class="form-label">Branch</label>
+            <select 
+                name="repository_branch" 
+                id="repository_branch" 
+                class="form-select" 
+                required
+            >
+                <option value="">-- Select a branch --</option>
+                <?php include __DIR__ . '/_repository_branch_options.php'; ?>
+            </select>
+        </div>
+
         <div class="form-group">
             <label for="label" class="form-label">Project Name</label>
             <input type="text" name="label" id="label" class="form-input" placeholder="e.g. My Awesome App" value="<?= htmlspecialchars(post('label') ?? '') ?>" required autofocus>
@@ -42,6 +81,7 @@
         </div>
 
         <div class="steps">
+            <div class="step-dot completed"></div>
             <div class="step-dot completed"></div>
             <div class="step-dot completed"></div>
             <div class="step-dot completed"></div>

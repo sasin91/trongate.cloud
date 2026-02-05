@@ -60,26 +60,30 @@ class Onboarding_model extends Model {
         ], 'team');
     }
 
-    function add_provider(int $team_id, array $provider_data): bool {
-        // Fetch current providers
+    function add_team_service(int $team_id, string $service_type, string $service_id): bool {
+        // Fetch current services
         $team = $this->db->get_where($team_id, 'team');
         if (!$team) return false;
 
-        $providers = json_decode($team->providers ?? '[]', true);
+        $services = json_decode($team->services ?? '[]', true);
 
-        // Basic check to avoid exact duplicates if needed, but for now just appending
-        $providers[] = $provider_data;
+        $services[] = [
+            'type' => $service_type,
+            'id' => $service_id
+        ];
 
-        $data = ['providers' => json_encode($providers)];
+        $data = ['services' => json_encode($services)];
         return $this->db->update($team_id, $data, 'team');
     }
 
-    function create_project(int $team_id, string $label, string $type): int|false {
-        $data = [
+    function create_project(int $team_id, string $label, string $type, string $source_url, string $source_provider, string $source_branch = 'main'): int|false {
+        return $this->db->insert([
             'team_id' => $team_id,
             'label' => $label,
-            'type' => $type
-        ];
-        return $this->db->insert($data, 'project');
+            'type' => $type,
+            'source_url' => $source_url,
+            'source_provider' => $source_provider,
+            'source_branch' => $source_branch ?? 'main'
+        ], 'project');
     }
 }

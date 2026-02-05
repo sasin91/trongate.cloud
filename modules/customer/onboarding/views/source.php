@@ -39,6 +39,8 @@
             </div>
         </div>
 
+        <input type="hidden" name="provider" value="github">
+
         <div class="form-group">
             <label for="token" class="form-label">Personal Access Token</label>
             <input type="password" name="token" id="token" class="form-input" placeholder="Paste your GitHub token" required>
@@ -50,15 +52,13 @@
             <div class="step-dot completed"></div>
             <div class="step-dot active"></div>
             <div class="step-dot"></div>
+            <div class="step-dot"></div>
         </div>
 
         <button type="submit" class="btn-primary">
             Connect & Continue
         </button>
 
-        <p style="text-align: center; margin-top: 15px; font-size: 0.9rem; color: #666;">
-            <a href="<?= BASE_URL ?>customer-onboarding/skip_source" style="color: #555;">Skip — I'll upload a zip file instead</a>
-        </p>
         <?= form_close() ?>
     </div>
 

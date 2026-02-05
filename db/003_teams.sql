@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS team (
   name VARCHAR(255) NOT NULL,
   owner_id INT NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  services JSON DEFAULT '[]',
   FOREIGN KEY (owner_id) REFERENCES customer(id)
 );
 

@@ -81,6 +81,32 @@ class Github extends Client {
         }
     }
 
+    /**
+     * List branches for a repository
+     * 
+     * @return array<{ 
+     *    name: string, 
+     *    commit: { sha: string, url: string }, 
+     *    protected: bool, 
+     *    protection: { 
+     *       enabled: bool, 
+     *       required_status_checks: { 
+     *          enforcement_level: string, 
+     *          contexts: array, 
+     *          checks: array 
+     *       } 
+     *    }, 
+     *    protection_url: string
+     * }>
+     */
+    function list_branches(string $repo, int $per_page = 5): array {
+        return $this->request('GET', "/repos/{$repo}/branches?per_page={$per_page}");
+    }
+
+    function url(string $repo): string {
+        return "https://github.com/{$repo}";
+    }
+
     function headers(): array
     {
         return [

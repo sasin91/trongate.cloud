@@ -30,30 +30,39 @@ class Onboarding extends Trongate {
             exit;
         }
 
-        $teams = $this->model->get_owned_teams($customer->id);
+        $team_id = $this->model->_get_current_team_id($customer->id);
 
-        if (empty($teams)) {
+        if ($team_id === false) {
             redirect('customer-onboarding/team');
             exit;
         }
 
-        $team = $teams[0];
         $this->module('secrets');
 
         // Check for hosting provider (Hetzner) - required
-        if (!$this->secrets->exists('team', $team->id, 'hetzner')) {
+        if (!$this->secrets->exists('team', $team_id, 'hetzner')) {
             redirect('customer-onboarding/provider');
             exit;
         }
 
         // Check for SSH key - required for server access
-        if (!$this->secrets->exists('team', $team->id, 'ssh_key')) {
+        if (!$this->secrets->exists('team', $team_id, 'ssh_key')) {
             redirect('customer-onboarding/ssh_key');
             exit;
         }
 
-        // Source control (GitHub) is optional - user can skip and use zip upload
-        // So we go straight to project step
+        $team = $this->model->db->get_where($team_id, 'team');
+
+        if ($team->services) {
+            $team_services = json_decode($team->services, true);
+            $source_service = array_find($team_services, fn(array $svc) => $svc['type'] === 'source');
+
+            if (empty($source_service)) {
+                redirect('customer-onboarding/source');
+                exit;
+            }
+        }
+
         redirect('customer-onboarding/project');
         exit;
     }
@@ -213,13 +222,14 @@ class Onboarding extends Trongate {
             exit;
         }
 
-        $teams = $this->model->get_owned_teams($customer->id);
-        if (empty($teams)) {
+        $team_id = $this->model->_get_current_team_id();
+
+        if ($team_id === false) {
             redirect('customer-onboarding/team');
             exit;
         }
-        $team_id = $teams[0]->id;
 
+        $this->validation->set_rules('provider', 'Source Control Provider', 'required|callback_validate_provider');
         $this->validation->set_rules('token', 'Personal Access Token', 'required|min_length[10]|callback_validate_github_token');
 
         if ($this->validation->run() === false) {
@@ -227,27 +237,49 @@ class Onboarding extends Trongate {
             exit;
         }
 
+        $provider = post('provider', true);
         $token = post('token', true);
 
         $this->module('encryption');
         $this->module('secrets');
 
         $encryption_key = $this->encryption->generate_key();
-        $this->secrets->save('team', $team_id, 'github', $encryption_key, ['token' => $token]);
+        $this->secrets->save('team', $team_id, $provider, $encryption_key, ['token' => $token]);
 
-        redirect('customer-onboarding/project');
-    }
+        $this->model->add_team_service($team_id, 'source', $provider);
 
-    function skip_source(): void {
-        // User chose to skip GitHub - they'll upload zip files instead
-        // We don't store anything, just proceed to project
         redirect('customer-onboarding/project');
     }
 
     // --- Project ---
 
     function project(): void {
-        $this->view('project');
+        $team_id = $this->model->_get_current_team_id();
+        if ($team_id === false) {
+            redirect('customer-onboarding/team');
+            exit;
+        }
+
+        $team = $this->model->db->get_where($team_id, 'team');
+        $team_services = json_decode($team->services ?? '[]', true);
+        $source_service = array_find($team_services, fn(array $svc) => $svc['type'] === 'source');
+
+        $this->module('secrets');
+        $source_secret = $this->secrets->get('team', $team_id, $source_service['id']);
+
+        if (!$source_secret) {
+            redirect('customer-onboarding/source');
+            exit;
+        }
+
+        $this->module('services');
+        $service = $this->services->{$source_service['id']}($source_secret['token']);
+        $repositories = $service->list_repositories();
+
+        $this->view('project', [
+            'provider' => $source_service['id'],
+            'repositories' => $repositories
+        ]);
     }
 
     function submit_project(): void {
@@ -256,12 +288,15 @@ class Onboarding extends Trongate {
             redirect('customer/login');
         }
 
-        $teams = $this->model->get_owned_teams($customer->id);
-        if (empty($teams)) {
+        $team_id = $this->model->_get_current_team_id();
+
+        if ($team_id === false) {
             redirect('customer-onboarding/team');
         }
-        $team_id = $teams[0]->id;
 
+        $this->validation->set_rules('provider', 'Source Control Provider', 'required|callback_validate_provider');
+        $this->validation->set_rules('repository', 'Repository', 'required');
+        $this->validation->set_rules('repository_branch', 'Repository Branch', 'required');
         $this->validation->set_rules('label', 'Project Name', 'required|min_length[3]|max_length[50]');
         $this->validation->set_rules('type', 'Project Type', 'required');
 
@@ -270,17 +305,52 @@ class Onboarding extends Trongate {
             return;
         }
 
+        $provider = post('provider', true);
+        $repository = post('repository', true);
+        $repository_branch = post('repository_branch', true);
         $label = post('label', true);
         $type = post('type', true);
 
-        $this->model->db->transaction(function () use ($team_id, $label, $type, $customer) {
-            $project_id = $this->model->create_project($team_id, $label, $type ?? 'trongate_v1');
+        $this->module('secrets');
+        $source_secret = $this->secrets->get('team', $team_id, $provider);
+        /** @var Github $source_service */
+        $source_service = $this->services->$provider($source_secret['token']);
+        $source_url = $source_service->url($repository);
+
+        $this->model->db->transaction(function () use ($team_id, $label, $type, $customer, $source_url, $provider, $repository_branch) {
+            $project_id = $this->model->create_project(
+                team_id: $team_id, 
+                label: $label, 
+                type: $type ?? 'trongate_v1', 
+                source_url: $source_url,
+                source_provider: $provider,
+                source_branch: $repository_branch
+            );
             $updated = $this->model->mark_onboarded($customer->id);
 
             return $project_id !== false && $updated;
         });
 
         redirect('customer');
+    }
+
+    function repository_branch_options(): void {
+        $repository = trim($_GET['repository'] ?? '');
+        $provider = trim($_GET['provider'] ?? '');
+        
+        $team_id = $this->model->_get_current_team_id();
+
+        $this->module('secrets');
+        $source_secret = $this->secrets->get('team', $team_id, $provider);
+
+        $this->module('services');
+        /** @var Github $source_service */
+        $source_service = $this->services->$provider($source_secret['token']);
+        $branches = $source_service->list_branches($repository);
+
+        // Output just the options using shared partial
+        header('Content-Type: text/html');
+        $this->view('_repository_branch_options', ['branches' => $branches]);
     }
 
     // --- Validation Callbacks ---

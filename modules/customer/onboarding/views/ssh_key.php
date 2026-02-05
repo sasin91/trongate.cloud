@@ -63,6 +63,7 @@
             <div class="step-dot active"></div>
             <div class="step-dot"></div>
             <div class="step-dot"></div>
+            <div class="step-dot"></div>
         </div>
 
         <button type="submit" class="btn-primary">
