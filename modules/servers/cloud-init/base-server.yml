@@ -1,0 +1,39 @@
+#cloud-config
+
+# Base server provisioning for Hetzner docker-ce image
+# The docker-ce image comes with Docker and docker-compose pre-installed
+#
+# SSH Keys:
+#   - Customer SSH key (added via Hetzner API for customer access)
+#
+# SSH Certificate Authority:
+#   - Platform CA public key (configured below for certificate-based access)
+#   - Platform can sign short-lived certificates for maintenance/deployments
+
+packages:
+  - curl
+
+write_files:
+  - path: /etc/ssh/ca_user_key.pub
+    content: |
+      {{CA_PUBLIC_KEY}}
+    permissions: '0644'
+    owner: root:root
+
+runcmd:
+  # Docker is already installed and running from docker-ce image
+  - mkdir -p /var/www
+  - mkdir -p /var/backups
+  - usermod -aG docker ubuntu
+  # Configure SSH to trust the CA for user certificates
+  - echo "TrustedUserCAKeys /etc/ssh/ca_user_key.pub" >> /etc/ssh/sshd_config
+  - systemctl restart sshd
+  # Create verification marker
+  - touch /root/cloud-init-complete
+
+# Set timezone to UTC
+timezone: UTC
+
+# Enable automatic security updates
+package_update: true
+package_upgrade: true

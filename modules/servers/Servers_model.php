@@ -7,4 +7,8 @@ class Servers_model extends Model {
     function get_customer_team_id(): int|false {
         return $this->_get_current_team_id();
     }
+
+    function insert(array $data): int|false {
+        return $this->db->insert($data, 'server');
+    }
 }

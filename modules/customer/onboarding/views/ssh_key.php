@@ -39,14 +39,21 @@
             </div>
         </div>
 
+        <input type="hidden" name="provider" value="hetzner">
+
         <div class="form-group">
-            <label for="label" class="form-label">Key Label (optional)</label>
-            <input type="text" name="label" id="label" class="form-input" placeholder="e.g., My Work Laptop" value="<?= set_value('label', '') ?>">
+            <?= form_label('Key Label (optional)', ['for' => 'label', 'class' => 'form-label']) ?>
+            <?= form_input('label', post('label', ''), ['class' => 'form-input', 'placeholder' => 'e.g., My Work Laptop']) ?>
         </div>
 
         <div class="form-group">
-            <label for="public_key" class="form-label">SSH Public Key</label>
-            <textarea name="public_key" id="public_key" class="form-input" rows="6" placeholder="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... user@example.com" required style="font-family: monospace; font-size: 0.85rem;"><?= set_value('public_key', '') ?></textarea>
+            <?= form_label('SSH Public Key', ['for' => 'public_key', 'class' => 'form-label']) ?>
+            <?= form_textarea('public_key', post('public_key', ''), [
+                'class' => 'form-input', 
+                'rows' => 6, 
+                'placeholder' => 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... user@example.com', 
+                'style' => 'font-family: monospace; font-size: 0.85rem;'
+            ]) ?>
             <small style="color: #666; font-size: 0.8rem;">Paste your entire public key (usually found in ~/.ssh/id_rsa.pub or ~/.ssh/id_ed25519.pub)</small>
         </div>
 

@@ -13,11 +13,16 @@ class Services extends Trongate {
         block_url_invocation($module_name);
     }
 
+    function exists(string $service): bool {
+        return method_exists($this, $service);
+    }
+
     /**
      * Get Hetzner Cloud client
      * @return Hetzner
      */
     function hetzner(string $token): Hetzner {
+        require_once __DIR__ . '/clients/Client.php';
         require_once __DIR__ . '/clients/Hetzner.php';
         return new Hetzner($token);
     }
@@ -27,6 +32,7 @@ class Services extends Trongate {
      * @return Github
      */
     function github(string $token): Github {
+        require_once __DIR__ . '/clients/Client.php';
         require_once __DIR__ . '/clients/Github.php';
         return new Github($token);
     }

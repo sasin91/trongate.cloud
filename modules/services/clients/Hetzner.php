@@ -4,7 +4,7 @@
  * Hetzner Cloud Provider
  * https://docs.hetzner.cloud/
  */
-class Hetzner {
+class Hetzner extends Client {
 
     private string $api_base = 'https://api.hetzner.cloud/v1';
 
@@ -37,28 +37,37 @@ class Hetzner {
             return false;
         }
         try {
-            $this->_request('GET', '/locations?per_page=1');
+            $this->request('GET', '/locations?per_page=1');
             return true;
         } catch (Exception $e) {
             return false;
         }
     }
 
-    function create_server(array $config): array {
-        $payload = [
-            'name' => $config['name'],
-            'server_type' => $config['type'],
-            'location' => $config['region'],
-            'image' => $config['image'] ?? 'ubuntu-24.04',
-            'ssh_keys' => [$config['ssh_key_id']],
-            'labels' => $config['labels'] ?? [],
-        ];
-
-        if (!empty($config['user_data'])) {
-            $payload['user_data'] = $config['user_data'];
-        }
-
-        $response = $this->_request('POST', '/servers', $payload);
+    function create_server(
+        string $name,
+        string $type,
+        string $region,
+        array $ssh_keys,
+        array $labels,
+        string $user_data,
+        string $image = 'docker-ce',
+    ): array {
+        $response = $this->request('POST', '/servers', [
+            'name' => $name,
+            'server_type' => $type,
+            'location' => $region,
+            'image' => $image,
+            'labels' => $labels,
+            'ssh_keys' => $ssh_keys,
+            'user_data' => $user_data,
+            'start_after_create' => true,
+            'automount' => false,
+            'public_net' => [
+                'enable_ipv4' => true,
+                'enable_ipv6' => true,
+            ]
+        ]);
 
         return [
             'provider_id' => (string) $response['server']['id'],
@@ -69,7 +78,7 @@ class Hetzner {
 
     function get_server(string $provider_id): ?array {
         try {
-            $response = $this->_request('GET', "/servers/{$provider_id}");
+            $response = $this->request('GET', "/servers/{$provider_id}");
             $server = $response['server'];
 
             return [
@@ -89,7 +98,7 @@ class Hetzner {
 
     function delete_server(string $provider_id): bool {
         try {
-            $this->_request('DELETE', "/servers/{$provider_id}");
+            $this->request('DELETE', "/servers/{$provider_id}");
             return true;
         } catch (Exception $e) {
             return false;
@@ -98,15 +107,21 @@ class Hetzner {
 
     function reboot_server(string $provider_id): bool {
         try {
-            $this->_request('POST', "/servers/{$provider_id}/actions/reboot");
+            $this->request('POST', "/servers/{$provider_id}/actions/reboot");
             return true;
         } catch (Exception $e) {
             return false;
         }
     }
 
+    function list_ssh_keys(): array {
+        $response = $this->request('GET', '/ssh_keys');
+        
+        return $response['ssh_keys'];
+    }
+
     function upload_ssh_key(string $name, string $public_key): string {
-        $response = $this->_request('POST', '/ssh_keys', [
+        $response = $this->request('POST', '/ssh_keys', [
             'name' => $name,
             'public_key' => $public_key,
         ]);
@@ -116,7 +131,7 @@ class Hetzner {
 
     function delete_ssh_key(string $key_id): bool {
         try {
-            $this->_request('DELETE', "/ssh_keys/{$key_id}");
+            $this->request('DELETE', "/ssh_keys/{$key_id}");
             return true;
         } catch (Exception $e) {
             return false;
@@ -124,7 +139,7 @@ class Hetzner {
     }
 
     function list_regions(): array {
-        $response = $this->_request('GET', '/locations');
+        $response = $this->request('GET', '/locations');
         $regions = [];
 
         foreach ($response['locations'] as $loc) {
@@ -139,7 +154,7 @@ class Hetzner {
     }
 
     function list_server_types(string $location = 'fsn1'): array {
-        $response = $this->_request('GET', '/server_types');
+        $response = $this->request('GET', '/server_types');
         $types = [];
 
         foreach ($response['server_types'] as $type) {
@@ -172,7 +187,7 @@ class Hetzner {
     }
 
     function list_images(): array {
-        $response = $this->_request('GET', '/images?type=system');
+        $response = $this->request('GET', '/images?type=system');
         $images = [];
 
         foreach ($response['images'] as $img) {
@@ -190,48 +205,24 @@ class Hetzner {
         return $images;
     }
 
-    /**
-     * Make API request to Hetzner
-     */
-    function _request(string $method, string $endpoint, array $data = []): array {
-        $url = $this->api_base . $endpoint;
-
-        $headers = [
+    function headers(): array {
+        return [
             'Authorization: Bearer ' . $this->token,
             'Content-Type: application/json',
         ];
+    }
 
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    /**
+     * Make API request to Hetzner
+     */
+    function request(string $method, string $endpoint, array $data = []): array {
+        $url = $this->api_base . $endpoint;
 
-        if ($method === 'POST') {
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-        } elseif ($method === 'DELETE') {
-            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'DELETE');
-        } elseif ($method === 'PUT') {
-            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PUT');
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-        }
-
-        $response = curl_exec($ch);
-        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $error = curl_error($ch);
-
-        if ($error) {
-            throw new Exception("Hetzner API error: {$error}");
-        }
-
-        if ($http_code >= 400) {
-            $body = json_decode($response, true);
-            $message = $body['error']['message'] ?? "HTTP {$http_code}";
-            throw new Exception("Hetzner API error ({$http_code}): {$message}");
-        }
-
-        return json_decode($response, true) ?? [];
+        return $this->_request(
+            $method,
+            $url,
+            $data
+        );
     }
 
     /**

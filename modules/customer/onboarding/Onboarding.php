@@ -48,7 +48,7 @@ class Onboarding extends Trongate {
 
         // Check for SSH key - required for server access
         if (!$this->secrets->exists('team', $team->id, 'ssh_key')) {
-            redirect('customer-onboarding/ssh-key');
+            redirect('customer-onboarding/ssh_key');
             exit;
         }
 
@@ -101,29 +101,31 @@ class Onboarding extends Trongate {
             exit;
         }
 
-        $teams = $this->model->get_owned_teams($customer->id);
-        if (empty($teams)) {
+        $team_id = $this->model->_get_current_team_id($customer->id);
+
+        if ($team_id === false) {
             redirect('customer-onboarding/team');
             exit;
         }
-        $team_id = $teams[0]->id;
 
+        $this->validation->set_rules('provider', 'Cloud Provider', 'required|callback_validate_provider');
         $this->validation->set_rules('token', 'API Token', 'required|min_length[10]|callback_validate_hetzner_token');
 
         if ($this->validation->run() === false) {
-            $this->provider();
+            redirect('customer-onboarding/provider');
             exit;
         }
 
+        $provider = post('provider', true);
         $token = post('token', true);
 
         $this->module('encryption');
         $this->module('secrets');
 
         $encryption_key = $this->encryption->generate_key();
-        $this->secrets->save('team', $team_id, 'hetzner', $encryption_key, ['token' => $token]);
+        $this->secrets->save('team', $team_id, $provider, $encryption_key, ['token' => $token]);
 
-        redirect('customer-onboarding/ssh-key');
+        redirect('customer-onboarding/ssh_key');
     }
 
     // --- SSH Key ---
@@ -139,13 +141,13 @@ class Onboarding extends Trongate {
             exit;
         }
 
-        $teams = $this->model->get_owned_teams($customer->id);
-        if (empty($teams)) {
+        $team_id = $this->model->_get_current_team_id();
+        if ($team_id === false) {
             redirect('customer-onboarding/team');
             exit;
         }
-        $team_id = $teams[0]->id;
 
+        $this->validation->set_rules('provider', 'Cloud Provider', 'required|callback_validate_provider');
         $this->validation->set_rules('public_key', 'SSH Public Key', 'required|callback_validate_ssh_key');
         $this->validation->set_rules('label', 'Key Label', 'max_length[50]');
 
@@ -154,16 +156,45 @@ class Onboarding extends Trongate {
             exit;
         }
 
+        $provider = post('provider', true);
         $public_key = post('public_key', true);
-        $label = post('label', true) ?: 'Default SSH Key';
+        $label = post('label', true) ?: sprintf('team_%d', $team_id);
 
         $this->module('encryption');
         $this->module('secrets');
 
+        $provider_secret = $this->secrets->get('team', $team_id, $provider);
+
+        $this->module('services');
+        $provider_service = $this->services->$provider($provider_secret['token']);
+        
+        try {
+            $provider_ssh_id = $provider_service->upload_ssh_key($label, $public_key);
+        } catch (Client_Error $e) {
+            switch (true) {
+                case $e->getCode() === 409:
+                    foreach ($provider_service->list_ssh_keys() as $key) {
+                        if ($key['public_key'] === $public_key || str_contains($public_key, $key['public_key'])) {
+                            $provider_ssh_id = $key['id'];
+                            $label = $key['name'];
+                            break 2; // break 2 levels (switch and foreach)
+                        }
+                    }
+                break;
+
+                default:
+                    throw $e;
+                break;
+            }
+        }
+
+        $customer_key_id = sprintf('%s_id', $provider);
+
         $encryption_key = $this->encryption->generate_key();
         $this->secrets->save('team', $team_id, 'ssh_key', $encryption_key, [
             'public_key' => $public_key,
-            'label' => $label
+            'label' => $label,
+            $customer_key_id => $provider_ssh_id
         ]);
 
         redirect('customer-onboarding/source');
@@ -318,6 +349,16 @@ class Onboarding extends Trongate {
         $key_data = $parts[1];
         if (!preg_match('/^[A-Za-z0-9+\/]+=*$/', $key_data)) {
             return 'Invalid SSH key data. Key must be base64 encoded.';
+        }
+
+        return true;
+    }
+
+    function _validate_provider(string $provider): bool|string {
+        $this->module('services');
+        
+        if ($this->services->exists($provider) === false) {
+            return 'Invalid provider.';
         }
 
         return true;

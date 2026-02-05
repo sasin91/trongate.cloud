@@ -4,7 +4,7 @@
  * GitHub Source Control Provider
  * https://docs.github.com/en/rest
  */
-class Github {
+class Github extends Client {
 
     private string $api_base = 'https://api.github.com';
 
@@ -37,7 +37,7 @@ class Github {
             return false;
         }
         try {
-            $this->_request('GET', '/user');
+            $this->request('GET', '/user');
             return true;
         } catch (Exception $e) {
             return false;
@@ -46,7 +46,7 @@ class Github {
 
     function list_repositories(?string $owner = null): array {
         $endpoint = $owner ? "/users/{$owner}/repos" : '/user/repos';
-        $response = $this->_request('GET', $endpoint . '?per_page=100&sort=updated');
+        $response = $this->request('GET', $endpoint . '?per_page=100&sort=updated');
 
         $repos = [];
         foreach ($response as $repo) {
@@ -64,7 +64,7 @@ class Github {
 
     function get_repository(string $repo): ?array {
         try {
-            $response = $this->_request('GET', "/repos/{$repo}");
+            $response = $this->request('GET', "/repos/{$repo}");
             return [
                 'id' => (string) $response['id'],
                 'name' => $response['name'],
@@ -81,49 +81,22 @@ class Github {
         }
     }
 
-    /**
-     * Make API request to GitHub
-     */
-    function _request(string $method, string $endpoint, array $data = []): array {
-        $url = $this->api_base . $endpoint;
-
-        $headers = [
+    function headers(): array
+    {
+        return [
             'Authorization: Bearer ' . $this->token,
             'Accept: application/vnd.github+json',
             'User-Agent: TrongateCloud/1.0',
             'X-GitHub-Api-Version: 2022-11-28',
         ];
+    }
 
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    /**
+     * Make API request to GitHub
+     */
+    function request(string $method, string $endpoint, array $data = []): array {
+        $url = $this->api_base . $endpoint;
 
-        if ($method === 'POST') {
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-        } elseif ($method === 'DELETE') {
-            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'DELETE');
-        } elseif ($method === 'PUT' || $method === 'PATCH') {
-            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-        }
-
-        $response = curl_exec($ch);
-        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $error = curl_error($ch);
-
-        if ($error) {
-            throw new Exception("GitHub API error: {$error}");
-        }
-
-        if ($http_code >= 400) {
-            $body = json_decode($response, true);
-            $message = $body['message'] ?? "HTTP {$http_code}";
-            throw new Exception("GitHub API error ({$http_code}): {$message}");
-        }
-
-        return json_decode($response, true) ?? [];
+        return $this->_request($method, $url, $data);
     }
 }

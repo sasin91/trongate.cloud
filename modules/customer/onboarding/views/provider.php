@@ -39,6 +39,8 @@
             </div>
         </div>
 
+        <input type="hidden" name="provider" value="hetzner">
+
         <div class="form-group">
             <label for="token" class="form-label">API Token</label>
             <input type="password" name="token" id="token" class="form-input" placeholder="Paste your Hetzner API token" required>

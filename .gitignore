@@ -2,3 +2,17 @@
 \.phpintel/
 .idea/
 .vscode/
+
+# SSH Keys (never commit private keys!)
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+trongate_cloud_platform*
+ca_user_key
+ca_user_key.pub
+
+# Environment files
+.env
+.env.*
+!.env.example

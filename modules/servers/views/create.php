@@ -35,14 +35,13 @@
             <div class="form-input" style="background: var(--bg-app); cursor: not-allowed;">
                 Docker CE (Ubuntu)
             </div>
-            <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.5rem;">All servers are provisioned with Docker for container deployments.</p>
+            <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.5rem;">Hetzner's docker-ce image with Docker and docker-compose pre-installed.</p>
         </div>
 
-        <input type="hidden" name="image" value="docker-ce">
         <input type="hidden" name="provider" value="hetzner">
 
         <div style="display: flex; gap: 1rem; margin-top: 2rem;">
-             <button type="submit" class="btn-primary" style="flex: 1;">Provision Server</button>
+             <button type="submit" class="btn-primary" style="flex: 1;" onclick="return confirm('This will create a new billable server on your Hetzner Cloud account. Continue?');">Provision Server</button>
              <a href="customer" class="btn-secondary" style="flex: 1; text-align: center;">Cancel</a>
         </div>
     </form>
