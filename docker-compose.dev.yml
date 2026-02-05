@@ -1,4 +1,18 @@
 services:
+  adminer:
+    image: adminer:latest
+    ports:
+      - "8080:8080"
+    depends_on:
+      - tcloud_db
+    environment:
+      ADMINER_DEFAULT_SERVER: tcloud_db
+    networks:
+      - tcloud_net
+    labels:
+      - "traefik.enable=false"
+    restart: unless-stopped
+
   tcloud_app:
     environment:
       - XDEBUG_MODE=develop,debug

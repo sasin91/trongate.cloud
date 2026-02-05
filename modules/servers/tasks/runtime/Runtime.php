@@ -53,6 +53,14 @@ class Runtime
     }
 
     /**
+     * Log a message to stdout.
+     */
+    private function log(string $message): void
+    {
+        fwrite(STDOUT, '[Runtime] ' . $message . PHP_EOL);
+    }
+
+    /**
      * Recover tasks left behind by a killed worker.
      *
      * If a task has started_at set but no completed_at or failed_at, and it's
@@ -79,7 +87,7 @@ class Runtime
 
         $affected = $stmt->affected_rows;
         if ($affected > 0) {
-            error_log("Recovered {$affected} stale task(s)");
+            $this->log("Recovered {$affected} stale task(s)");
         }
 
         $stmt->close();
@@ -88,6 +96,7 @@ class Runtime
     public function poll(): void
     {
         $this->running = true;
+        $this->log('Poll loop started, waiting for tasks...');
 
         while ($this->running) {
             $task = $this->pick_task();
@@ -97,8 +106,11 @@ class Runtime
                 continue;
             }
 
+            $this->log(sprintf('Picked task #%d (server_id=%d, script=%s)', $task['id'], $task['server_id'], $task['script']));
             $this->execute($task);
         }
+
+        $this->log('Poll loop stopped');
     }
 
     /**
@@ -109,7 +121,7 @@ class Runtime
      */
     private function reconnect(): bool
     {
-        error_log('Database connection lost, reconnecting...');
+        $this->log('Database connection lost, reconnecting...');
 
         try {
             $this->db->close();
@@ -124,7 +136,7 @@ class Runtime
         );
 
         if ($this->db->connect_errno) {
-            error_log("Reconnect failed: {$this->db->connect_error}");
+            $this->log("Reconnect failed: {$this->db->connect_error}");
             return false;
         }
 
@@ -191,22 +203,27 @@ class Runtime
     private function execute(array $task): void
     {
         $script_path = self::SCRIPTS_DIR . '/' . basename($task['script']) . '.php';
+        $this->log(sprintf('Executing task #%d with script: %s', $task['id'], $script_path));
 
         if (!file_exists($script_path)) {
+            $this->log(sprintf('Script not found: %s', $script_path));
             $this->fail($task['id'], "Script not found: {$task['script']}", 1);
             return;
         }
 
         $payload = json_decode($task['payload'] ?? '{}', true);
+        $this->log(sprintf('Task #%d payload: %s', $task['id'], json_encode($payload)));
 
         // The script file returns the rendered shell command/script
         $rendered = $this->render_script($script_path, $payload, $task['server_id']);
 
         if ($rendered === false) {
+            $this->log(sprintf('Script render failed for task #%d', $task['id']));
             $this->fail($task['id'], "Script render failed: {$task['script']}", 1);
             return;
         }
 
+        $this->log(sprintf('Rendered script for task #%d (length=%d bytes)', $task['id'], strlen($rendered)));
         $this->spawn($task['id'], $task['server_id'], $rendered);
     }
 
@@ -224,9 +241,9 @@ class Runtime
             return is_string($result) ? $result : false;
         } catch (\Throwable $e) {
             $buffered = ob_get_clean();
-            error_log("render_script error: " . $e->getMessage());
+            $this->log('render_script error: ' . $e->getMessage());
             if ($buffered !== '') {
-                error_log("render_script output: " . $buffered);
+                $this->log('render_script output: ' . $buffered);
             }
             return false;
         }
@@ -238,6 +255,8 @@ class Runtime
      */
     private function spawn(int $task_id, int $server_id, string $script): void
     {
+        $this->log(sprintf('Spawning process for task #%d (server_id=%d)', $task_id, $server_id));
+
         $descriptors = [
             0 => ['pipe', 'r'],       // stdin
             1 => ['pipe', 'w'],       // stdout
@@ -247,9 +266,12 @@ class Runtime
         $process = proc_open(['sh', '-c', $script], $descriptors, $pipes);
 
         if (!is_resource($process)) {
+            $this->log(sprintf('Failed to spawn process for task #%d', $task_id));
             $this->fail($task_id, 'Failed to spawn process', 1);
             return;
         }
+
+        $this->log(sprintf('Process spawned successfully for task #%d', $task_id));
 
         fclose($pipes[0]); // close stdin
 
@@ -295,8 +317,10 @@ class Runtime
         $exit_code = proc_close($process);
 
         if ($exit_code === 0) {
+            $this->log(sprintf('Task #%d completed successfully', $task_id));
             $this->complete($task_id);
         } else {
+            $this->log(sprintf('Task #%d failed with exit code %d', $task_id, $exit_code));
             $this->fail($task_id, "Process exited with code {$exit_code}", $exit_code);
         }
     }

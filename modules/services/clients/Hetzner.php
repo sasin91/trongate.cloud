@@ -69,10 +69,16 @@ class Hetzner extends Client {
             ]
         ]);
 
+        $server = $response['server'];
+
         return [
-            'provider_id' => (string) $response['server']['id'],
-            'ip' => $response['server']['public_net']['ipv4']['ip'] ?? '',
-            'status' => $this->_map_status($response['server']['status']),
+            'provider_id' => (string) $server['id'],
+            'ipv4' => $server['public_net']['ipv4']['ip'] ?? '',
+            'ipv6' => $server['public_net']['ipv6']['ip'] ?? '',
+            'status' => $this->_map_status($server['status']),
+            'image' => $server['image']['name'],
+            'type' => $server['server_type']['name'],
+            'region' => $server['location']['name'],
         ];
     }
 

@@ -11,7 +11,6 @@ services:
       - "--metrics.prometheus=true"
     ports:
       - "80:80"
-      - "8080:8080"
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
 
@@ -27,6 +26,7 @@ services:
       - DB_NAME=tcloud
       - ENV=dev
       - BASE_URL=http://localhost/
+      - PLATFORM_SSH_PUBLIC_KEY=ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINtkRGNkD0M84IDYSyt8yf/j0+5DbsN0gIcIQXSrpXrb platform@trongate.cloud
     depends_on:
       tcloud_db:
         condition: service_healthy

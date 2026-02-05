@@ -90,7 +90,7 @@ class Servers extends Trongate {
 
         // Get team ID
         $team_id = $this->model->get_customer_team_id();
-
+        
         if ($team_id === false) {
             redirect('customer-onboarding/team');
         }
@@ -126,11 +126,6 @@ class Servers extends Trongate {
             redirect('customer-onboarding/provider');
         }
 
-        // Create server via Provider
-        $this->module('services');
-        /** @var Hetzner $provider_service */
-        $provider_service = $this->services->$provider($secret['token']);
-
         // Get customer SSH key from team secrets
         $ssh_secret = $this->secrets->get('team', $team_id, 'ssh_key');
 
@@ -144,7 +139,9 @@ class Servers extends Trongate {
         $user_data = file_get_contents($cloud_init_path);
         $user_data = str_replace('{{CA_PUBLIC_KEY}}', PLATFORM_SSH_CA_PUBLIC_KEY, $user_data);
 
-        // Create server with proper parameters
+        $this->module('services');
+        /** @var Hetzner $provider_service */
+        $provider_service = $this->services->$provider($secret['token']);
         $server = $provider_service->create_server(
             name: $label,           
             type: $server_type,     
@@ -154,20 +151,17 @@ class Servers extends Trongate {
             user_data: $user_data        
         );
 
-        // Store server in database
-        $data = [
+        $server_id = $this->model->insert([
             'team_id' => $team_id,
+            'label' => $label,
             'provider' => $provider,
             'provider_id' => $server['provider_id'],
-            'label' => $label,
-            'region' => $region,
-            'server_type' => $server_type,
-            'ipv4' => $server['ip'] ?? null,
-            'ipv6' => null,
+            'type' => $server['type'],
+            'region' => $server['region'],
+            'image' => $server['image'],
+            'address' => $server['ipv4'],
             'status' => $server['status']
-        ];
-
-        $server_id = $this->model->insert($data);
+        ]);
 
         redirect("servers/show/$server_id?project_id=$project_id");
     }
@@ -185,21 +179,59 @@ class Servers extends Trongate {
         $server_id = segment(3, 'int');
         $project_id = filter_var($_GET['project_id'] ?? null, FILTER_VALIDATE_INT);
 
-        $server = $this->model->db->query_bind(
-            'SELECT * FROM server WHERE id = :server_id AND team_id = :team_id LIMIT 1',
-            ['server_id' => $server_id, 'team_id' => $team_id],
-            'object'
-        );
+        $server = $this->model->find_server($server_id);
 
         if (empty($server)) {
-            redirect('customer');
+            http_response_code(404);
+            die("Not Found");
+        }
+
+        if ($server->team_id !== $team_id) {
+            http_response_code(403);
+            die("Forbidden");
+        }
+
+        // Get server data
+        $deployments = $this->model->get_server_deployments($server_id);
+        $server_projects = $this->model->get_server_projects($server_id);
+        $all_projects = $this->model->get_team_projects($team_id);
+        
+        $is_ready = $server->status === 'active';
+
+        if ($is_ready === false) {
+            // Get provider API Key
+            $this->module('secrets');
+            $secret = $this->secrets->get('team', $team_id, $server->provider);
+
+            // Check if server is ready
+            $this->module('services');
+            $provider = $server->provider;
+            /** @var Hetzner $provider_service */
+            $provider_service = $this->services->$provider($secret['token']);
+            $provider_server = $provider_service->get_server($server->provider_id);
+            $is_ready = $provider_server['status'] === 'active';
+
+            if ($server->status !== $provider_server['status']) {
+                $this->model->update_server($server_id, ['status' => $provider_server['status']]);
+            }
         }
 
         $data = [
             'view_module' => 'servers',
             'view_file' => 'show',
             'server' => $server,
-            'project_id' => $project_id
+            'project_id' => $project_id,
+            'deployments' => $deployments,
+            'server_projects' => $server_projects,
+            'all_projects' => $all_projects,
+            'is_ready' => $is_ready,
+            'additional_includes_top' => array_filter([
+                '<link rel="stylesheet" href="' . BASE_URL . 'servers-deployments_module/css/server.css">',
+                $is_ready ? null : '<meta http-equiv="refresh" content="10">'
+            ]),
+            'additional_includes_btm' => [
+                '<script src="' . BASE_URL . 'servers-deployments_module/js/server.js"></script>'
+            ]
         ];
         $this->module('templates');
         $this->templates->customer($data);
