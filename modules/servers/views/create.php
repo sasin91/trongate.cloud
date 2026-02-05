@@ -4,7 +4,7 @@
         <p>Create a fresh VPS for your projects.</p>
     </div>
     
-    <form action="servers/submit" method="post">
+    <?= form_open('servers/submit') ?>
         <div class="form-group">
             <label class="form-label">Server Name (Label)</label>
             <input type="text" name="label" required placeholder="production-01" value="<?= htmlspecialchars($label) ?>" class="form-input">
@@ -62,5 +62,5 @@
              <button type="submit" class="btn-primary" style="flex: 1;" onclick="return confirm('This will create a new billable server on your Hetzner Cloud account. Continue?');">Provision Server</button>
              <a href="customer" class="btn-secondary" style="flex: 1; text-align: center;">Cancel</a>
         </div>
-    </form>
+    <?= form_close() ?>
 </div>
