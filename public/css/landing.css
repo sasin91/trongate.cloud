@@ -1,0 +1,99 @@
+:root {
+    /* --- Foundation (Soft Grays) --- */
+    --bg-main: #f4f6f8;
+    /* Base canvas: subtle cool-gray */
+    --bg-panel: #ffffff;
+    /* Cards/Sections: pure white for clarity */
+    --bg-subtle: #e9ecef;
+    /* Sidebars/Wells: defines functional areas */
+
+    /* --- Structure & Borders --- */
+    --border-dim: #d8dee9;
+    /* Default borders: visible but gentle */
+    --border-med: #adb5bd;
+    /* Focus/Active: communicates solid construction */
+
+    /* --- Typography (High Legibility) --- */
+    --text-bold: #2e3440;
+    /* Near-black: for headers and primary data */
+    --text-muted: #4c566a;
+    /* Slate gray: for labels and secondary info */
+
+    /* --- Accents (Indigo & Teal) --- */
+    --accent-primary: #5e81ac;
+    /* Indigo: used for primary actions and brand */
+    --accent-success: #8fbcbb;
+    /* Teal: used for "Deployed" states and success */
+
+    /* --- Utility --- */
+    --status-error: #bf616a;
+    /* Muted red: alert without panic */
+    --shadow-tactile: 0 1px 3px rgba(0, 0, 0, 0.08);
+    --shadow-inset: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+body {
+    background-color: var(--bg-main);
+    color: var(--text-bold);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    margin: 0;
+}
+
+.landing-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    padding: 2rem;
+    text-align: center;
+}
+
+.landing-card {
+    background-color: var(--bg-panel);
+    border: 1px solid var(--border-dim);
+    border-radius: 8px;
+    padding: 3rem;
+    box-shadow: var(--shadow-tactile);
+    max-width: 600px;
+    width: 100%;
+}
+
+.landing-title {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    color: var(--text-bold);
+}
+
+.landing-subtitle {
+    font-size: 1.25rem;
+    color: var(--text-muted);
+    margin-bottom: 2rem;
+    line-height: 1.5;
+}
+
+.cta-button {
+    display: inline-block;
+    background-color: var(--accent-primary);
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 1rem;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    border: 1px solid transparent;
+}
+
+.cta-button:hover {
+    background-color: #4c6a96;
+    /* Slightly darker indigo */
+}
+
+.cta-button:active {
+    transform: translateY(1px);
+}
