@@ -1,7 +1,10 @@
 <div class="server-header">
     <div class="server-title">
         <h1><?= htmlspecialchars($server->label) ?></h1>
-        <span class="status-badge status-<?= $server->status ?>"><?= ucfirst($server->status) ?></span>
+        <span class="status-badge status-<?= $server->status ?>">
+            <?= ucfirst($server->status) ?>
+            <span class="pulsing-dot"></span>
+        </span>
     </div>
     <div class="server-actions">
         <?php if ($is_ready): ?>

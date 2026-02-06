@@ -27,7 +27,8 @@ class Projects extends Trongate {
             redirect('customer');
         }
 
-        $servers = $this->model->get_team_servers($_SESSION['current_team_id']);
+        $team_id = $this->model->get_current_team_id();
+        $servers = $this->model->get_team_servers($team_id);
 
         $data = [
             'view_module' => 'projects',

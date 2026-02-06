@@ -90,6 +90,7 @@ class Onboarding extends Trongate {
 
         $team_id = $this->model->create_team($customer->id, $name);
         $this->model->add_team_member($team_id, $customer->id, 'owner');
+        $this->model->set_current_team($team_id);
 
         redirect('customer-onboarding/provider');
     }

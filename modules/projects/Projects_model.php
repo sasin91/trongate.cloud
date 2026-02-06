@@ -1,9 +1,12 @@
 <?php
 
+require_once __DIR__ . '/../customer/traits/Current_customer.php';
+
 /**
  * @property-read Db $db
  */
 class Projects_model extends Model {
+    use Current_customer;
     
     public string $table_name = 'project';
 

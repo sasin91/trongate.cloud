@@ -96,7 +96,7 @@ trait Current_customer {
      * Get the current customer's selected team ID
      */
     function get_current_team_id(): int|false {
-        if (isset($_SESSION['current_team_id'])) {
+        if (!empty($_SESSION['current_team_id'])) {
             return (int) $_SESSION['current_team_id'];
         }
 
@@ -130,7 +130,7 @@ trait Current_customer {
             [
                 'current_team_id' => $team_id
             ], 
-            $this->table_name
+            'customer'
         );
 
         if ($updated) {

@@ -29,7 +29,7 @@
                         <option value="">No servers, provision one to get started ↓</option>
                     <?php else: ?>
                         <?php foreach ($servers as $server): ?>
-                            <option value="<?= $server->id ?>"><?= $server->label ?> (<?= $server->ip_address ?>)</option>
+                            <option value="<?= $server->id ?>"><?= $server->label ?> (<?= $server->address ?>)</option>
                         <?php endforeach; ?>
                     <?php endif; ?>
                 </select>
