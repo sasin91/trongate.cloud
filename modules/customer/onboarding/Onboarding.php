@@ -89,12 +89,9 @@ class Onboarding extends Trongate {
         $name = post('name', true);
 
         $team_id = $this->model->create_team($customer->id, $name);
+        $this->model->add_team_member($team_id, $customer->id, 'owner');
 
-        if ($team_id) {
-            redirect('customer-onboarding/provider');
-        } else {
-            redirect('customer-onboarding/team');
-        }
+        redirect('customer-onboarding/provider');
     }
 
     // --- Hosting Provider (Hetzner) ---

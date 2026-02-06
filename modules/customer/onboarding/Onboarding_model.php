@@ -60,6 +60,15 @@ class Onboarding_model extends Model {
         ], 'team');
     }
 
+    function add_team_member(int $team_id, int $customer_id, string $role = 'owner'): bool {
+        return $this->db->insert([
+            'team_id' => $team_id,
+            'customer_id' => $customer_id,
+            'role' => $role,
+            'status' => 'active'
+        ], 'team_member');
+    }
+
     function add_team_service(int $team_id, string $service_type, string $service_id): bool {
         // Fetch current services
         $team = $this->db->get_where($team_id, 'team');
