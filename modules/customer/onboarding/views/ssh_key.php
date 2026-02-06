@@ -67,11 +67,13 @@
         </div>
 
         <button type="submit" class="btn-primary">
+            <div class="spinner" style="display: none;"></div>
             Save & Continue
         </button>
         <?= form_close() ?>
     </div>
 
+    <script src="<?= BASE_URL ?>customer-onboarding_module/js/onboarding.js"></script>
 </body>
 
 </html>

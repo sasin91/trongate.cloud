@@ -90,11 +90,13 @@
         </div>
 
         <button type="submit" class="btn-primary">
+            <div class="spinner" style="display: none;"></div>
             Launch Dashboard
         </button>
         <?= form_close() ?>
     </div>
 
+    <script src="<?= BASE_URL ?>customer-onboarding_module/js/onboarding.js"></script>
     <script src="<?= BASE_URL ?>customer-onboarding_module/js/project.js"></script>
 </body>
 
