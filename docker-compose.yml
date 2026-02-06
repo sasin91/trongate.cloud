@@ -10,7 +10,7 @@ services:
       - "--entrypoints.web.address=:80"
       - "--metrics.prometheus=true"
     ports:
-      - "80:80"
+      - "${HTTP_PORT:-8085}:80"
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
 
@@ -20,12 +20,6 @@ services:
       target: prod
     container_name: tcloud_app
     environment:
-      - DB_HOST=tcloud_db
-      - DB_USER=tcloud_user
-      - DB_PASSWORD=tcloud_password
-      - DB_NAME=tcloud
-      - ENV=dev
-      - BASE_URL=http://localhost/
       - PLATFORM_SSH_PUBLIC_KEY=ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINtkRGNkD0M84IDYSyt8yf/j0+5DbsN0gIcIQXSrpXrb platform@trongate.cloud
     depends_on:
       tcloud_db:
@@ -70,7 +64,7 @@ services:
     networks:
       - tcloud_net
     healthcheck:
-      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      test: [ "CMD", "healthcheck.sh", "--connect", "--innodb_initialized" ]
       interval: 10s
       timeout: 5s
       retries: 5

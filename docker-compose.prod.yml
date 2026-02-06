@@ -1,4 +1,14 @@
 services:
+  tcloud_traefik:
+    command:
+      - "--api.insecure=false"
+      - "--providers.docker=true"
+      - "--entrypoints.webSecure.address=:443"
+      - "--entrypoints.web.address=:80"
+      - "--metrics.prometheus=true"
+    ports:
+      - "443:443"
+      - "80:80"
   tcloud_app:
     environment:
       - ENV=production

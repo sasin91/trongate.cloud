@@ -29,6 +29,7 @@ RUN sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf
 # Development stage
 FROM base AS dev
 RUN pecl install xdebug && docker-php-ext-enable xdebug
+COPY docker/dev/xdebug.ini /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini
 # Files mounted via docker-compose.dev.yml volume
 
 # Production stage
