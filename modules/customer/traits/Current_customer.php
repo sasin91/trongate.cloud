@@ -74,4 +74,90 @@ trait Current_customer {
         
         return !empty($rows) ? (int) $rows[0]->id : false;
     }
+
+    /**
+     * Get all teams for the current customer
+     */
+    function get_customer_teams(): array {
+        $customer = $this->_get_current_customer();
+        if ($customer === false) return [];
+
+        $sql = <<<SQL
+            SELECT t.id, t.name FROM team t
+            LEFT JOIN team_member tm ON t.id = tm.team_id
+            WHERE t.owner_id = :customer_id OR tm.customer_id = :customer_id
+            GROUP BY t.id
+            ORDER BY t.name ASC
+        SQL;
+        return $this->db->query_bind($sql, ['customer_id' => $customer->id], 'object');
+    }
+
+    /**
+     * Get the current customer's selected team ID
+     */
+    function get_current_team_id(): int|false {
+        if (isset($_SESSION['current_team_id'])) {
+            return (int) $_SESSION['current_team_id'];
+        }
+
+        $customer = $this->_get_current_customer();
+        if ($customer === false) return false;
+
+        // If already set, return it
+        if (!empty($customer->current_team_id)) {
+            return (int) $customer->current_team_id;
+        }
+
+        // Fallback: get first available team
+        $teams = $this->get_customer_teams();
+        if (empty($teams)) return false;
+
+        // Auto-set and return
+        $team_id = (int) $teams[0]->id;
+        $this->set_current_team($team_id);
+        return $team_id;
+    }
+
+    /**
+     * Set the current team for the customer
+     */
+    function set_current_team(int $team_id): bool {
+        $customer = $this->_get_current_customer();
+        if ($customer === false) return false;
+
+        $updated = (bool) $this->db->update(
+            (int) $customer->id, 
+            [
+                'current_team_id' => $team_id
+            ], 
+            $this->table_name
+        );
+
+        if ($updated) {
+            $_SESSION['current_team_id'] = $team_id;
+        }
+
+        return $updated;
+    }
+
+    /**
+     * Get the current customer's team member record
+     */
+    function get_current_team_member(): object|false {
+        $customer = $this->_get_current_customer();
+        if ($customer === false) return false;
+
+        $team_id = $this->get_current_team_id();
+        if ($team_id === false) return false;
+
+        $sql = <<<SQL
+            SELECT * FROM team_member
+            WHERE team_id = :team_id
+            AND customer_id = :customer_id
+            LIMIT 1
+        SQL;
+        $rows = $this->db->query_bind($sql, ['team_id' => $team_id, 'customer_id' => $customer->id], 'object');
+        
+        return $rows[0] ?? false;
+    }
 }
