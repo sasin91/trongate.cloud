@@ -1,3 +1,7 @@
+@view-transition {
+    navigation: auto;
+}
+
 .server-header {
     display: flex;
     justify-content: space-between;
