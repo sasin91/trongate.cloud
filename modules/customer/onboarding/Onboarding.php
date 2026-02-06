@@ -177,13 +177,17 @@ class Onboarding extends Trongate {
         $this->module('services');
         $provider_service = $this->services->$provider($provider_secret['token']);
         
+        $provider_ssh_id = '';
         try {
             $provider_ssh_id = $provider_service->upload_ssh_key($label, $public_key);
         } catch (Client_Error $e) {
             switch (true) {
                 case $e->getCode() === 409:
                     foreach ($provider_service->list_ssh_keys() as $key) {
-                        if ($key['public_key'] === $public_key || str_contains($public_key, $key['public_key'])) {
+                        // Extract the base64 key data (second part) for comparison to handle whitespace differences
+                        $stored_key_parts = preg_split('/\s+/', trim($key['public_key']));
+                        $input_key_parts = preg_split('/\s+/', trim($public_key));
+                        if (isset($stored_key_parts[1], $input_key_parts[1]) && $stored_key_parts[1] === $input_key_parts[1]) {
                             $provider_ssh_id = $key['id'];
                             $label = $key['name'];
                             break 2; // break 2 levels (switch and foreach)
@@ -194,6 +198,10 @@ class Onboarding extends Trongate {
                 default:
                     throw $e;
                 break;
+            }
+
+            if (empty($provider_ssh_id)) {
+                throw new Exception('SSH key not found');
             }
         }
 
@@ -410,7 +418,7 @@ class Onboarding extends Trongate {
         }
 
         // Basic structure check: should have at least 2 parts (type and key data)
-        $parts = explode(' ', $public_key);
+        $parts = preg_split('/\s+/', $public_key);
         if (count($parts) < 2) {
             return 'Invalid SSH key structure. Expected format: [type] [key-data] [optional-comment]';
         }
