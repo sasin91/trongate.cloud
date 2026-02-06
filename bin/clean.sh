@@ -1,1 +1,1 @@
-docker compose down -v
+docker compose -f docker-compose.yml -f docker-compose.dev.yml down --volumes --remove-orphans && docker network prune -f
