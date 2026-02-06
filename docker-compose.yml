@@ -20,7 +20,7 @@ services:
       target: prod
     container_name: tcloud_app
     environment:
-      - PLATFORM_SSH_PUBLIC_KEY=ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINtkRGNkD0M84IDYSyt8yf/j0+5DbsN0gIcIQXSrpXrb platform@trongate.cloud
+      - PLATFORM_SSH_PUBLIC_KEY=ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMh5bW8G35m2fDaceUDRuKNv6J8EB3YNNdmLNO9wMDei platform@trongate.cloud
     depends_on:
       tcloud_db:
         condition: service_healthy
@@ -118,6 +118,9 @@ services:
     restart: unless-stopped
     volumes:
       - ./modules/servers/tasks:/var/www/modules/servers/tasks:ro
+      # Platform SSH key + CA-signed certificate for server access
+      - ~/.ssh/trongate_cloud_platform:/root/.ssh/id_ed25519:ro
+      - ~/.ssh/trongate_cloud_platform-cert.pub:/root/.ssh/id_ed25519-cert.pub:ro
     logging:
       driver: "json-file"
 

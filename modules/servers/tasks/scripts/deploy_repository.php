@@ -3,8 +3,8 @@
 /**
  * Deploy Repository Task
  *
- * Clones a git repository to the server and sets up the application.
- * Supports multiple source providers: GitHub, GitLab, Gitea, etc.
+ * Downloads a repository tarball via API and deploys to the server.
+ * Uses authenticated API calls to support private repositories.
  *
  * Available variables:
  *   $payload   - array from server_tasks.payload JSON
@@ -14,27 +14,48 @@
  */
 
 $source_provider = $payload['source_provider'] ?? 'github';
-$repository = $payload['repository'] ?? '';
-$branch = $payload['branch'] ?? 'main';
+$source_url = $payload['source_url'] ?? '';
+$source_token = $payload['source_token'] ?? '';
+$branch = $payload['source_branch'] ?? 'main';
 $project_id = (int) ($payload['project_id'] ?? 0);
 $project_type = $payload['project_type'] ?? 'trongate_v2';
 $server_ip = $payload['server_ip'] ?? '';
+$db_password = $payload['db_password'] ?? '';
+$db_root_password = $payload['db_root_password'] ?? '';
 
-if (empty($repository) || empty($server_ip)) {
+if (empty($source_url) || empty($server_ip)) {
     return 'echo "ERROR: Missing repository or server_ip in payload" && exit 1';
 }
 
-// Build clone URL based on source provider
-$clone_url = match($source_provider) {
-    'github' => "https://github.com/{$repository}",
-    'gitlab' => "https://gitlab.com/{$repository}",
-    'gitea' => $repository, // For self-hosted, full URL is stored
-    default => "https://github.com/{$repository}"
+if (empty($source_token)) {
+    return 'echo "ERROR: Missing source_token in payload" && exit 1';
+}
+
+if (empty($db_password) || empty($db_root_password)) {
+    return 'echo "ERROR: Missing database credentials in payload" && exit 1';
+}
+
+// Extract owner/repo from source_url (e.g., https://github.com/owner/repo -> owner/repo)
+$repo = preg_replace('#^https?://[^/]+/#', '', rtrim($source_url, '/'));
+if (empty($repo)) {
+    return 'echo "ERROR: Could not parse repository from source_url" && exit 1';
+}
+
+// Build API URL for tarball download based on provider
+$tarball_api_url = match($source_provider) {
+    'github' => "https://api.github.com/repos/{$repo}/tarball/{$branch}",
+    default => '' // Future: GitLab, Gitea, etc.
 };
 
-$escaped_clone_url = escapeshellarg($clone_url);
+if (empty($tarball_api_url)) {
+    return 'echo "ERROR: Unsupported source provider: ' . $source_provider . '" && exit 1';
+}
+
+$escaped_tarball_url = escapeshellarg($tarball_api_url);
+$escaped_token = escapeshellarg($source_token);
 $escaped_branch = escapeshellarg($branch);
-$escaped_ip = escapeshellarg($server_ip);
+$escaped_db_password = escapeshellarg($db_password);
+$escaped_db_root_password = escapeshellarg($db_root_password);
 
 $app_dir = "/var/www/project_{$project_id}";
 
@@ -46,7 +67,8 @@ $docker_image = match($project_type) {
 };
 
 // SSH options for non-interactive, trust new hosts
-$ssh_opts = '-o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=30';
+// Uses platform CA-signed certificate mounted at /root/.ssh/id_ed25519
+$ssh_opts = '-i /root/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=30';
 
 return <<<BASH
 #!/bin/bash
@@ -54,10 +76,26 @@ set -e
 
 echo "=== Starting deployment ==="
 echo "Provider: {$source_provider}"
-echo "Repository: {$repository}"
+echo "Repository: {$repo}"
 echo "Branch: {$branch}"
 echo "Project ID: {$project_id}"
 echo "Server IP: {$server_ip}"
+
+# Verify SSH key exists
+echo "Checking SSH key..."
+if [ -f /root/.ssh/id_ed25519 ]; then
+    echo "SSH private key found: /root/.ssh/id_ed25519"
+    ls -la /root/.ssh/
+else
+    echo "ERROR: SSH private key not found at /root/.ssh/id_ed25519"
+    exit 1
+fi
+
+if [ -f /root/.ssh/id_ed25519-cert.pub ]; then
+    echo "SSH certificate found: /root/.ssh/id_ed25519-cert.pub"
+else
+    echo "WARNING: SSH certificate not found at /root/.ssh/id_ed25519-cert.pub"
+fi
 
 # Wait for server to be ready (cloud-init to complete)
 echo "Waiting for server to be ready..."
@@ -65,7 +103,13 @@ MAX_RETRIES=60
 RETRY_COUNT=0
 
 while [ \$RETRY_COUNT -lt \$MAX_RETRIES ]; do
-    if ssh {$ssh_opts} root@{$server_ip} "test -f /root/cloud-init-complete" 2>/dev/null; then
+    echo "Attempting SSH connection to root@{$server_ip}..."
+    SSH_OUTPUT=\$(ssh {$ssh_opts} root@{$server_ip} "test -f /root/cloud-init-complete && echo 'READY'" 2>&1)
+    SSH_EXIT=\$?
+    echo "SSH exit code: \$SSH_EXIT"
+    echo "SSH output: \$SSH_OUTPUT"
+
+    if [ "\$SSH_OUTPUT" = "READY" ]; then
         echo "Server ready!"
         break
     fi
@@ -87,28 +131,27 @@ ssh {$ssh_opts} root@{$server_ip} bash -s << 'REMOTE_SCRIPT'
 set -e
 
 APP_DIR="{$app_dir}"
-CLONE_URL={$escaped_clone_url}
+TARBALL_URL={$escaped_tarball_url}
+SOURCE_TOKEN={$escaped_token}
 BRANCH={$escaped_branch}
 PROJECT_ID="project_{$project_id}"
 DOCKER_IMAGE="{$docker_image}"
+DB_PASSWORD={$escaped_db_password}
+DB_ROOT_PASSWORD={$escaped_db_root_password}
 
 echo "Creating application directory..."
 mkdir -p \$APP_DIR
 cd \$APP_DIR
 
-# Clone or update repository
-echo "Cloning repository..."
-if [ -d ".git" ]; then
-    echo "Repository exists, pulling latest..."
-    git fetch origin
-    git reset --hard origin/\$BRANCH
-else
-    git clone --depth 1 --branch \$BRANCH \$CLONE_URL .
-fi
+# Download repository tarball via authenticated API
+echo "Downloading repository tarball..."
+curl -fsSL -H "Authorization: Bearer \$SOURCE_TOKEN" -H "Accept: application/vnd.github+json" "\$TARBALL_URL" -o /tmp/repo.tar.gz
 
-# Generate random passwords for database
-DB_PASSWORD=\$(openssl rand -base64 24 | tr -dc 'a-zA-Z0-9' | head -c 24)
-DB_ROOT_PASSWORD=\$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32)
+# Extract tarball (--strip-components=1 removes the top-level directory GitHub adds)
+echo "Extracting repository..."
+tar -xzf /tmp/repo.tar.gz --strip-components=1
+rm /tmp/repo.tar.gz
+
 SERVER_IP=\$(hostname -I | awk '{print \$1}')
 
 # Create .env file

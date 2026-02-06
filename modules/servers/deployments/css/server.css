@@ -259,3 +259,39 @@ dialog::backdrop {
     border: 1px solid #ddd;
     border-radius: 4px;
 }
+
+/* Maximize table space */
+.server-deployments {
+    padding: 0;
+    overflow: hidden;
+}
+
+.server-deployments h3 {
+    padding: 1.5rem 1.5rem 1rem 1.5rem;
+    margin: 0;
+}
+
+.server-deployments .empty-state {
+    margin: 1.5rem;
+}
+
+.server-deployments .table {
+    margin-bottom: 0;
+    width: 100%;
+}
+
+.server-deployments .table th {
+    background-color: #f8f9fa;
+    border-top: 1px solid #eee;
+    border-bottom: 1px solid #eee;
+}
+
+.server-deployments .table th:first-child,
+.server-deployments .table td:first-child {
+    padding-left: 1.5rem;
+}
+
+.server-deployments .table th:last-child,
+.server-deployments .table td:last-child {
+    padding-right: 1.5rem;
+}

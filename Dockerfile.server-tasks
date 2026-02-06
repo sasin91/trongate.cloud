@@ -2,8 +2,13 @@ FROM php:8.4-cli
 
 RUN apt-get update && apt-get install -y \
     libsodium-dev \
+    openssh-client \
+    curl \
     && apt-get clean \
     && docker-php-ext-install pcntl sodium mysqli
+
+# SSH directory for platform key (mounted at runtime)
+RUN mkdir -p /root/.ssh && chmod 700 /root/.ssh
 
 WORKDIR /var/www
 

@@ -84,7 +84,7 @@
                 <?php foreach($deployments as $deployment): ?>
                     <?php 
                         $metadata = json_decode($deployment->metadata ?? '{}', true);
-                        $branch = $metadata['branch'] ?? '-';
+                        $branch = $metadata['source_branch'] ?? '-';
                     ?>
                     <tr>
                         <td><?= date('M j, Y H:i', strtotime($deployment->created_at)) ?></td>
