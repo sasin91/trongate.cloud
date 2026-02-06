@@ -95,6 +95,7 @@
         <?= form_close() ?>
     </div>
 
+    <script src="<?= BASE_URL ?>customer-onboarding_module/js/project.js"></script>
 </body>
 
 </html>
