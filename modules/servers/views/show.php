@@ -10,6 +10,9 @@
             </button>
         <?php endif; ?>
     </div>
+
+    <!-- Show errors from deploy -->
+    <?= validation_errors() ?>
 </div>
 
 <div class="server-grid">

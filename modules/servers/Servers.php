@@ -13,7 +13,7 @@ class Servers extends Trongate {
         $this->_make_sure_allowed();
         
         // Get team ID
-        $team_id = $this->model->get_customer_team_id();
+        $team_id = $this->model->_get_current_team_id();
         
         if ($team_id === false) {
             redirect('customer-onboarding/team');
@@ -58,7 +58,7 @@ class Servers extends Trongate {
         $location = htmlspecialchars(trim($_GET['location'] ?? 'fsn1'));
         
         // Get team ID
-        $team_id = $this->model->get_customer_team_id();
+        $team_id = $this->model->_get_current_team_id();
         
         if ($team_id === false) {
             http_response_code(403);
@@ -89,7 +89,7 @@ class Servers extends Trongate {
         $this->_make_sure_allowed();
 
         // Get team ID
-        $team_id = $this->model->get_customer_team_id();
+        $team_id = $this->model->_get_current_team_id();
         
         if ($team_id === false) {
             redirect('customer-onboarding/team');
@@ -170,7 +170,7 @@ class Servers extends Trongate {
         $this->_make_sure_allowed();
         
         // Get team ID
-        $team_id = $this->model->get_customer_team_id();
+        $team_id = $this->model->_get_current_team_id();
         
         if ($team_id === false) {
             redirect('customer-onboarding/team');
@@ -213,6 +213,7 @@ class Servers extends Trongate {
 
             if ($server->status !== $provider_server['status']) {
                 $this->model->update_server($server_id, ['status' => $provider_server['status']]);
+                $server->status = $provider_server['status'];
             }
         }
 
@@ -240,30 +241,30 @@ class Servers extends Trongate {
     function deploy(): void {
         $this->_make_sure_allowed();
 
-        $team_id = $this->model->_get_current_team_id();
+        $team_member = $this->model->get_current_team_member();
 
-        if ($team_id === false) {
+        if ($team_member === false) {
             redirect('customer-onboarding/team');
         }
 
         $this->validation->set_rules('server_id', 'Server', 'required|integer|callback_validate_server_id');
         $this->validation->set_rules('project_id', 'Project', 'required|integer|callback_validate_project_id');
 
-        if ($this->validation->run() == false) {
-            redirect('customer');
-            exit;
-        }
-
         $server_id = filter_var(post('server_id'), FILTER_VALIDATE_INT);
         $project_id = filter_var(post('project_id'), FILTER_VALIDATE_INT);
+
+        if ($this->validation->run() == false) {
+            redirect('servers/show/' . $server_id . '?project_id=' . $project_id);
+        }
         
         // Get project for this team to check for repository
         $project = $this->model->find_project($project_id);
 
         // Create deployment record
         $deployment_id = $this->model->create_deployment([
-            'team_id' => $team_id,
-            'customer_id' => $_SESSION['customer_id'],
+            'team_id' => $team_member->team_id,
+            'team_member_id' => $team_member->id,
+            'customer_id' => $team_member->customer_id,
             'project_id' => $project->id,
             'server_id' => $server_id,
             'status' => 'pending',
@@ -271,8 +272,8 @@ class Servers extends Trongate {
             'source_url' => $project->source_url,
             'metadata' => json_encode([
                 'source_provider' => $project->source_provider,
-                'repository' => $project->repository_full_name,
-                'branch' => $project->repository_branch ?? 'main'
+                'source_url' => $project->source_url,
+                'source_branch' => $project->source_branch ?? 'main'
             ])
         ]);
 
@@ -280,8 +281,8 @@ class Servers extends Trongate {
         $this->model->queue_task($server_id, 'deploy_repository', [
             'deployment_id' => $deployment_id,
             'source_provider' => $project->source_provider,
-            'repository' => $project->repository_full_name,
-            'branch' => $project->repository_branch ?? 'main',
+            'source_url' => $project->source_url,
+            'source_branch' => $project->source_branch ?? 'main',
             'project_id' => $project->id,
             'project_type' => $project->type,
             'server_ip' => $server['ip'] ?? null
@@ -301,6 +302,27 @@ class Servers extends Trongate {
         return true;
     }
 
+    function _validate_server_id($server_id): bool|string {
+        if (empty($server_id)) {
+            return "Please select a server.";
+        }
+
+        $this->module('servers');
+        $server = $this->model->find_server($server_id);
+
+        if ($server === null) {
+            return 'Selected server does not exist.';
+        }
+
+        $team_id = $this->model->_get_current_team_id();
+
+        if ($server->team_id != $team_id) {
+            return 'Selected server does not belong to your team.';
+        }
+
+        return true;
+    }
+
     function _validate_project_id($project_id): bool|string {
         if (empty($project_id)) {
             return "Please select a project.";
@@ -313,7 +335,7 @@ class Servers extends Trongate {
             return 'Selected project does not exist.';
         }
 
-        $team_id = $this->model->get_customer_team_id();
+        $team_id = $this->model->_get_current_team_id();
 
         if ($project->team_id != $team_id) {
             return 'Selected project does not belong to your team.';
