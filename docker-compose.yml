@@ -21,6 +21,7 @@ services:
     container_name: tcloud_app
     environment:
       - PLATFORM_SSH_PUBLIC_KEY=ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMh5bW8G35m2fDaceUDRuKNv6J8EB3YNNdmLNO9wMDei platform@trongate.cloud
+      - PLATFORM_SSH_CA_PUBLIC_KEY=${PLATFORM_SSH_CA_PUBLIC_KEY}
     depends_on:
       tcloud_db:
         condition: service_healthy
@@ -94,6 +95,27 @@ services:
     ports:
       - "9093:9093"
 
+  tcloud_ssh_cert_manager:
+    build:
+      context: .
+      dockerfile: Dockerfile.ssh-cert-manager
+    container_name: tcloud_ssh_cert_manager
+    environment:
+      - CA_PRIVATE_KEY=${CA_PRIVATE_KEY}
+      - CERT_VALIDITY_HOURS=${CERT_VALIDITY_HOURS:-24}
+      - RENEWAL_THRESHOLD_HOURS=${RENEWAL_THRESHOLD_HOURS:-6}
+      - CHECK_INTERVAL_SECONDS=${CHECK_INTERVAL_SECONDS:-300}
+    networks:
+      - tcloud_net
+    labels:
+      - "traefik.enable=false"
+    volumes:
+      # Shared volume for SSH certificates (platform authentication)
+      - platform_ssh_certs:/certs
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+
   tcloud_tasks:
     build:
       context: .
@@ -107,6 +129,8 @@ services:
     depends_on:
       tcloud_db:
         condition: service_healthy
+      tcloud_ssh_cert_manager:
+        condition: service_started
     networks:
       - tcloud_net
     labels:
@@ -118,9 +142,8 @@ services:
     restart: unless-stopped
     volumes:
       - ./modules/servers/tasks:/var/www/modules/servers/tasks:ro
-      # Platform SSH key + CA-signed certificate for server access
-      - ~/.ssh/trongate_cloud_platform:/root/.ssh/id_ed25519:ro
-      - ~/.ssh/trongate_cloud_platform-cert.pub:/root/.ssh/id_ed25519-cert.pub:ro
+      # Platform SSH certificates (managed by ssh-cert-manager)
+      - platform_ssh_certs:/platform-certs:ro
     logging:
       driver: "json-file"
 
@@ -130,3 +153,4 @@ networks:
 
 volumes:
   db_data:
+  platform_ssh_certs:

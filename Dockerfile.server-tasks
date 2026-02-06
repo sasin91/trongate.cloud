@@ -7,9 +7,14 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && docker-php-ext-install pcntl sodium mysqli
 
-# SSH directory for platform key (mounted at runtime)
+# SSH directory for platform key (written from env vars at runtime)
 RUN mkdir -p /root/.ssh && chmod 700 /root/.ssh
+
+# Copy and configure entrypoint script
+COPY docker/server-tasks-entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 WORKDIR /var/www
 
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["php", "modules/servers/tasks/runtime/server.php"]
