@@ -265,25 +265,8 @@ class Servers extends Trongate {
 
         // Get source control token for authenticated tarball download
         $this->module('secrets');
-        $this->module('encryption');
         $source_secret = $this->secrets->get('team', $team_member->team_id, $project->source_provider);
         $source_token = $source_secret['token'] ?? null;
-
-        // Get or create database credentials for this server
-        $db_service = "db_project_{$project_id}";
-        if ($this->secrets->exists('server', $server_id, $db_service)) {
-            $db_secret = $this->secrets->get('server', $server_id, $db_service);
-            $db_password = $db_secret['db_password'];
-            $db_root_password = $db_secret['db_root_password'];
-        } else {
-            $db_password = bin2hex(random_bytes(16));
-            $db_root_password = bin2hex(random_bytes(24));
-            $encryption_key = $this->encryption->generate_key();
-            $this->secrets->save('server', $server_id, $db_service, $encryption_key, [
-                'db_password' => $db_password,
-                'db_root_password' => $db_root_password
-            ]);
-        }
 
         // Create deployment record
         $deployment_id = $this->model->create_deployment([
@@ -311,9 +294,7 @@ class Servers extends Trongate {
             'source_branch' => $project->source_branch ?? 'main',
             'project_id' => $project->id,
             'project_type' => $project->type,
-            'server_ip' => $server->address ?? null,
-            'db_password' => $db_password,
-            'db_root_password' => $db_root_password
+            'server_ip' => $server->address ?? null
         ], $deployment_id);
 
         // Redirect to deployment status page

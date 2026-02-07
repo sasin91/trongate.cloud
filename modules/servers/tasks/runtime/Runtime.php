@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/../DSL/Module_reference.php';
+
 /**
  * Task Worker Runtime
  *
@@ -39,9 +41,12 @@ class Runtime
 
     private mysqli $db;
 
+    private Module_reference $module_ref;
+
     public function __construct(mysqli $db)
     {
         $this->db = $db;
+        $this->module_ref = new Module_reference($db);
 
         pcntl_async_signals(true);
         pcntl_signal(SIGTERM, function () {
@@ -215,7 +220,9 @@ class Runtime
         $this->log(sprintf('Task #%d payload: %s', $task['id'], json_encode($payload)));
 
         // The script file returns the rendered shell command/script
-        $rendered = $this->render_script($script_path, $payload, $task['server_id']);
+        // Pass $this so scripts can resolve secret references
+        $runtime = $this;
+        $rendered = $this->render_script($script_path, $payload, $task['server_id'], $runtime);
 
         if ($rendered === false) {
             $this->log(sprintf('Script render failed for task #%d', $task['id']));
@@ -228,10 +235,19 @@ class Runtime
     }
 
     /**
-     * Include the PHP script file, which has access to $payload and $server_id,
+     * Resolve a module reference syntax to its actual value.
+     * Example: secrets:server,123,db_project_1.db_password
+     */
+    public function resolve_reference(string $ref): mixed
+    {
+        return $this->module_ref->resolve($ref);
+    }
+
+    /**
+     * Include the PHP script file, which has access to $payload, $server_id, and $runtime,
      * and returns the rendered shell script as a string.
      */
-    private function render_script(string $script_path, array $payload, int $server_id): string|false
+    private function render_script(string $script_path, array $payload, int $server_id, Runtime $runtime): string|false
     {
         try {
             ob_start();

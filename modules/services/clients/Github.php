@@ -107,6 +107,12 @@ class Github extends Client {
         return "https://github.com/{$repo}";
     }
 
+    function download_url(string $url, string $branch): string {
+        $repo = preg_replace('#^https?://[^/]+/#', '', rtrim($url, '/'));
+
+        return "https://api.github.com/repos/{$repo}/tarball/{$branch}";
+    }
+
     function headers(): array
     {
         return [

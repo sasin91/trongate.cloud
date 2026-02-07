@@ -13,71 +13,43 @@
  * Return: a shell script string to be executed via `sh -c`.
  */
 
-$source_provider = $payload['source_provider'] ?? 'github';
-$source_url = $payload['source_url'] ?? '';
-$source_token = $payload['source_token'] ?? '';
-$branch = $payload['source_branch'] ?? 'main';
-$project_id = (int) ($payload['project_id'] ?? 0);
-$project_type = $payload['project_type'] ?? 'trongate_v2';
-$server_ip = $payload['server_ip'] ?? '';
-$db_password = $payload['db_password'] ?? '';
-$db_root_password = $payload['db_root_password'] ?? '';
+[
+  'source_provider' => $source_provider,
+  'source_url' => $source_url,
+  'source_token' => $source_token,
+  'source_branch' => $source_branch,
+  'project_id' => $project_id,
+  'project_type' => $project_type,
+  'server_ip' => $server_ip,
+  'domain' => $domain
+] = $payload;
 
-if (empty($source_url) || empty($server_ip)) {
-    return 'echo "ERROR: Missing repository or server_ip in payload" && exit 1';
-}
-
-if (empty($source_token)) {
-    return 'echo "ERROR: Missing source_token in payload" && exit 1';
-}
-
-if (empty($db_password) || empty($db_root_password)) {
-    return 'echo "ERROR: Missing database credentials in payload" && exit 1';
-}
-
-// Extract owner/repo from source_url (e.g., https://github.com/owner/repo -> owner/repo)
-$repo = preg_replace('#^https?://[^/]+/#', '', rtrim($source_url, '/'));
-if (empty($repo)) {
-    return 'echo "ERROR: Could not parse repository from source_url" && exit 1';
-}
-
-// Build API URL for tarball download based on provider
-$tarball_api_url = match($source_provider) {
-    'github' => "https://api.github.com/repos/{$repo}/tarball/{$branch}",
-    default => '' // Future: GitLab, Gitea, etc.
-};
-
-if (empty($tarball_api_url)) {
-    return 'echo "ERROR: Unsupported source provider: ' . $source_provider . '" && exit 1';
-}
+/** @var Github $source_service */
+$source_service = Modules::run('services/' . $source_provider, $source_token);
+$tarball_api_url = $source_service->download_url($source_url, $source_branch);
 
 $escaped_tarball_url = escapeshellarg($tarball_api_url);
 $escaped_token = escapeshellarg($source_token);
-$escaped_branch = escapeshellarg($branch);
-$escaped_db_password = escapeshellarg($db_password);
-$escaped_db_root_password = escapeshellarg($db_root_password);
+$escaped_branch = escapeshellarg($source_branch);
+$escaped_domain = escapeshellarg($domain);
 
 $app_dir = "/var/www/project_{$project_id}";
 
 // Determine docker image based on project type
-$docker_image = match($project_type) {
-    'trongate_v1' => 'ghcr.io/trongate/trongate-v1:latest',
-    'trongate_v2' => 'ghcr.io/trongate/trongate-v2:latest',
-    default => 'ghcr.io/trongate/trongate-v2:latest'
-};
+$docker_image = "php:8.2-apache-trixie";
 
 // SSH options for non-interactive, trust new hosts
 // Uses platform CA-signed certificate mounted at /root/.ssh/id_ed25519
 $ssh_opts = '-i /root/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=30';
 
-return <<<BASH
+$bash_start = <<<BASH
 #!/bin/bash
 set -e
 
 echo "=== Starting deployment ==="
 echo "Provider: {$source_provider}"
 echo "Repository: {$repo}"
-echo "Branch: {$branch}"
+echo "Branch: {$source_branch}"
 echo "Project ID: {$project_id}"
 echo "Server IP: {$server_ip}"
 
@@ -136,8 +108,7 @@ SOURCE_TOKEN={$escaped_token}
 BRANCH={$escaped_branch}
 PROJECT_ID="project_{$project_id}"
 DOCKER_IMAGE="{$docker_image}"
-DB_PASSWORD={$escaped_db_password}
-DB_ROOT_PASSWORD={$escaped_db_root_password}
+DOMAIN={$escaped_domain}
 
 echo "Creating application directory..."
 mkdir -p \$APP_DIR
@@ -151,69 +122,163 @@ curl -fsSL -H "Authorization: Bearer \$SOURCE_TOKEN" -H "Accept: application/vnd
 echo "Extracting repository..."
 tar -xzf /tmp/repo.tar.gz --strip-components=1
 rm /tmp/repo.tar.gz
+BASH;
 
+// Prepare environment configuration from repository
+$env_setup = <<<BASH
+# Setup environment from repository
+echo "Configuring environment..."
+if [ ! -f .env ]; then
+    if [ -f .env.example ]; then
+        echo "Creating .env from .env.example..."
+        cp .env.example .env
+    else
+        echo "ERROR: No .env or .env.example found in repository"
+        echo "Please ensure your repository contains database configuration"
+        exit 1
+    fi
+fi
+
+BASH;
+
+// Generate docker-compose.yml based on domain presence
+if (empty($domain)):
+    // No custom domain - HTTP only (nip.io fallback)
+    $docker_compose_block = <<<BASH
 SERVER_IP=\$(hostname -I | awk '{print \$1}')
+EFFECTIVE_DOMAIN="\${SERVER_IP}.nip.io"
 
-# Create .env file
-echo "Setting up environment..."
-cat > .env << EOF
-PROJECT_ID=\${PROJECT_ID}
-DOMAIN=\${SERVER_IP}.nip.io
-DB_NAME=app
-DB_USER=app
-DB_PASSWORD=\${DB_PASSWORD}
-DB_ROOT_PASSWORD=\${DB_ROOT_PASSWORD}
-ACME_EMAIL=admin@example.com
-ENV=production
-BASE_URL=http://\${SERVER_IP}/
-EOF
+# Update .env with deployment-specific values
+echo "Updating .env with domain and project settings..."
+sed -i "s|^DOMAIN=.*|DOMAIN=\${EFFECTIVE_DOMAIN}|" .env || echo "DOMAIN=\${EFFECTIVE_DOMAIN}" >> .env
+sed -i "s|^BASE_URL=.*|BASE_URL=http://\${EFFECTIVE_DOMAIN}/|" .env || echo "BASE_URL=http://\${EFFECTIVE_DOMAIN}/" >> .env
+sed -i "s|^ENV=.*|ENV=production|" .env || echo "ENV=production" >> .env
 
-# Create docker-compose.yml if it doesn't exist
-if [ ! -f "docker-compose.yml" ]; then
-    echo "Creating docker-compose.yml..."
-    cat > docker-compose.yml << EOF
+cat > docker-compose.yml << EOF
 services:
+  traefik:
+    image: traefik:v3.6.7
+    container_name: \${PROJECT_ID}_traefik
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    restart: unless-stopped
+
   app:
     image: \${DOCKER_IMAGE}
     container_name: \${PROJECT_ID}_app
-    environment:
-      - DB_HOST=db
-      - DB_USER=app
-      - DB_PASSWORD=\${DB_PASSWORD}
-      - DB_NAME=app
-      - ENV=production
-      - BASE_URL=http://\${SERVER_IP}/
+    env_file:
+      - .env
     depends_on:
       - db
-    ports:
-      - "80:80"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.\${PROJECT_ID}_app.rule=Host(\`\${EFFECTIVE_DOMAIN}\`)"
+      - "traefik.http.services.\${PROJECT_ID}_app.loadbalancer.server.port=80"
     volumes:
       - ./:/var/www/html
 
   db:
     image: mariadb:11.2
     container_name: \${PROJECT_ID}_db
-    environment:
-      - MYSQL_ROOT_PASSWORD=\${DB_ROOT_PASSWORD}
-      - MYSQL_DATABASE=app
-      - MYSQL_USER=app
-      - MYSQL_PASSWORD=\${DB_PASSWORD}
+    env_file:
+      - .env
     volumes:
       - db_data:/var/lib/mysql
 
 volumes:
   db_data:
 EOF
-fi
+BASH;
+else:
+    // Custom domain - HTTPS/TLS Enabled
+    $docker_compose_block = <<<BASH
+EFFECTIVE_DOMAIN={$escaped_domain}
+
+# Update .env with deployment-specific values
+echo "Updating .env with domain and project settings..."
+sed -i "s|^DOMAIN=.*|DOMAIN=\${EFFECTIVE_DOMAIN}|" .env || echo "DOMAIN=\${EFFECTIVE_DOMAIN}" >> .env
+sed -i "s|^BASE_URL=.*|BASE_URL=https://\${EFFECTIVE_DOMAIN}/|" .env || echo "BASE_URL=https://\${EFFECTIVE_DOMAIN}/" >> .env
+sed -i "s|^ENV=.*|ENV=production|" .env || echo "ENV=production" >> .env
+
+cat > docker-compose.yml << EOF
+services:
+  traefik:
+    image: traefik:v3.6.7
+    container_name: \${PROJECT_ID}_traefik
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.le.acme.email=admin@example.com"
+      - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.le.acme.httpchallenge.entrypoint=web"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "traefik_certs:/letsencrypt"
+    restart: unless-stopped
+
+  app:
+    image: \${DOCKER_IMAGE}
+    container_name: \${PROJECT_ID}_app
+    env_file:
+      - .env
+    depends_on:
+      - db
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.\${PROJECT_ID}_app.rule=Host(\`\${EFFECTIVE_DOMAIN}\`)"
+      - "traefik.http.routers.\${PROJECT_ID}_app.entrypoints=websecure"
+      - "traefik.http.routers.\${PROJECT_ID}_app.tls=true"
+      - "traefik.http.routers.\${PROJECT_ID}_app.tls.certresolver=le"
+      - "traefik.http.services.\${PROJECT_ID}_app.loadbalancer.server.port=80"
+    volumes:
+      - ./:/var/www/html
+
+  db:
+    image: mariadb:11.2
+    container_name: \${PROJECT_ID}_db
+    env_file:
+      - .env
+    volumes:
+      - db_data:/var/lib/mysql
+
+volumes:
+  db_data:
+  traefik_certs:
+EOF
+BASH;
+endif;
+
+$bash_end = <<<BASH
 
 # Start containers
 echo "Starting Docker containers..."
+
+echo "Using base configuration"
 docker compose pull
 docker compose up -d
 
 echo "=== Deployment complete ==="
-echo "Application deployed to: http://\${SERVER_IP}/"
+echo "Application deployed to: \${BASE_URL}"
 REMOTE_SCRIPT
 
 echo "=== Deployment finished successfully ==="
 BASH;
+
+return $bash_start . "\n" . $env_setup . "\n" . $docker_compose_block . "\n" . $bash_end;
