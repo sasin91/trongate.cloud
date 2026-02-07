@@ -304,6 +304,7 @@ class Onboarding extends Trongate {
         $this->validation->set_rules('repository', 'Repository', 'required');
         $this->validation->set_rules('repository_branch', 'Repository Branch', 'required');
         $this->validation->set_rules('label', 'Project Name', 'required|min_length[3]|max_length[50]');
+        $this->validation->set_rules('domain', 'Your Domain', 'max_length[255]');
         $this->validation->set_rules('type', 'Project Type', 'required');
 
         if ($this->validation->run() === false) {
@@ -315,6 +316,7 @@ class Onboarding extends Trongate {
         $repository = post('repository', true);
         $repository_branch = post('repository_branch', true);
         $label = post('label', true);
+        $domain = post('domain', true);
         $type = post('type', true);
 
         $this->module('secrets');
@@ -330,7 +332,8 @@ class Onboarding extends Trongate {
                 type: $type ?? 'trongate_v1', 
                 source_url: $source_url,
                 source_provider: $provider,
-                source_branch: $repository_branch
+                source_branch: $repository_branch,
+                domain: $domain,
             );
             $updated = $this->model->mark_onboarded($customer->id);
 

@@ -85,14 +85,15 @@ class Onboarding_model extends Model {
         return $this->db->update($team_id, $data, 'team');
     }
 
-    function create_project(int $team_id, string $label, string $type, string $source_url, string $source_provider, string $source_branch = 'main'): int|false {
+    function create_project(int $team_id, string $label, string $type, string $source_url, string $source_provider, string $source_branch = 'main', ?string $domain = null): int|false {
         return $this->db->insert([
             'team_id' => $team_id,
             'label' => $label,
             'type' => $type,
             'source_url' => $source_url,
             'source_provider' => $source_provider,
-            'source_branch' => $source_branch ?? 'main'
+            'source_branch' => $source_branch ?? 'main',
+            'domain' => $domain
         ], 'project');
     }
 }

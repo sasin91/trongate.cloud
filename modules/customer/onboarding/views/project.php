@@ -59,6 +59,12 @@
         </div>
 
         <div class="form-group">
+            <label for="domain" class="form-label">Custom Domain (optional)</label>
+            <input type="text" name="domain" id="domain" class="form-input" placeholder="e.g. app.example.com" value="<?= htmlspecialchars(post('domain') ?? '') ?>">
+            <p class="form-hint">If you have a domain and is willing to point it at the server, you may enter it here.</p>
+        </div>
+
+        <div class="form-group">
             <label for="label" class="form-label">Project Name</label>
             <input type="text" name="label" id="label" class="form-input" placeholder="e.g. My Awesome App" value="<?= htmlspecialchars(post('label') ?? '') ?>" required autofocus>
         </div>
