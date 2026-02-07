@@ -1,8 +1,10 @@
 <?php
 
+require_once __DIR__ . '/Encryptor.php';
+
 /**
  * Encryption Module
- * libsodium wrapper for encrypting sensitive data at rest
+ * Trongate wrapper for the standalone Encryptor class
  */
 class Encryption extends Trongate {
 
@@ -12,25 +14,7 @@ class Encryption extends Trongate {
     }
 
     function validate_key(string $key): string {
-        if (empty($key)) {
-            throw new InvalidArgumentException('key must not be empty.');
-        }
-
-        $decoded = base64_decode($key, true);
-
-        if ($decoded !== false) {
-            $key = $decoded;
-        }
-
-        if (strlen($key) !== SODIUM_CRYPTO_SECRETBOX_KEYBYTES) {
-            throw new InvalidArgumentException(
-                $decoded === false
-                    ? 'key must be 32 bytes'
-                    : 'key must be 32 bytes (base64 encoded)'
-            );
-        }
-
-        return $key;
+        return Encryptor::validate_key($key);
     }
 
     /**
@@ -40,11 +24,7 @@ class Encryption extends Trongate {
      * @return string Base64 encoded (nonce + ciphertext)
      */
     function encrypt(string $plaintext, string $key): string {
-        $key = $this->validate_key($key);
-        $nonce = random_bytes(SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
-        $ciphertext = sodium_crypto_secretbox($plaintext, $nonce, $key);
-
-        return base64_encode($nonce . $ciphertext);
+        return Encryptor::encrypt($plaintext, $key);
     }
 
     /**
@@ -54,20 +34,7 @@ class Encryption extends Trongate {
      * @return string|false Plaintext or false on failure
      */
     function decrypt(string $encrypted, string $key): string|false {
-        $decoded = base64_decode($encrypted);
-        if ($decoded === false) {
-            return false;
-        }
-
-        if (strlen($decoded) < SODIUM_CRYPTO_SECRETBOX_NONCEBYTES) {
-            return false;
-        }
-
-        $key = $this->validate_key($key);
-        $nonce = substr($decoded, 0, SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
-        $ciphertext = substr($decoded, SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
-
-        return sodium_crypto_secretbox_open($ciphertext, $nonce, $key);
+        return Encryptor::decrypt($encrypted, $key);
     }
 
     /**
@@ -75,6 +42,6 @@ class Encryption extends Trongate {
      * @return string Base64 encoded key
      */
     static function generate_key(): string {
-        return base64_encode(sodium_crypto_secretbox_keygen());
+        return Encryptor::generate_key();
     }
 }
