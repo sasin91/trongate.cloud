@@ -1,0 +1,21 @@
+# Non-secret settings shared by the app and the worker (config/config.php,
+# config/database.php, config/platform.php read these via getenv()).
+# Secrets (APP_KEY, DB_PASSWORD) come from the trongate-cloud-env Secret.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: trongate-cloud
+  namespace: trongate-cloud
+data:
+  BASE_URL: https://trongate.cloud/
+  ENV: prod
+  DB_HOST: platform.trongate-cloud.svc.cluster.local
+  DB_PORT: "3306"
+  DB_NAME: tcloud
+  DB_USER: tcloud
+  PLATFORM_APPS_DOMAIN: apps.trongate.cloud
+  PLATFORM_REGISTRY: registry.trongate.cloud/tc
+  PLATFORM_GATEWAY_NAME: traefik-gateway
+  PLATFORM_GATEWAY_NAMESPACE: traefik
+  SABLIER_URL: http://sablier.sablier.svc.cluster.local:10000
+  FILES_STORAGE_CLASS: tenant-files

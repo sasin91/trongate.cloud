@@ -2,14 +2,12 @@
 
 /**
  * Standalone Encryptor
- * 
+ *
  * libsodium wrapper with no framework dependencies.
- * Used by both the Encryption Trongate module and Runtime worker.
+ * Used by the Secrets module and the Runtime worker (keyed with APP_KEY).
  */
-class Encryptor
-{
-    public static function validate_key(string $key): string
-    {
+class Encryptor {
+    public static function validate_key(string $key): string {
         if (empty($key)) {
             throw new InvalidArgumentException('key must not be empty.');
         }
@@ -37,8 +35,7 @@ class Encryptor
      * @param string $key
      * @return string Base64 encoded (nonce + ciphertext)
      */
-    public static function encrypt(string $plaintext, string $key): string
-    {
+    public static function encrypt(string $plaintext, string $key): string {
         $key = self::validate_key($key);
         $nonce = random_bytes(SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
         $ciphertext = sodium_crypto_secretbox($plaintext, $nonce, $key);
@@ -52,9 +49,8 @@ class Encryptor
      * @param string $key
      * @return string|false Plaintext or false on failure
      */
-    public static function decrypt(string $encrypted, string $key): string|false
-    {
-        $decoded = base64_decode($encrypted);
+    public static function decrypt(string $encrypted, string $key): string|false {
+        $decoded = base64_decode($encrypted, true);
         if ($decoded === false) {
             return false;
         }
@@ -74,8 +70,7 @@ class Encryptor
      * Generate a new encryption key
      * @return string Base64 encoded key
      */
-    public static function generate_key(): string
-    {
+    public static function generate_key(): string {
         return base64_encode(sodium_crypto_secretbox_keygen());
     }
 }

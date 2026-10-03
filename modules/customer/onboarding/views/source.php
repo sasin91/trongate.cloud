@@ -17,7 +17,7 @@
             <p>Link your GitHub account to deploy from your repositories.</p>
         </div>
 
-        <?= form_open('customer-onboarding/submit_source', ['class' => 'highlight-errors']) ?>
+        <?= form_open('onboarding/submit_source', ['class' => 'highlight-errors']) ?>
 
         <?= validation_errors() ?>
 
@@ -48,10 +48,7 @@
 
         <div class="steps">
             <div class="step-dot completed"></div>
-            <div class="step-dot completed"></div>
-            <div class="step-dot completed"></div>
             <div class="step-dot active"></div>
-            <div class="step-dot"></div>
             <div class="step-dot"></div>
         </div>
 

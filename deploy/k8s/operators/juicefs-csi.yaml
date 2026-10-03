@@ -1,0 +1,32 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: juicefs
+  namespace: kube-system
+spec:
+  interval: 12h
+  url: https://juicedata.github.io/charts/
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: juicefs-csi-driver
+  namespace: kube-system
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: juicefs-csi-driver
+      version: "0.33.x"
+      sourceRef:
+        kind: HelmRepository
+        name: juicefs
+  values:
+    # The StorageClass is ours (../files/storageclass.yaml), not the chart's
+    storageClasses: []
+    controller:
+      # In-house provisioner: needed for pathPattern ("{namespace}-{pvc}" directories)
+      provisioner: true
+    node:
+      # One mount pod per node for every tenant-files PVC instead of one per PVC
+      storageClassShareMount: true

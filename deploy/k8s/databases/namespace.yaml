@@ -1,0 +1,8 @@
+# Tenant NetworkPolicies allow egress here on 3306 (matched via kubernetes.io/metadata.name)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: databases
+  labels:
+    platform.example.com/role: databases
+    pod-security.kubernetes.io/enforce: baseline

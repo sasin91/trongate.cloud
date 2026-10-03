@@ -1,5 +1,5 @@
 -- Trongate Cloud: Deployment table
--- Migration 005
+-- Migration 006
 
 CREATE TABLE IF NOT EXISTS deployment (
   id INT PRIMARY KEY AUTO_INCREMENT,

@@ -1,0 +1,26 @@
+# Platform app (trongate.cloud) on FrankenPHP, classic mode.
+# Trongate defines constants per request, so FrankenPHP worker mode is not an option.
+{
+	admin off
+	auto_https off
+	persist_config off
+
+	frankenphp
+}
+
+:{$PORT:8080} {
+	root * /app/public
+
+	encode zstd br gzip
+
+	# .htaccess is ignored by Caddy; set its headers here
+	header {
+		Content-Security-Policy "frame-ancestors 'self'"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+
+	# Serves existing files, otherwise falls back to index.php with REQUEST_URI intact
+	php_server
+}

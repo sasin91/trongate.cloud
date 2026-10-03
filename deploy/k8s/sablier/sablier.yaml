@@ -1,0 +1,107 @@
+# Sablier scales tenant app Deployments to zero when idle and back up on request
+# via the Traefik plugin (Middleware per app, set by Manifests::app).
+# Sablier 1.18 discovers workloads by the labels sablier.enable=true + sablier.group
+# (https://github.com/sablierapp/sablier docs/content/tutorials/providers/kubernetes.md).
+# Reached by Traefik at SABLIER_URL=http://sablier.sablier.svc.cluster.local:10000.
+# Traefik needs the plugin enabled under the name "sablier" (Manifests::SABLIER_PLUGIN), see ../README.md.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sablier
+  labels:
+    # Tenant NetworkPolicies allow ingress from this role
+    platform.example.com/role: sablier
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sablier
+  namespace: sablier
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: sablier
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale", "statefulsets/scale"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: sablier
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: sablier
+subjects:
+  - kind: ServiceAccount
+    name: sablier
+    namespace: sablier
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sablier
+  namespace: sablier
+  labels:
+    app.kubernetes.io/name: sablier
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sablier
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sablier
+    spec:
+      serviceAccountName: sablier
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: sablier
+          image: sablierapp/sablier:1.18.0
+          args:
+            - start
+            - --provider.name=kubernetes
+          ports:
+            - name: http
+              containerPort: 10000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sablier
+  namespace: sablier
+spec:
+  selector:
+    app.kubernetes.io/name: sablier
+  ports:
+    - name: http
+      port: 10000
+      targetPort: http

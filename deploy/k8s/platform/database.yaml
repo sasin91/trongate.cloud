@@ -1,0 +1,51 @@
+# The platform's own database "tcloud" on its own MariaDB "platform" (mariadb.yaml),
+# never on the shared tenant server.
+# The user's password is DB_PASSWORD from the trongate-cloud-env Secret.
+# Schema: apply db/*.sql in order (see ../README.md).
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: Database
+metadata:
+  name: tcloud
+  namespace: trongate-cloud
+spec:
+  mariaDbRef:
+    name: platform
+    namespace: trongate-cloud
+  name: tcloud
+  characterSet: utf8mb4
+  collate: utf8mb4_unicode_ci
+  cleanupPolicy: Skip
+---
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: User
+metadata:
+  name: tcloud
+  namespace: trongate-cloud
+spec:
+  mariaDbRef:
+    name: platform
+    namespace: trongate-cloud
+  name: tcloud
+  host: "%"
+  passwordSecretKeyRef:
+    name: trongate-cloud-env
+    key: DB_PASSWORD
+  maxUserConnections: 100
+  cleanupPolicy: Skip
+---
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: Grant
+metadata:
+  name: tcloud
+  namespace: trongate-cloud
+spec:
+  mariaDbRef:
+    name: platform
+    namespace: trongate-cloud
+  privileges:
+    - ALL PRIVILEGES
+  database: tcloud
+  table: "*"
+  username: tcloud
+  host: "%"
+  cleanupPolicy: Skip

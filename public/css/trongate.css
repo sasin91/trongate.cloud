@@ -1,3 +1,7 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
 :root {
   --primary: #4682b4;
   --primary-dark: #38678f;
@@ -67,6 +71,7 @@ input[type="date"],
 input[type="datetime-local"],
 input[type="time"],
 input[type="month"],
+input[type="url"],
 input[type="week"],
 select,
 textarea {
@@ -92,6 +97,7 @@ input[type="date"]:focus,
 input[type="datetime-local"]:focus,
 input[type="time"]:focus,
 input[type="month"]:focus,
+input[type="url"]:focus,
 input[type="week"]:focus,
 select:focus {
   border-bottom: 2px solid var(--primary);
@@ -445,11 +451,14 @@ html .text-center {
 .card-body {
   padding: 20px;
   background-color: #fff;
+  flex-grow: 1;
 }
 
 .card {
   box-shadow: 0 4px 10px 0 rgba(0, 0, 0, 0.2), 0 4px 20px 0 rgba(0, 0, 0, 0.19);
   margin-bottom: 1em;
+  display: flex;
+  flex-direction: column;
 }
 
 #overlay {
@@ -527,7 +536,7 @@ html .text-center {
 }
 
 .modal-footer button {
-  margin: 6px 0 0 0.3em;
+  margin: 2px 0 0 0.3em;
   font-size: 16px;
 }
 
@@ -815,15 +824,10 @@ form .modal textarea {
 }
 
 .blink {
-  text-decoration: blink;
-  -webkit-animation-name: blinker;
-  -webkit-animation-duration: 0.5s;
-  -webkit-animation-iteration-count: infinite;
-  -webkit-animation-timing-function: ease-in-out;
-  -webkit-animation-direction: alternate;
+  animation: blinker 0.5s ease-in-out infinite alternate;
 }
 
-@-webkit-keyframes blinker {
+@keyframes blinker {
   from {
     opacity: 1;
   }

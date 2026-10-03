@@ -13,29 +13,29 @@
 <body>
     <main>
         <h1>Create Account</h1>
-        <?= form_open($form_location, array('class' => 'login-form')) ?>
+        <?= form_open($form_location, ['class' => 'login-form']) ?>
         <?= validation_errors('<div class="validation-errors">', '</div>') ?>
 
         <div class="form-group">
             <?= form_label('Email') ?>
-            <?= form_input('email', '', array('id' => 'email', 'type' => 'email', 'placeholder' => 'Email address', 'autocomplete' => 'email', 'required' => true)); ?>
+            <?= form_input('email', '', ['id' => 'email', 'type' => 'email', 'placeholder' => 'Email address', 'autocomplete' => 'email', 'required' => true]); ?>
         </div>
 
         <div class="form-group">
             <?= form_label('Password') ?>
-            <?= form_password('password', '', array('id' => 'password', 'placeholder' => 'Create a password', 'autocomplete' => 'new-password', 'required' => true)); ?>
+            <?= form_password('password', '', ['id' => 'password', 'placeholder' => 'Create a password', 'autocomplete' => 'new-password', 'required' => true]); ?>
         </div>
 
         <div class="form-group">
             <?= form_label('Repeat Password') ?>
-            <?= form_password('password_confirm', '', array('id' => 'password_confirm', 'placeholder' => 'Repeat password', 'autocomplete' => 'new-password', 'required' => true)); ?>
+            <?= form_password('password_confirm', '', ['id' => 'password_confirm', 'placeholder' => 'Repeat password', 'autocomplete' => 'new-password', 'required' => true]); ?>
         </div>
 
         <?= form_submit('submit', 'Create Account') ?>
         <?= form_close() ?>
 
         <div style="text-align: center; margin-top: 1rem;">
-            <a href="<?= BASE_URL ?>customer/login" style="font-size: 0.9rem; color: var(--accent-primary); text-decoration: none;">Already have an account? Sign In</a>
+            <a href="<?= BASE_URL ?>login" style="font-size: 0.9rem; color: var(--accent-primary); text-decoration: none;">Already have an account? Sign In</a>
         </div>
     </main>
 </body>

@@ -1,0 +1,41 @@
+# Shared MariaDB for tenant databases and JuiceFS metadata. Tenant pods can reach
+# it, so the platform database lives elsewhere (../platform/mariadb.yaml).
+# Reached as shared-1.databases.svc.cluster.local:3306 (seed row in db/014_k3s_platform.sql).
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: MariaDB
+metadata:
+  name: shared-1
+  namespace: databases
+spec:
+  # TODO: async replication + MaxScale (preferred over Galera for JuiceFS
+  # metadata write patterns, see docs/platform-architecture.md). Single
+  # instance until then: a restart briefly stalls every tenant and file I/O.
+  replicas: 1
+
+  rootPasswordSecretKeyRef:
+    name: mariadb-shared-1
+    key: root-password
+    generate: false
+
+  storage:
+    size: 50Gi
+    storageClassName: hcloud-volumes
+
+  myCnf: |
+    [mariadb]
+    bind-address=*
+    default_storage_engine=InnoDB
+    binlog_format=row
+    innodb_autoinc_lock_mode=2
+    innodb_buffer_pool_size=1024M
+    max_allowed_packet=256M
+    max_connections=1000
+    character-set-server=utf8mb4
+    collation-server=utf8mb4_unicode_ci
+
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1536Mi
+    limits:
+      memory: 2Gi

@@ -1,3 +1,6 @@
+-- Trongate Cloud: Server task queue
+-- Migration 010
+
 CREATE TABLE IF NOT EXISTS server_tasks (
     id INT PRIMARY KEY AUTO_INCREMENT,
     server_id INT NOT NULL,

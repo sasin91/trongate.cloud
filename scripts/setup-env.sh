@@ -1,13 +1,11 @@
 #!/bin/bash
-set -e
+# Create .env from .env.example with a generated APP_KEY and database password.
+# In the cluster the same values go into the SOPS-encrypted trongate-cloud-env
+# Secret (see deploy/k8s/README.md).
+set -euo pipefail
 
 ENV_FILE=".env"
-CA_PRIVATE_KEY_PATH="$HOME/.ssh/trongate-ca/ca_user_key"
-CA_PUBLIC_KEY_PATH="$HOME/.ssh/trongate-ca/ca_user_key.pub"
 
-echo "Setting up .env file for Docker Compose..."
-
-# Check if .env already exists
 if [ -f "$ENV_FILE" ]; then
     echo "Warning: $ENV_FILE already exists."
     read -p "Overwrite? (y/N): " -n 1 -r
@@ -18,55 +16,18 @@ if [ -f "$ENV_FILE" ]; then
     fi
 fi
 
-# Check if CA keys exist
-if [ ! -f "$CA_PRIVATE_KEY_PATH" ]; then
-    echo "ERROR: CA private key not found at $CA_PRIVATE_KEY_PATH"
-    echo "Run ./scripts/setup-ssh-ca.sh first to generate the CA keys"
-    exit 1
-fi
+set_env() {
+    local key="$1" value="$2"
+    VALUE="$value" perl -0pi -e "s|^${key}=.*\$|${key}=\"\$ENV{VALUE}\"|m" "$ENV_FILE"
+}
 
-if [ ! -f "$CA_PUBLIC_KEY_PATH" ]; then
-    echo "ERROR: CA public key not found at $CA_PUBLIC_KEY_PATH"
-    echo "Run ./scripts/setup-ssh-ca.sh first to generate the CA keys"
-    exit 1
-fi
+cp .env.example "$ENV_FILE"
 
-# Read CA keys
-echo "Reading CA keys..."
-CA_PRIVATE_KEY_CONTENT=$(cat "$CA_PRIVATE_KEY_PATH")
-CA_PUBLIC_KEY_CONTENT=$(cat "$CA_PUBLIC_KEY_PATH")
+# Same format as: php -r "echo base64_encode(sodium_crypto_secretbox_keygen());"
+set_env APP_KEY "$(openssl rand -base64 32)"
+set_env MCP_SECRET "$(openssl rand -hex 32)"
+set_env DB_PASSWORD "$(openssl rand -hex 24)"
 
-# Create .env file
-cat > "$ENV_FILE" << EOF
-# HTTP port for Traefik (default: 8085)
-HTTP_PORT=8085
-
-# CA private key (REQUIRED)
-# This key is used by the cert-manager to sign platform certificates
-CA_PRIVATE_KEY="$CA_PRIVATE_KEY_CONTENT"
-
-# CA public key (REQUIRED)
-# This key is distributed to all provisioned servers to trust platform certificates
-PLATFORM_SSH_CA_PUBLIC_KEY="$CA_PUBLIC_KEY_CONTENT"
-
-# Certificate validity in hours (default: 24)
-CERT_VALIDITY_HOURS=24
-
-# Renew certificate when this many hours remain before expiry (default: 6)
-RENEWAL_THRESHOLD_HOURS=6
-
-# How often to check certificate expiry in seconds (default: 300 = 5 minutes)
-CHECK_INTERVAL_SECONDS=300
-EOF
-
-echo "✓ Created $ENV_FILE"
-echo "✓ CA private key loaded from $CA_PRIVATE_KEY_PATH"
-echo "✓ CA public key loaded from $CA_PUBLIC_KEY_PATH"
-echo
-echo "Configuration:"
-echo "  - HTTP_PORT: 8085"
-echo "  - CERT_VALIDITY_HOURS: 24"
-echo "  - RENEWAL_THRESHOLD_HOURS: 6"
-echo "  - CHECK_INTERVAL_SECONDS: 300"
-echo
-echo "You can now run: docker-compose up -d"
+echo "Created $ENV_FILE with a generated APP_KEY, MCP_SECRET and DB_PASSWORD"
+echo "Review the PLATFORM_* values, then copy APP_KEY, MCP_SECRET and DB_PASSWORD into"
+echo "deploy/k8s/platform/secrets.example.yaml (as a SOPS-encrypted copy) for the cluster."

@@ -1,0 +1,40 @@
+parameters:
+    level: 5
+    phpVersion: 80400
+    # App modules only — the rest of modules/ is stock Trongate, maintained upstream
+    paths:
+        - config
+        - modules/customer
+        - modules/deployments
+        - modules/encryption
+        - modules/mcp
+        - modules/metrics
+        - modules/platform
+        - modules/projects
+        - modules/secrets
+        - modules/services
+        - modules/templates
+        - modules/webhooks
+    excludePaths:
+        analyse:
+            # Views are templates with variables injected via extract()
+            - modules/*/views/*
+            - modules/*/*/views/*
+    scanDirectories:
+        - engine
+        - modules
+    bootstrapFiles:
+        - phpstan-bootstrap.php
+    # redirect() always exits
+    earlyTerminatingFunctionCalls:
+        - redirect
+    # Defined from the environment at runtime
+    dynamicConstantNames:
+        - ENV
+        - BASE_URL
+        - APP_KEY
+    ignoreErrors:
+        # Task scripts are included by Runtime and receive $payload, $task, $runtime
+        -
+            message: '#^Variable \$(payload|task|runtime) might not be defined\.$#'
+            path: modules/platform/tasks/*

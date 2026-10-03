@@ -1,0 +1,70 @@
+# BuildKit for the worker's Railpack builds. There is no long-lived daemon: for
+# every build the worker creates a rootless buildkitd Pod "buildkitd-d{deployment}"
+# here (Manifests::buildkitd), builds against tcp://{podIP}:1234 and deletes it.
+# Untrusted build steps therefore never share a daemon, PID namespace, local
+# cache or forwarded registry credentials with another tenant's build; the
+# registry cache is the only cache that persists. Each Pod also ends at its
+# activeDeadlineSeconds if the worker dies before deleting it.
+#
+# The quota caps concurrent builds (and leftovers) at the pod count.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: buildkitd
+  namespace: buildkit
+spec:
+  hard:
+    pods: "4"
+    limits.cpu: "8"
+    limits.memory: 16Gi
+---
+# Only the worker may connect to a build daemon; daemons may only reach DNS and
+# the public internet (no cluster services).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: buildkitd
+  namespace: buildkit
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: buildkitd
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: trongate-cloud
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: trongate-cloud-worker
+      ports:
+        - protocol: TCP
+          port: 1234
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Package mirrors, GitHub, the frontend image and PLATFORM_REGISTRY.
+    # An in-cluster registry would need its own rule here.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16"]
+        - ipBlock:
+            cidr: ::/0
+            except: ["fc00::/7", "fe80::/10"]
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 443

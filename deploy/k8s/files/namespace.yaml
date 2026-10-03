@@ -1,0 +1,8 @@
+# Holds the JuiceFS credentials Secret and its metadata database CRs
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: files
+  labels:
+    platform.example.com/role: files
+    pod-security.kubernetes.io/enforce: restricted

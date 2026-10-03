@@ -16,7 +16,7 @@ class File {
      */
     public function __construct() {
         // Protect this module from unwanted browser access
-        block_url_invocation('file');
+        block_url('file');
     }
 
     /**
@@ -269,6 +269,52 @@ class File {
     }
 
     /**
+     * Deletes a directory and all of its contents recursively.
+     *
+     * This method removes a directory and all files and subdirectories within it.
+     * Use with caution as this operation is irreversible.
+     *
+     * @param string $directory_path The path to the directory to delete.
+     * @return bool Returns true if the directory is successfully deleted.
+     * @throws Exception If the directory does not exist or deletion fails.
+     */
+    public function delete_directory(string $directory_path): bool {
+        // Validate the path to ensure it's allowed based on predefined security rules
+        if (!$this->is_path_valid($directory_path)) {
+            throw new Exception("Access to this path is restricted: $directory_path");
+        }
+
+        if (!is_dir($directory_path)) {
+            throw new Exception("The specified path is not a directory: $directory_path");
+        }
+
+        $items = new DirectoryIterator($directory_path);
+
+        foreach ($items as $item) {
+            if ($item->isDot()) {
+                continue;
+            }
+
+            $path = $item->getPathname();
+
+            if ($item->isDir()) {
+                // Recursively delete subdirectories
+                $this->delete_directory($path);
+            } else {
+                // Delete files
+                unlink($path);
+            }
+        }
+
+        // Delete the now-empty directory
+        if (!rmdir($directory_path)) {
+            throw new Exception("Failed to delete directory: $directory_path");
+        }
+
+        return true;
+    }
+
+    /**
      * Initiates a file download or displays inline from the server or an external URL.
      *
      * This method prepares and sends headers based on the parameters to either initiate a file download
@@ -456,19 +502,6 @@ class File {
     }
 
     /**
-    * Generates a secure filename for an uploaded file, either randomized or based on original name.
-    *
-    * @param string $original_name The original filename from the upload
-    * @param bool $make_rand_name Whether to generate a random filename (default: false)
-    * 
-    * @return array{
-    *    name: string,           The base filename without extension
-    *    extension: string,      The lowercase file extension
-    *    full_name: string      The complete filename with extension
-    * }
-    */
-
-    /**
      * Generates a secure filename for an uploaded file, either randomized or sanitized from original.
      *
      * This method creates a safe filename suitable for filesystem storage by either generating
@@ -633,7 +666,6 @@ class File {
     private function validate_mime_type(string $filename): void {
         $finfo = finfo_open(FILEINFO_MIME_TYPE);
         $mime_type = finfo_file($finfo, $filename);
-        finfo_close($finfo);
 
         // Additional MIME validation for Unix systems
         if (DIRECTORY_SEPARATOR !== '\\') {

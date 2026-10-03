@@ -63,7 +63,6 @@ class Core {
         $controller_path = $this->get_controller_path();
         require_once $controller_path;
 
-        // Dev environment logic preserved
         if (strtolower(ENV) === 'dev') {
             $this->attempt_sql_transfer($controller_path);
         }
@@ -142,25 +141,46 @@ class Core {
      * Invoke the target controller method.
      * 
      * Instantiates the controller class with the module name and executes the
-     * requested method. This implementation prioritizes maximum performance and
-     * code clarity by following standard OOP conventions without safety nets.
+     * requested method. If the method requires arguments that the framework
+     * does not provide, a 403 response is returned matching block_url() behavior.
      * 
      * ARCHITECTURE:
      * Controllers extending Trongate receive the module name via constructor parameter.
      * They must call parent::__construct($module_name) to initialize framework features.
      * 
      * PERFORMANCE:
-     * Zero overhead - direct instantiation and method invocation with no validation,
-     * reflection, or conditional property checks.
+     * Near-zero overhead - direct instantiation and method invocation. The try-catch
+     * adds no cost to the normal execution path; it only activates when a method
+     * requiring arguments is invoked directly via URL.
      * 
      * @return void
      */
     private function invoke_controller_method(): void {
         $controller_class = $this->current_controller;
         $controller_instance = new $controller_class($this->current_module);
-        
+
         if (method_exists($controller_instance, $this->current_method)) {
-            $controller_instance->{$this->current_method}();
+            // Private and protected methods can never be invoked via the URL.
+            // Only public methods are reachable from the dispatcher — anything
+            // else is treated as a non-existent page (404), exactly like the
+            // underscore shortcut handled in serve_controller().
+            $method = new \ReflectionMethod($controller_instance, $this->current_method);
+            if (!$method->isPublic()) {
+                $this->draw_error_page();
+                return;
+            }
+
+            try {
+                $controller_instance->{$this->current_method}();
+            } catch (\ArgumentCountError) {
+                if (defined('ENV') && strtolower(ENV) === 'dev') {
+                    http_response_code(500);
+                    die('ArgumentCountError: Direct URL access not permitted or method called with wrong number of parameters. Check method signatures.');
+                } else {
+                    http_response_code(403);
+                    die('403 Forbidden - Direct URL access not permitted');
+                }
+            }
         } else {
             $this->draw_error_page();
         }
@@ -289,6 +309,7 @@ class Core {
                   'audio',
                   'css',
                   'documents',
+                  'download',
                   'downloads',
                   'files',
                   'fonts',
@@ -487,7 +508,11 @@ class Core {
                         // Send file content
                         readfile($asset_path);
                         die;
-                    } 
+                    }
+
+                    // Never expose directory existence through a successful response.
+                    http_response_code(404);
+                    die('Asset not found');
                 } catch (Exception $e) {
                     // Don't expose internal paths in error messages
                     http_response_code(404);

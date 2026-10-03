@@ -1,0 +1,26 @@
+# The worker creates and deletes one buildkitd Pod per build in this namespace
+# (Manifests::buildkitd). worker-admission-policy.yaml (platform/) limits those
+# writes to Pods named buildkitd-d* running the pinned BuildKit image.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: trongate-worker-builds
+  namespace: buildkit
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "create", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: trongate-worker-builds
+  namespace: buildkit
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: trongate-worker-builds
+subjects:
+  - kind: ServiceAccount
+    name: trongate-worker
+    namespace: trongate-cloud

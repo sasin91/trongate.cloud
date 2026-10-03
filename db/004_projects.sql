@@ -1,5 +1,5 @@
 -- Trongate Cloud: Project table
--- Migration 003
+-- Migration 004
 
 CREATE TABLE IF NOT EXISTS project (
   id INT PRIMARY KEY AUTO_INCREMENT,

@@ -1,0 +1,8 @@
+# Tenant NetworkPolicies allow egress here on 6379 (matched via kubernetes.io/metadata.name)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cache
+  labels:
+    platform.example.com/role: cache
+    pod-security.kubernetes.io/enforce: restricted

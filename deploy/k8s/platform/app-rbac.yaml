@@ -1,0 +1,34 @@
+# The web app reads its customers' apps (Deployments and Pods) to show their live
+# state (modules/platform/live/App_state.php). Read-only, and no Secrets: writes
+# stay with the worker (worker-rbac.yaml). Cluster-wide because tenant namespaces
+# (tc-team-*) are created on the fly.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: trongate-cloud-app
+  namespace: trongate-cloud
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: trongate-cloud-app
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: trongate-cloud-app
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: trongate-cloud-app
+subjects:
+  - kind: ServiceAccount
+    name: trongate-cloud-app
+    namespace: trongate-cloud

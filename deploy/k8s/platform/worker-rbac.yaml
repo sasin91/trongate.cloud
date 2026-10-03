@@ -1,0 +1,59 @@
+# The worker creates tenants through the Kubernetes API. Permissions cover exactly
+# the kinds Manifests emits (plus read access to pods/events for rollout diagnostics).
+# worker-admission-policy.yaml further limits writes to tc-team-* namespaces and
+# checks what the objects contain. Secrets are write-only: Kubernetes::apply is a
+# server-side-apply PATCH, so the worker never reads a Secret (and must not be
+# able to read the platform's, the operators' or Flux's).
+# Build daemon Pods in the buildkit namespace: ../buildkit/worker-rbac.yaml.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: trongate-worker
+  namespace: trongate-cloud
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: trongate-worker
+rules:
+  # Tenant namespaces are created, never deleted, by the worker
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch", "create", "patch", "update"]
+  - apiGroups: [""]
+    resources: ["resourcequotas", "limitranges", "services", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "patch", "update", "delete"]
+  - apiGroups: [""]
+    resources: ["pods", "events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["httproutes"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  - apiGroups: ["traefik.io"]
+    resources: ["middlewares"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  - apiGroups: ["k8s.mariadb.com"]
+    resources: ["databases", "users", "grants"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: trongate-worker
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: trongate-worker
+subjects:
+  - kind: ServiceAccount
+    name: trongate-worker
+    namespace: trongate-cloud

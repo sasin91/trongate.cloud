@@ -1,0 +1,56 @@
+<?php
+
+// Mirrors docs/agents.md: K&R braces, 4-space indent, no forced visibility modifiers.
+// App modules only — the rest of modules/ is stock Trongate, maintained upstream.
+$finder = PhpCsFixer\Finder::create()
+    ->in([
+        __DIR__ . '/config',
+        __DIR__ . '/modules/customer',
+        __DIR__ . '/modules/deployments',
+        __DIR__ . '/modules/encryption',
+        __DIR__ . '/modules/mcp',
+        __DIR__ . '/modules/metrics',
+        __DIR__ . '/modules/platform',
+        __DIR__ . '/modules/projects',
+        __DIR__ . '/modules/secrets',
+        __DIR__ . '/modules/services',
+        __DIR__ . '/modules/templates',
+        __DIR__ . '/modules/webhooks',
+    ])
+    ->notPath('#(^|/)views/#');
+
+return (new PhpCsFixer\Config())
+    ->setRiskyAllowed(false)
+    ->setIndent('    ')
+    ->setLineEnding("\n")
+    ->setRules([
+        'array_syntax' => ['syntax' => 'short'],
+        'braces_position' => [
+            'classes_opening_brace' => 'same_line',
+            'functions_opening_brace' => 'same_line',
+            'anonymous_functions_opening_brace' => 'same_line',
+            'anonymous_classes_opening_brace' => 'same_line',
+            'control_structures_opening_brace' => 'same_line',
+        ],
+        'control_structure_braces' => true,
+        'control_structure_continuation_position' => ['position' => 'same_line'],
+        'elseif' => true,
+        'encoding' => true,
+        'full_opening_tag' => true,
+        'indentation_type' => true,
+        'line_ending' => true,
+        'lowercase_keywords' => true,
+        'method_argument_space' => ['on_multiline' => 'ignore'],
+        'no_closing_tag' => true,
+        'no_extra_blank_lines' => true,
+        'no_spaces_after_function_name' => true,
+        'no_trailing_whitespace' => true,
+        'no_trailing_whitespace_in_comment' => true,
+        'no_unused_imports' => true,
+        'no_whitespace_in_blank_line' => true,
+        'single_blank_line_at_eof' => true,
+        'single_quote' => true,
+        'statement_indentation' => true,
+        'trailing_comma_in_multiline' => ['elements' => ['arrays']],
+    ])
+    ->setFinder($finder);

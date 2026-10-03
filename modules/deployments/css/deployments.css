@@ -1,5 +1,115 @@
+.log-container {
+    background: #1a1a2e;
+    color: #d4d4d4;
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-size: 0.85rem;
+    padding: 1rem;
+    max-height: 500px;
+    min-height: 200px;
+    overflow-y: auto;
+}
+
+#logs-content:empty::before {
+    content: 'Waiting for logs...';
+    color: #666;
+}
+
 .log-line {
+    margin-bottom: 2px;
     white-space: pre-wrap;
     word-break: break-all;
     line-height: 1.4;
+}
+
+.log-time {
+    color: #666;
+    margin-right: 8px;
+}
+
+.log-level {
+    color: #58a6ff;
+    margin-right: 8px;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+}
+
+.log-level-warn {
+    color: #d29922;
+}
+
+.log-level-error {
+    color: #f85149;
+}
+
+.deployment-meta {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.25rem 1rem;
+    margin: 1rem 0 0 0;
+    font-size: 0.875rem;
+}
+
+.deployment-meta dt {
+    color: var(--text-muted);
+}
+
+.deployment-meta dd {
+    margin: 0;
+    word-break: break-all;
+}
+
+/* Deployment statuses */
+.status-pending {
+    background-color: #f3f4f6;
+    color: #374151;
+}
+
+.status-building,
+.status-deploying {
+    background-color: #fef3c7;
+    color: #92400e;
+}
+
+.status-success {
+    background-color: #d1fae5;
+    color: #065f46;
+}
+
+.status-failed {
+    background-color: #fee2e2;
+    color: #991b1b;
+}
+
+.status-rolled_back {
+    background-color: #e0e7ff;
+    color: #3730a3;
+}
+
+/* Live app states (App_state) */
+.live-running {
+    background-color: #d1fae5;
+    color: #065f46;
+}
+
+.live-asleep,
+.live-not_running {
+    background-color: #f3f4f6;
+    color: #374151;
+}
+
+.live-starting {
+    background-color: #fef3c7;
+    color: #92400e;
+}
+
+.live-crashing,
+.live-stuck {
+    background-color: #fee2e2;
+    color: #991b1b;
+}
+
+@media (max-width: 550px) {
+    .deployment-meta {
+        grid-template-columns: 1fr;
+    }
 }

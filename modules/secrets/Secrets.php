@@ -1,16 +1,18 @@
 <?php
 
+require_once __DIR__ . '/../encryption/Encryptor.php';
+
 /**
  * Secrets Controller
- * Generic encrypted key-value storage for any module
+ * Generic encrypted key-value storage for any module.
+ * All secrets are encrypted with APP_KEY.
  * @property-read Secrets_model $model
- * @property-read Encryption $encryption
  */
 class Secrets extends Trongate {
 
     function __construct(?string $module_name = null) {
         parent::__construct($module_name);
-        block_url_invocation($module_name);
+        block_url('secrets');
     }
 
     /**
@@ -18,7 +20,7 @@ class Secrets extends Trongate {
      * @param string $module e.g. 'server', 'project', 'team'
      * @param int $module_id
      * @param string|null $service e.g. 'hetzner', 'github' (optional)
-     * @return array Key-value pairs or empty array
+     * @return array Key-value pairs
      */
     function get(string $module, int $module_id, ?string $service = null): array {
         $row = $this->model->get_secrets($module, $module_id, $service);
@@ -34,8 +36,7 @@ class Secrets extends Trongate {
             die();
         }
 
-        $this->module('encryption');
-        $decrypted = $this->encryption->decrypt($row->variables, $row->encryption_key);
+        $decrypted = Encryptor::decrypt($row->variables, APP_KEY);
 
         if ($decrypted === false) {
             http_response_code(422);
@@ -45,6 +46,7 @@ class Secrets extends Trongate {
                     <p>The encryption key is invalid or the secret has been corrupted.</p>
                 HTML
             ]);
+            die();
         }
 
         return json_decode($decrypted, true) ?: [];
@@ -55,19 +57,17 @@ class Secrets extends Trongate {
      * @param string $module
      * @param int $module_id
      * @param string|null $service
-     * @param string $encryption_key
      * @param array $variables Key-value pairs
      * @return bool
      */
-    function save(string $module, int $module_id, ?string $service, string $encryption_key, array $variables): bool {
-        $this->module('encryption');
-        $encrypted = $this->encryption->encrypt(json_encode($variables), $encryption_key);
+    function save(string $module, int $module_id, ?string $service, array $variables): bool {
+        $encrypted = Encryptor::encrypt(json_encode($variables), APP_KEY);
 
-        return $this->model->save_secrets($module, $module_id, $service, $encryption_key, $encrypted);
+        return $this->model->save_secrets($module, $module_id, $service, $encrypted);
     }
 
     /**
-     * Update specific keys (merge with existing)
+     * Update specific keys (merge with existing, creates if missing)
      * @param string $module
      * @param int $module_id
      * @param string|null $service
@@ -75,9 +75,11 @@ class Secrets extends Trongate {
      * @return bool
      */
     function update(string $module, int $module_id, ?string $service, array $variables): bool {
-        $existing = $this->get($module, $module_id, $service);
-        $merged = array_merge($existing, $variables);
-        return $this->save($module, $module_id, $service, $existing['encryption_key'], $merged);
+        $existing = $this->exists($module, $module_id, $service)
+            ? $this->get($module, $module_id, $service)
+            : [];
+
+        return $this->save($module, $module_id, $service, array_merge($existing, $variables));
     }
 
     /**

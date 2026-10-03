@@ -1,0 +1,11 @@
+# Trongate Cloud platform components. Apply after ./operators (CRDs) and
+# after the platform kit's Traefik/Gateway setup. See README.md.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - databases
+  - cache
+  - files
+  - buildkit
+  - sablier
+  - platform

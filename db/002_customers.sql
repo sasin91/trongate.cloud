@@ -1,5 +1,5 @@
 -- Trongate Cloud: Customer tables
--- Migration 001
+-- Migration 002
 
 CREATE TABLE customer (
   id INT PRIMARY KEY AUTO_INCREMENT,
