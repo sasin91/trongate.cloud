@@ -1,5 +1,5 @@
 -- Trongate Cloud: Server infrastructure tables
--- Migration 004
+-- Migration 005
 
 CREATE TABLE server (
   id INT PRIMARY KEY AUTO_INCREMENT,
@@ -31,5 +31,5 @@ CREATE TABLE server_keypair (
   FOREIGN KEY (server_id) REFERENCES server(id)
 );
 
--- Note: Server environment variables stored in `secrets` table (see 008_secrets.sql)
+-- Note: Server environment variables stored in `secrets` table (see 007_secrets.sql)
 -- Usage: entity_type='server', entity_id=server.id

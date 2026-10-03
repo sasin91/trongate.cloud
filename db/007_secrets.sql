@@ -1,5 +1,5 @@
 -- Trongate Cloud: Generic secrets storage
--- Migration 008
+-- Migration 007
 
 CREATE TABLE IF NOT EXISTS secrets (
   id INT PRIMARY KEY AUTO_INCREMENT,

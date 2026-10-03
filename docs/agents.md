@@ -14,7 +14,7 @@ This document serves as the primary technical specification and behavior guide f
 - **Bracing Style**: Strictly follow **K&R Style**. Opening braces `{` must be on the **same line** as the declaration.
 - **Indentation**: Use **4 spaces** (never tabs).
 - **Method Visibility**: There is no need for PHP method visibility modifiers (`public`, `protected`, `private`) in Trongate. As a rule of thumb, write without visibility modifiers unless specifically required.
-- **Underscore Prefix**: Prefix methods with an underscore (`_`) if they are for internal use and should **not** be accessible via a URL. In addition a Controller may also call `block_url_invocation($this->module_name)` to prevent URL invocation of any method.
+- **Underscore Prefix**: Prefix methods with an underscore (`_`) if they are for internal use and should **not** be accessible via a URL. In addition a Controller may also call `block_url('module_name')` in its constructor to prevent URL invocation of any method. Validation callbacks follow the same rule: name them `_validate_x` and reference them as `callback__validate_x`.
 
 ### 2.2 Database Logic & Migrations
 - **Location**: All data persistence and retrieval must reside in the module's **Model**.
@@ -38,7 +38,20 @@ This document serves as the primary technical specification and behavior guide f
     $this->module('templates');
     $this->templates->public($data); // For public-facing pages
     $this->templates->admin($data);  // For admin dashboard pages
+    $this->templates->customer($data); // For the customer dashboard (adds team selector data)
     ```
+
+### 2.5 Shared Traits
+Reusable behaviour lives in traits so a class can override a single method instead of copying logic. Load with `require_once` and `use` inside the class; override by declaring a method with the same name.
+- **`Current_customer`** (`modules/customer/traits/`, *model* trait): `_get_current_customer()`, `_get_current_team_id()` (session → `customer.current_team_id` → first team, auto-set), `get_customer_teams()`, `set_current_team($team_id)` (members only), `get_current_team_member()`, `_find_for_team($table, $id)` (row only if it belongs to the current team). Team membership is always via `team_member`.
+- **`Customer_guard`** (`modules/customer/traits/`, *controller* trait): `_make_sure_allowed()` (level 2 token + active + onboarded, else redirects; returns the token) and `_team_id_or_redirect()`. Requires the controller's model to use `Current_customer`.
+- **`Provider_clients`** (`modules/services/traits/`, *controller* trait): `_provider_client($team_id, $provider)` returns a `Client` (GitHub, the only provider) built from the team's stored secrets via `Services::for_team()`; `_team_provider($team_id, 'source')` returns the first source provider the team has credentials for; `_validate_source_provider` and `_validate_github_token` are validation callbacks. We host customer apps ourselves, so there are no cloud providers.
+- **`Platform_actions`** (`modules/platform/traits/`, *model* trait): queue deploys (at most one queued per project) and rollbacks, read projects, deployments and logs by explicit team id, derive webhook signing secrets (`webhook_signing_secret()`, from the stored seed and `APP_KEY`) and verify custom domains by DNS TXT record. The UI, webhooks and MCP share it.
+- **`Project_records`** (*model* trait, needs `Platform_actions`) and **`Project_form`** (*controller* trait, needs `Customer_guard` and `Provider_clients`), both in `modules/projects/traits/`: the new-project form, its validation callbacks and project creation (slug and webhook secret), shared by onboarding and `projects/new`.
+
+### 2.6 Secrets & APP_KEY
+- Secrets are stored encrypted via the `secrets` module (`get`/`save`/`update`/`delete`/`exists`) using `Encryptor` with the `APP_KEY` constant (`config/config.php`, read from the `APP_KEY` env var). There are no per-row keys.
+- Generate a key with `php -r "echo base64_encode(sodium_crypto_secretbox_keygen());"`. Rotating `APP_KEY` makes existing secrets unreadable, and worker containers need the same `APP_KEY` in their environment.
 
 
 ### 3.1 Styling & Icons

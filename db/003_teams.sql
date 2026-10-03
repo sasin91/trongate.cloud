@@ -1,5 +1,5 @@
 -- Trongate Cloud: Team & Access Control tables
--- Migration 002
+-- Migration 003
 
 CREATE TABLE IF NOT EXISTS team (
   id INT PRIMARY KEY AUTO_INCREMENT,
