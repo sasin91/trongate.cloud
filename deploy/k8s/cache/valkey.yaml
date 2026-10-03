@@ -1,0 +1,125 @@
+# Shared Valkey for sessions/cache (sessions here survive scale-to-zero).
+# ACL-enabled: the default user is off; every client authenticates as an ACL user.
+# TODO: per-tenant ACL users with a key prefix (~tc-team-{id}:*) managed by the worker.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: valkey-config
+  namespace: cache
+data:
+  valkey.conf: |
+    port 6379
+    dir /data
+    appendonly yes
+    appendfsync everysec
+    # Instance-wide; sessions should carry a TTL so volatile-lru can evict them
+    maxmemory 768mb
+    maxmemory-policy volatile-lru
+    aclfile /etc/valkey/acl/users.acl
+    # ACLs guard access (the default user is disabled in users.acl)
+    protected-mode no
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: valkey
+  namespace: cache
+spec:
+  selector:
+    app.kubernetes.io/name: valkey
+  ports:
+    - name: valkey
+      port: 6379
+      targetPort: valkey
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: valkey-headless
+  namespace: cache
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: valkey
+  ports:
+    - name: valkey
+      port: 6379
+      targetPort: valkey
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: valkey
+  namespace: cache
+spec:
+  serviceName: valkey-headless
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: valkey
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: valkey
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: valkey
+          image: valkey/valkey:9.1-alpine
+          command: ["valkey-server", "/etc/valkey/valkey.conf"]
+          ports:
+            - name: valkey
+              containerPort: 6379
+          readinessProbe:
+            tcpSocket:
+              port: valkey
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: valkey
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 896Mi
+            limits:
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: config
+              mountPath: /etc/valkey/valkey.conf
+              subPath: valkey.conf
+              readOnly: true
+            - name: acl
+              mountPath: /etc/valkey/acl
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: valkey-config
+        - name: acl
+          secret:
+            secretName: valkey-acl
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: hcloud-volumes
+        resources:
+          requests:
+            storage: 10Gi

@@ -1,0 +1,49 @@
+# JuiceFS metadata lives in the shared MariaDB (database "juicefs").
+# The password must match the one inside juicefs-secret's metaurl.
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: Database
+metadata:
+  name: juicefs
+  namespace: files
+spec:
+  mariaDbRef:
+    name: shared-1
+    namespace: databases
+  name: juicefs
+  characterSet: utf8mb4
+  collate: utf8mb4_unicode_ci
+  cleanupPolicy: Skip
+---
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: User
+metadata:
+  name: juicefs
+  namespace: files
+spec:
+  mariaDbRef:
+    name: shared-1
+    namespace: databases
+  name: juicefs
+  host: "%"
+  passwordSecretKeyRef:
+    name: juicefs-meta
+    key: password
+  maxUserConnections: 200
+  cleanupPolicy: Skip
+---
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: Grant
+metadata:
+  name: juicefs
+  namespace: files
+spec:
+  mariaDbRef:
+    name: shared-1
+    namespace: databases
+  privileges:
+    - ALL PRIVILEGES
+  database: juicefs
+  table: "*"
+  username: juicefs
+  host: "%"
+  cleanupPolicy: Skip

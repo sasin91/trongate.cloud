@@ -1,0 +1,141 @@
+# The worker parses untrusted repositories, so its API access is limited beyond
+# RBAC (which cannot scope a ClusterRole to "namespaces matching tc-team-*").
+# Requires Kubernetes >= 1.30.
+#
+# 1. Where: only inside tc-team-* namespaces (or the tenant Namespace objects
+#    themselves), plus per-build buildkitd-d* Pods in the buildkit namespace.
+# 2. What: the content checks in trongate-worker-objects, so a compromised worker
+#    cannot loosen a tenant namespace, expose a Service, mount a token, claim a
+#    platform hostname, or point MariaDB CRs at anything but a tenant's own
+#    tc_p{id} database on the shared servers.
+#
+# Keep the hostnames in trongate-worker-objects in sync with BASE_URL,
+# PLATFORM_APPS_DOMAIN and PLATFORM_REGISTRY (config.yaml), and the image with
+# Manifests::BUILDKIT_IMAGE.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: trongate-worker-tenants-only
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["*"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources: ["*"]
+  matchConditions:
+    - name: is-worker
+      expression: request.userInfo.username == 'system:serviceaccount:trongate-cloud:trongate-worker'
+  validations:
+    - expression: >-
+        request.namespace.startsWith('tc-team-') ||
+        (request.kind.kind == 'Namespace' && request.name.startsWith('tc-team-') && request.operation != 'DELETE') ||
+        (request.namespace == 'buildkit' && request.kind.kind == 'Pod' && request.name.startsWith('buildkitd-d'))
+      message: The trongate-cloud worker may only write inside tc-team-* namespaces (and build Pods in buildkit)
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: trongate-worker-tenants-only
+spec:
+  policyName: trongate-worker-tenants-only
+  validationActions: ["Deny"]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: trongate-worker-objects
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["namespaces", "services", "pods"]
+      - apiGroups: ["apps"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments"]
+      - apiGroups: ["k8s.mariadb.com"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["databases", "users", "grants"]
+      - apiGroups: ["gateway.networking.k8s.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["httproutes"]
+  matchConditions:
+    - name: is-worker
+      expression: request.userInfo.username == 'system:serviceaccount:trongate-cloud:trongate-worker'
+  variables:
+    - name: tenant_db
+      expression: "'^tc_p[0-9]+$'"
+    # Tenant routes may use {slug}.apps_domain and customer domains, never other
+    # platform_domain hosts (control panel, registry, mcp, ...)
+    - name: platform_domain
+      expression: "'trongate.cloud'"
+    - name: apps_domain
+      expression: "'apps.trongate.cloud'"
+  validations:
+    # Tenant namespaces stay restricted and never get a platform role label
+    # (allow-gateway admits ingress from namespaces labelled role=gateway)
+    - expression: >-
+        request.kind.kind != 'Namespace' ||
+        (has(object.metadata.labels) &&
+         'pod-security.kubernetes.io/enforce' in object.metadata.labels &&
+         object.metadata.labels['pod-security.kubernetes.io/enforce'] == 'restricted' &&
+         !('platform.example.com/role' in object.metadata.labels))
+      message: Tenant namespaces must enforce restricted Pod Security and carry no platform role label
+    - expression: >-
+        request.kind.kind != 'Service' ||
+        ((!has(object.spec.type) || object.spec.type == 'ClusterIP') &&
+         (!has(object.spec.externalIPs) || size(object.spec.externalIPs) == 0))
+      message: Tenant Services must be ClusterIP without externalIPs
+    - expression: >-
+        request.kind.kind != 'Deployment' ||
+        (has(object.spec.template.spec.automountServiceAccountToken) &&
+         object.spec.template.spec.automountServiceAccountToken == false)
+      message: Tenant Deployments must set automountServiceAccountToken=false
+    # Build daemon Pods: the pinned rootless image, emptyDir volumes only, no host access
+    - expression: >-
+        request.kind.kind != 'Pod' ||
+        (object.spec.containers.all(c, c.image == 'moby/buildkit:v0.33.1-rootless' &&
+           (!has(c.securityContext) ||
+            ((!has(c.securityContext.privileged) || c.securityContext.privileged == false) &&
+             (!has(c.securityContext.capabilities) || !has(c.securityContext.capabilities.add))))) &&
+         !has(object.spec.initContainers) &&
+         !has(object.spec.ephemeralContainers) &&
+         (!has(object.spec.hostNetwork) || object.spec.hostNetwork == false) &&
+         (!has(object.spec.hostPID) || object.spec.hostPID == false) &&
+         (!has(object.spec.hostIPC) || object.spec.hostIPC == false) &&
+         (!has(object.spec.volumes) || object.spec.volumes.all(v, has(v.emptyDir))) &&
+         has(object.spec.automountServiceAccountToken) && object.spec.automountServiceAccountToken == false)
+      message: Build Pods must run the pinned BuildKit image without host access or extra volumes
+    # MariaDB CRs: only a tenant database/user on a server in the databases
+    # namespace (the platform database lives in trongate-cloud), no grant option
+    - expression: >-
+        request.kind.group != 'k8s.mariadb.com' ||
+        (object.spec.mariaDbRef.namespace == 'databases' &&
+         (request.kind.kind != 'Database' || object.spec.name.matches(variables.tenant_db)) &&
+         (request.kind.kind != 'User' || object.spec.name.matches(variables.tenant_db)) &&
+         (request.kind.kind != 'Grant' ||
+          (object.spec.database.matches(variables.tenant_db) &&
+           object.spec.username.matches(variables.tenant_db) &&
+           (!has(object.spec.grantOption) || object.spec.grantOption == false))))
+      message: MariaDB CRs must target a tc_p{id} database and user on a server in the databases namespace
+    - expression: >-
+        request.kind.kind != 'HTTPRoute' || !has(object.spec.hostnames) ||
+        object.spec.hostnames.all(h,
+          h.endsWith('.' + variables.apps_domain) ||
+          !(h == variables.platform_domain || h.endsWith('.' + variables.platform_domain)))
+      message: Tenant HTTPRoutes may not use platform hostnames
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: trongate-worker-objects
+spec:
+  policyName: trongate-worker-objects
+  validationActions: ["Deny"]

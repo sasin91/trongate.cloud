@@ -1,0 +1,15 @@
+.git
+.github
+.devcontainer
+vendor
+deploy
+docs
+.env
+.env.*
+!.env.example
+*.md
+Dockerfile*
+.dockerignore
+.php-cs-fixer.cache
+phpstan*
+.php-cs-fixer.dist.php

@@ -1,0 +1,81 @@
+# The control plane's own MariaDB ("tcloud": customer accounts, team GitHub
+# tokens, webhook seeds, tasks). Deliberately NOT on shared-1: tenant pods may
+# reach port 3306 in the databases namespace, and a MariaDB auth or privilege
+# bug there must not expose the platform's data. Tenant NetworkPolicies have no
+# egress path to this namespace, and the policy below admits only the app, the
+# worker and mariadb-operator.
+#
+# The namespace enforces restricted Pod Security, hence the security contexts.
+# TODO(spike): confirm the operator's generated init/agent containers pass
+# restricted with the mariadb-operator version in use.
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: MariaDB
+metadata:
+  name: platform
+  namespace: trongate-cloud
+spec:
+  replicas: 1
+
+  rootPasswordSecretKeyRef:
+    name: mariadb-platform
+    key: root-password
+    generate: false
+
+  storage:
+    size: 10Gi
+    storageClassName: hcloud-volumes
+
+  myCnf: |
+    [mariadb]
+    bind-address=*
+    default_storage_engine=InnoDB
+    innodb_buffer_pool_size=256M
+    max_allowed_packet=64M
+    max_connections=200
+    character-set-server=utf8mb4
+    collation-server=utf8mb4_unicode_ci
+
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 999
+    runAsGroup: 999
+    fsGroup: 999
+    seccompProfile:
+      type: RuntimeDefault
+
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 384Mi
+    limits:
+      memory: 768Mi
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mariadb-platform
+  namespace: trongate-cloud
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: platform
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: trongate-cloud-app
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: trongate-cloud-worker
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: mariadb-operator
+      ports:
+        - protocol: TCP
+          port: 3306

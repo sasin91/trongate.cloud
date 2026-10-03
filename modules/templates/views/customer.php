@@ -12,20 +12,21 @@
 <body>
     <header>
         <div class="header-left">
-            <a href="customer" class="header-logo-link">
+            <a href="dashboard" class="header-logo-link">
                 <div class="header-title">Trongate Cloud</div>
             </a>
             <div class="header-separator"></div>
-            <form action="customer/switch_team" method="post" class="team-switcher-form">
+            <?= form_open('switch-team', ['class' => 'team-switcher-form']) ?>
                 <select name="team_id" onchange="this.form.submit()" class="form-select team-switcher-select">
                     <?php foreach($teams as $team): ?>
                         <option value="<?= $team->id ?>" <?= ($team->id == $current_team_id) ? 'selected' : '' ?>><?= htmlspecialchars($team->name) ?></option>
                     <?php endforeach; ?>
                 </select>
-            </form>
+            <?= form_close() ?>
         </div>
-        <nav>
-            <a href="customer/logout" class="nav-link">Sign Out</a>
+        <nav class="header-nav" style="display: flex; gap: 1.25rem; align-items: center;">
+            <a href="dashboard" class="nav-link">Dashboard</a>
+            <a href="logout" class="nav-link">Sign Out</a>
         </nav>
     </header>
 

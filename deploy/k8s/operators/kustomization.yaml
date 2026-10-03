@@ -1,0 +1,7 @@
+# Operators/CSI drivers the platform depends on. Skip any the platform kit already installs.
+# Separate Flux Kustomization so the CRDs exist before ../ is applied (dependsOn).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - mariadb-operator.yaml
+  - juicefs-csi.yaml

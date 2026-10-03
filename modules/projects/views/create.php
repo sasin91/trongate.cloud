@@ -1,26 +1,39 @@
 <div class="onboarding-card">
     <div class="onboarding-header">
-        <h1>Create New Project</h1>
-        <p>Deploy your application to the cloud.</p>
+        <h1>New Project</h1>
+        <p>Pick a repository. We build it and give it a live URL.</p>
     </div>
-    
-    <form action="projects/submit" method="post">
-        <div class="form-group">
-            <label class="form-label">Project Name</label>
-            <input type="text" name="label" required placeholder="My Awesome App" class="form-input">
-        </div>
-        
-        <div class="form-group">
-            <label class="form-label">Type</label>
-            <select name="type" class="form-select">
-                <option value="web">Web Application</option>
-                <option value="worker">Worker</option>
-            </select>
-        </div>
 
-        <div style="display: flex; gap: 1rem; margin-top: 2rem;">
-                <button type="submit" class="btn-primary" style="flex: 1;">Create Project</button>
-                <a href="customer" class="btn-secondary" style="flex: 1; text-align: center;">Cancel</a>
+    <?= flashdata('<p class="flash">', '</p>') ?>
+    <?= validation_errors() ?>
+
+    <?php if ($form === false): ?>
+        <p>This team has not connected GitHub yet. Paste a
+            <a href="https://github.com/settings/tokens" target="_blank" rel="noopener">personal access token</a>
+            with the <code>repo</code> scope to continue.</p>
+
+        <?= form_open('projects/submit_source') ?>
+        <?= form_hidden('provider', 'github') ?>
+        <div class="form-group">
+            <label for="token" class="form-label">Personal Access Token</label>
+            <input type="password" name="token" id="token" class="form-input" placeholder="Paste your GitHub token" required>
         </div>
-    </form>
+        <div class="form-actions">
+            <button type="submit" class="btn-primary">Connect GitHub</button>
+            <a href="dashboard" class="btn-secondary">Cancel</a>
+        </div>
+        <?= form_close() ?>
+    <?php else: ?>
+        <?= form_open('projects/submit') ?>
+        <?php
+        extract($form);
+        $branches_url = 'projects/branches';
+        require __DIR__ . '/_project_fields.php';
+        ?>
+        <div class="form-actions">
+            <button type="submit" class="btn-primary">Create &amp; Deploy</button>
+            <a href="dashboard" class="btn-secondary">Cancel</a>
+        </div>
+        <?= form_close() ?>
+    <?php endif; ?>
 </div>

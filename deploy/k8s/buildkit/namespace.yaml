@@ -1,0 +1,10 @@
+# Own namespace: rootless BuildKit needs Unconfined seccomp/AppArmor, which the
+# restricted (and baseline) Pod Security levels forbid. Keeping it out of
+# trongate-cloud lets that namespace stay restricted.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: buildkit
+  labels:
+    platform.example.com/role: buildkit
+    pod-security.kubernetes.io/enforce: privileged

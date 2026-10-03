@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: trongate-cloud
+resources:
+  - namespace.yaml
+  - config.yaml
+  - mariadb.yaml
+  - database.yaml
+  - app.yaml
+  - worker-rbac.yaml
+  - worker.yaml
+  - worker-admission-policy.yaml
+# Not listed on purpose: secrets.example.yaml (create a SOPS-encrypted copy, see ../README.md)
+
+# Built from ../../Dockerfile and ../../Dockerfile.worker; pin tags (or let Flux image automation do it)
+images:
+  - name: trongate-cloud
+    newName: ghcr.io/sasin91/trongate-cloud
+    newTag: main
+  - name: trongate-cloud-worker
+    newName: ghcr.io/sasin91/trongate-cloud-worker
+    newTag: main

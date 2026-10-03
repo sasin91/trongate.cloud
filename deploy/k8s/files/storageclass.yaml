@@ -1,0 +1,25 @@
+# RWX storage for tenant persistent paths (PVC "p{id}-files" per project).
+# Every PVC gets its own directory "{namespace}-{pvc}" (e.g. tc-team-3-p17-files),
+# which is also the unit for per-tenant restic backups.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: tenant-files
+  annotations:
+    # pathPattern uses ${...}; keep Flux postBuild substitution away from it
+    kustomize.toolkit.fluxcd.io/substitute: disabled
+provisioner: csi.juicefs.com
+# Keep the directory when a PVC is deleted (destroy_project); clean up after the backup window
+reclaimPolicy: Retain
+allowVolumeExpansion: true
+volumeBindingMode: Immediate
+parameters:
+  csi.storage.k8s.io/provisioner-secret-name: juicefs-secret
+  csi.storage.k8s.io/provisioner-secret-namespace: files
+  csi.storage.k8s.io/node-publish-secret-name: juicefs-secret
+  csi.storage.k8s.io/node-publish-secret-namespace: files
+  csi.storage.k8s.io/controller-expand-secret-name: juicefs-secret
+  csi.storage.k8s.io/controller-expand-secret-namespace: files
+  pathPattern: "${.pvc.namespace}-${.pvc.name}"
+mountOptions:
+  - cache-size=2048

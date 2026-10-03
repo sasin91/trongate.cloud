@@ -1,28 +1,21 @@
 <?php
 
-require_once __DIR__ . '/../customer/traits/Current_customer.php';
+require_once APPPATH . 'modules/customer/traits/Current_customer.php';
+require_once APPPATH . 'modules/platform/traits/Platform_actions.php';
+require_once __DIR__ . '/traits/Project_records.php';
 
 /**
  * @property-read Db $db
  */
 class Projects_model extends Model {
     use Current_customer;
-    
-    public string $table_name = 'project';
+    use Platform_actions;
+    use Project_records;
 
-    public function find(int $id): object|bool {
-        return $this->db->get_where($id, $this->table_name);
-    }
-
-    public function get_team_servers(int $team_id): array {
-        return $this->db->query_bind(
-            <<<SQL
-                SELECT *
-                FROM server
-                WHERE team_id = :team_id
-            SQL,
-            ['team_id' => $team_id],
-            'object'
-        );
+    /**
+     * The newest successful deployment that is not the current one (the default rollback target).
+     */
+    function rollback_target(object $project): object|false {
+        return $this->_previous_successful_deployment($project);
     }
 }

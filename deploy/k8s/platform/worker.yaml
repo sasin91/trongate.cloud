@@ -1,0 +1,74 @@
+# Task worker (modules/platform/worker/server.php): builds with Railpack on
+# a per-build buildkitd and applies tenant manifests. Keep replicas: 1 —
+# a starting worker fails tasks older than 300s while builds may run 1800s.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trongate-cloud-worker
+  namespace: trongate-cloud
+  labels:
+    app.kubernetes.io/name: trongate-cloud-worker
+spec:
+  replicas: 1
+  # Let an in-flight deploy finish instead of running two versions side by side
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: trongate-cloud-worker
+  template:
+    metadata:
+      labels:
+        # buildkitd's NetworkPolicy admits this label only
+        app.kubernetes.io/name: trongate-cloud-worker
+    spec:
+      serviceAccountName: trongate-worker
+      enableServiceLinks: false
+      # MUST match Runtime::STALE_THRESHOLD_SECONDS: tasks still running after
+      # this are marked failed by the next worker on startup
+      terminationGracePeriodSeconds: 300
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          image: trongate-cloud-worker
+          envFrom:
+            - configMapRef:
+                name: trongate-cloud
+            - secretRef:
+                name: trongate-cloud-env
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            # Source checkouts and Railpack plans (/tmp/tc-build/{deployment})
+            - name: tmp
+              mountPath: /tmp
+            # Push credentials for PLATFORM_REGISTRY; buildctl forwards them to buildkitd
+            - name: registry
+              mountPath: /home/worker/.docker
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 10Gi
+        - name: registry
+          secret:
+            secretName: registry-push
+            items:
+              - key: .dockerconfigjson
+                path: config.json

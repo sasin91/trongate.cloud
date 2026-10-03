@@ -1,41 +1,59 @@
 <div class="content">
     <div style="margin-bottom: 1.5rem;">
-        <a href="customer" style="color: var(--accent); text-decoration: none;">&larr; Back to Dashboard</a>
+        <a href="projects/<?= $deployment->project_id ?>" style="color: var(--accent); text-decoration: none;">&larr; Back to <?= htmlspecialchars($deployment->project_label) ?></a>
     </div>
 
     <div class="card" style="margin-bottom: 1.5rem;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <h2 style="margin: 0;">Deployment #<?= $deployment->id ?></h2>
-            <span class="status-pill status-<?= $deployment->status ?>" 
-                  id="deployment-status"
-                  data-api-url="<?= BASE_URL ?>deployments/status/<?= $deployment->id ?>">
-                <?= ucfirst($deployment->status) ?>
-            </span>
+            <?php require __DIR__ . '/_status_pill.php'; ?>
         </div>
-        <p style="color: var(--text-muted); margin-top: 0.5rem; margin-bottom: 0;">
-            Source: <?= htmlspecialchars($deployment->source_url) ?>
-        </p>
+        <dl class="deployment-meta">
+            <dt>Source</dt>
+            <dd><?= htmlspecialchars((string) $deployment->source_url) ?></dd>
+            <dt>Trigger</dt>
+            <dd><?= htmlspecialchars($deployment->trigger_type) ?></dd>
+            <?php if (!empty($deployment->commit_sha)): ?>
+                <dt>Commit</dt>
+                <dd><code><?= htmlspecialchars($deployment->commit_sha) ?></code></dd>
+            <?php endif; ?>
+            <?php if (!empty($deployment->image)): ?>
+                <dt>Image</dt>
+                <dd><code><?= htmlspecialchars($deployment->image) ?></code></dd>
+            <?php endif; ?>
+            <dt>Started</dt>
+            <dd><?= htmlspecialchars($deployment->created_at) ?></dd>
+            <?php if (!empty($deployment->completed_at)): ?>
+                <dt>Finished</dt>
+                <dd><?= htmlspecialchars($deployment->completed_at) ?></dd>
+            <?php endif; ?>
+        </dl>
     </div>
 
-    <h3>Deployment Logs</h3>
-    <div id="log-container"
-         class="card"
-         style="background: #1a1a2e; color: #d4d4d4; font-family: 'Monaco', 'Menlo', monospace; font-size: 0.85rem; padding: 1rem; max-height: 500px; overflow-y: auto; min-height: 200px;">
-        <div id="logs-content">
-            <div style="color: #666;">Waiting for logs...</div>
-        </div>
+    <h3>Logs</h3>
+    <div id="log-container" class="card log-container">
+        <div id="logs-content"><?php require __DIR__ . '/_log_lines.php'; ?></div>
     </div>
 
-    <div id="github-actions-prompt" style="display: none; margin-top: 1.5rem;">
-        <div class="card" style="background: #f0f9ff; border: 1px solid #0284c7;">
-            <h4 style="margin-top: 0; color: #0284c7;">Set Up Automatic Deployments</h4>
-            <p>Configure GitHub Actions to automatically deploy on every push.</p>
-            <a href="deployments/github_actions/<?= $deployment->id ?>" class="btn-create">
-                View Setup Instructions
-            </a>
+    <?php if (!$is_finished): ?>
+        <!-- Polls for new log lines; removed by _logs_partial.php once the deployment finishes -->
+        <input type="hidden" id="log-poller" value="<?= $last_log_id ?>"
+               mx-get="deployments/<?= $deployment->id ?>/logs?last_log_id=${this.value}"
+               mx-trigger="every 2s"
+               mx-target="none"
+               mx-select-oob='[
+                   {"select": "#new-logs", "target": "#logs-content", "swap": "beforeend"},
+                   {"select": "#log-cursor", "target": "#log-poller", "swap": "value"},
+                   {"select": "#deployment-status", "target": "#deployment-status", "swap": "outerHTML"},
+                   {"select": "#log-poller-stop", "target": ".log-poller-keepalive, #log-poller", "swap": "delete"}
+               ]'>
+    <?php endif; ?>
+
+    <?php if ($deployment->status === 'success' && $deployment->trigger_type !== 'webhook'): ?>
+        <div class="card" style="margin-top: 1.5rem; background: #f0f9ff; border: 1px solid #0284c7;">
+            <h4 style="margin-top: 0; color: #0284c7;">Deploy on every push</h4>
+            <p>Add a GitHub webhook and pushes to your branch deploy automatically.</p>
+            <a href="projects/<?= $deployment->project_id ?>/settings" class="btn-create">Set up webhook</a>
         </div>
-    </div>
+    <?php endif; ?>
 </div>
-
-<link rel="stylesheet" href="<?= BASE_URL ?>deployments_module/css/deployments.css">
-<script src="<?= BASE_URL ?>deployments_module/js/deployments.js"></script>

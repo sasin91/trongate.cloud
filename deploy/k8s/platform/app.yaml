@@ -1,0 +1,104 @@
+# The platform web app (dashboard, GitHub webhooks, MCP endpoint at /mcp).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trongate-cloud-app
+  namespace: trongate-cloud
+  labels:
+    app.kubernetes.io/name: trongate-cloud-app
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: trongate-cloud-app
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: trongate-cloud-app
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 33
+        runAsGroup: 33
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: app
+          image: trongate-cloud
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: trongate-cloud
+            - secretRef:
+                name: trongate-cloud-env
+            # Only the app gets MCP_SECRET (the worker never needs it)
+            - secretRef:
+                name: trongate-cloud-mcp
+                optional: true
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: trongate-cloud-app
+  namespace: trongate-cloud
+spec:
+  selector:
+    app.kubernetes.io/name: trongate-cloud-app
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: trongate-cloud-app
+  namespace: trongate-cloud
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: traefik-gateway
+      namespace: traefik
+  hostnames:
+    - trongate.cloud
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: trongate-cloud-app
+          port: 80

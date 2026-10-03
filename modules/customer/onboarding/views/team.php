@@ -19,7 +19,7 @@
 
         <?= validation_errors('<div class="error-message">', '</div>') ?>
 
-        <?= form_open('customer-onboarding/submit_team') ?>
+        <?= form_open('onboarding/submit_team') ?>
 
         <div class="form-group">
             <label for="name" class="form-label">Team Name</label>
@@ -28,9 +28,6 @@
 
         <div class="steps">
             <div class="step-dot active"></div>
-            <div class="step-dot"></div>
-            <div class="step-dot"></div>
-            <div class="step-dot"></div>
             <div class="step-dot"></div>
             <div class="step-dot"></div>
         </div>

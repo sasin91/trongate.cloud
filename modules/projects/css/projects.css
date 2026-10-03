@@ -1,0 +1,183 @@
+.back-link {
+    margin-bottom: 1.5rem;
+}
+
+.muted {
+    color: var(--text-muted);
+}
+
+.flash {
+    background: #ecfdf5;
+    border: 1px solid #a7f3d0;
+    color: #065f46;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+}
+
+.content.narrow {
+    max-width: 760px;
+}
+
+.project-header {
+    margin-bottom: 2rem;
+}
+
+.project-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.project-title h2 {
+    margin: 0 0 0.25rem 0;
+}
+
+.project-title p {
+    margin: 0;
+    font-size: 0.875rem;
+}
+
+.project-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.project-actions form {
+    margin: 0;
+}
+
+.project-urls {
+    list-style: none;
+    padding: 0;
+    margin: 1rem 0;
+}
+
+.project-urls li {
+    margin-bottom: 0.25rem;
+    word-break: break-all;
+}
+
+.project-urls a {
+    color: var(--primary);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.project-current {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    font-size: 0.875rem;
+}
+
+.table-card {
+    padding: 0;
+    overflow-x: auto;
+}
+
+.deployments-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+
+.deployments-table th,
+.deployments-table td {
+    text-align: left;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+}
+
+.deployments-table tr:last-child td {
+    border-bottom: none;
+}
+
+.deployments-table a {
+    color: var(--primary);
+    text-decoration: none;
+}
+
+.row-actions form {
+    margin: 0;
+}
+
+.btn-link {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--primary);
+    cursor: pointer;
+    font-size: 0.875rem;
+}
+
+.current-tag {
+    margin-left: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--primary);
+    text-transform: uppercase;
+}
+
+.settings-card {
+    margin-bottom: 2rem;
+}
+
+.form-hint {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin: 0.5rem 0 0 0;
+}
+
+.form-actions {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+.mono {
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-size: 0.875rem;
+}
+
+textarea.form-input {
+    resize: vertical;
+}
+
+.checkbox-label {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    font-weight: 500;
+}
+
+.webhook-details {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.5rem 1rem;
+}
+
+.webhook-details dt {
+    font-weight: 600;
+    font-size: 0.875rem;
+}
+
+.webhook-details dd {
+    margin: 0;
+    word-break: break-all;
+}
+
+@media (max-width: 550px) {
+    .webhook-details {
+        grid-template-columns: 1fr;
+    }
+
+    .webhook-details dd {
+        margin-bottom: 0.5rem;
+    }
+}

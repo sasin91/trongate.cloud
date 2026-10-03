@@ -1,0 +1,51 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mariadb-operator
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: mariadb-operator
+  namespace: mariadb-operator
+spec:
+  interval: 12h
+  url: https://helm.mariadb.com/mariadb-operator
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: mariadb-operator-crds
+  namespace: mariadb-operator
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: mariadb-operator-crds
+      version: "26.10.x"
+      sourceRef:
+        kind: HelmRepository
+        name: mariadb-operator
+  install:
+    crds: CreateReplace
+  upgrade:
+    crds: CreateReplace
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: mariadb-operator
+  namespace: mariadb-operator
+spec:
+  interval: 1h
+  dependsOn:
+    - name: mariadb-operator-crds
+  chart:
+    spec:
+      chart: mariadb-operator
+      version: "26.10.x"
+      sourceRef:
+        kind: HelmRepository
+        name: mariadb-operator
+  # Defaults: the operator watches all namespaces, which the tenant Database/User/Grant
+  # CRs (in tc-team-*) referencing the MariaDB in "databases" rely on.
