@@ -7,12 +7,18 @@ let trongateMXOpeningModal = false;
         CORE_MX_ATTRIBUTES: ['mx-get', 'mx-post', 'mx-put', 'mx-delete', 'mx-patch', 'mx-remove'],
         REQUIRES_DATA_ATTRIBUTES: ['mx-post', 'mx-put', 'mx-patch'],
         DEFAULT_TIMEOUT: 60000,
-        POLLING_INTERVALS: new WeakMap() // Tracks polling timers
+        POLLING_INTERVALS: new WeakMap(), // Tracks polling timers
+        // Attributes preserved on startPolling() and restored on stopPolling().
+        POLLING_PRESERVED_ATTRIBUTES: ['mx-get', 'mx-select-oob', 'mx-target']
     };
 
     let lastRequestTime = 0;
     let mousedownEl;
     let mouseupEl;
+
+    // Tracks original mx-target values on modal trigger elements so they can be
+    // restored once the request that built the modal has completed.
+    const modalRequestTargets = new WeakMap();
 
     const Utils = {
         parseAttributeValue(value) {
@@ -232,11 +238,13 @@ let trongateMXOpeningModal = false;
         setMXHandlers(http, element) {
             http.onerror = function() {
                 Dom.attemptHideLoader(element);
+                Modal.restoreTriggerTarget(element);
                 console.error('Request failed');
             };
 
             http.ontimeout = function() {
                 Dom.attemptHideLoader(element);
+                Modal.restoreTriggerTarget(element);
                 console.warn('HTTP request timed out.');
                 
                 // Execute mx-on-timeout function if specified
@@ -320,30 +328,6 @@ let trongateMXOpeningModal = false;
             }
         },
 
-        initInvokeHttpRequest(element, httpMethodAttribute, event) {
-            const buildModalStr = element.getAttribute('mx-build-modal');
-
-            if (buildModalStr) {
-                const modalOptions = Utils.parseAttributeValue(buildModalStr);
-
-                if (modalOptions === false) {
-                    console.warn("Invalid JSON in mx-build-modal:", buildModalStr);
-                    return;
-                }
-
-                if (typeof modalOptions === "string") {
-                    const modalData = {
-                        id: modalOptions
-                    };
-                    Modal.buildMXModal(modalData, element, httpMethodAttribute, event);
-                } else {
-                    Modal.buildMXModal(modalOptions, element, httpMethodAttribute, event);
-                }
-            } else {
-                Http.invokeHttpRequest(element, httpMethodAttribute, event);
-            }
-        },
-
         invokeHttpRequest(element, httpMethodAttribute, event) {
             
             const { http, formData, targetElement } = Http.commonHttpRequest(element, httpMethodAttribute);
@@ -360,12 +344,17 @@ let trongateMXOpeningModal = false;
                     const requestUrl = Utils.getRequestUrl(element);
                     Utils.pushUrl(requestUrl);
                 }
+
+                // Restore the trigger's original mx-target once the request that
+                // built the modal has completed.
+                Modal.restoreTriggerTarget(element);
             };
         
             try {
                 http.send(formData);
             } catch (error) {
                 Dom.attemptHideLoader(element);
+                Modal.restoreTriggerTarget(element);
                 console.error('Error sending request:', error);
             }
         },
@@ -439,6 +428,9 @@ let trongateMXOpeningModal = false;
                 }
 
                 this.attemptInitOnSuccessActions(http, element);
+
+                // Update page title from mx-swap-title attribute
+                Dom.updateTitleFromResponse(http, element);
             } else {
                 this.handleErrorResponse(http, element);
             }
@@ -485,8 +477,11 @@ let trongateMXOpeningModal = false;
             } else {
                 const targetEl = Dom.establishTargetElement(element);
                 Modal.initAttemptCloseModal(targetEl, http, element);
-                this.attemptInitOnErrorActions(http, element);
             }
+
+            // mx-on-error actions fire regardless of whether an error animation is
+            // used, mirroring the success path (attemptInitOnSuccessActions).
+            this.attemptInitOnErrorActions(http, element);
         },
 
         attemptInitOnErrorActions(http, element) {
@@ -683,6 +678,16 @@ let trongateMXOpeningModal = false;
             return result;
         },
 
+        updateTitleFromResponse(http, element) {
+            const swapTitleAttr = Utils.getAttributeValue(element, 'mx-swap-title');
+            if (swapTitleAttr !== null) {
+                const titleMatch = http.responseText.match(/<title[^>]*>([^<]+)<\/title>/i);
+                if (titleMatch) {
+                    document.title = titleMatch[1];
+                }
+            }
+        },
+
         populateTargetEl(targetEl, http, element) {
             const selectStr = element.getAttribute('mx-select');
             const mxSwapStr = Dom.establishSwapStr(element);
@@ -693,7 +698,6 @@ let trongateMXOpeningModal = false;
 
             tempFragment.appendChild(tempDiv);
             try {
-                Dom.handleOobSwaps(tempFragment, selectOobStr);
                 Dom.handleMainSwaps(targetEl, tempFragment, selectStr, mxSwapStr);
                 Modal.attemptAddModalButtons(targetEl, element);
             } catch (error) {
@@ -810,23 +814,30 @@ let trongateMXOpeningModal = false;
         handleValidationErrors(containingForm, validationErrors) {
             containingForm.querySelectorAll('.form-field-validation-error')
                 .forEach(field => field.classList.remove('form-field-validation-error'));
-            containingForm.querySelectorAll('.validation-error-report')
+            containingForm.querySelectorAll('.validation-errors')
                 .forEach(report => report.remove());
 
             let firstErrorElement = null;
 
-            validationErrors.forEach(error => {
+            // Convert the object to an array of error objects
+            const errorArray = Object.entries(validationErrors).map(([field, messages]) => ({
+                field: field,
+                messages: Array.isArray(messages) ? messages : [messages]
+            }));
+
+            errorArray.forEach(error => {
                 const field = containingForm.querySelector(`[name="${error.field}"]`);
                 if (field) {
                     field.classList.add('form-field-validation-error');
 
-                    const errorContainer = document.createElement('div');
-                    errorContainer.className = 'validation-error-report';
+                    // Create validation errors list matching PHP framework structure
+                    const errorContainer = document.createElement('ul');
+                    errorContainer.className = 'validation-errors validation-errors--inline';
 
                     error.messages.forEach(message => {
-                        const errorDiv = document.createElement('div');
-                        errorDiv.innerHTML = '● ' + Utils.escapeHtml(message);
-                        errorContainer.appendChild(errorDiv);
+                        const listItem = document.createElement('li');
+                        listItem.textContent = message;
+                        errorContainer.appendChild(listItem);
                     });
 
                     // Find the closest ancestor with 'flex-row' class that's inside or is the form itself
@@ -847,7 +858,7 @@ let trongateMXOpeningModal = false;
 
                         if (currentElement && currentElement.tagName.toLowerCase() === 'label') {
                             // If a target label is found, insert the errorContainer immediately after the form label
-                            targetLabel.parentNode.insertBefore(errorContainer, targetLabel.nextSibling);
+                            currentElement.parentNode.insertBefore(errorContainer, currentElement.nextSibling);
                         } else {
                             // OTHERWISE, search for a containing element that is WITHIN containingForm with a class of 'flex-row'
                             const innerFlexRow = field.closest('.flex-row');
@@ -875,7 +886,6 @@ let trongateMXOpeningModal = false;
                         let parentContainer = field.closest("div"); // Assuming checkbox/radio is wrapped in a div for styling
                         if (parentContainer) {
                             parentContainer.classList.add("form-field-validation-error");
-                            // Note: Setting inline styles like this is usually not recommended. Consider using CSS classes.
                             parentContainer.style.textIndent = "7px";
                         }
                     }
@@ -898,7 +908,6 @@ let trongateMXOpeningModal = false;
                 });
                 Utils.executeMXFunction(functionName, customEvent);
             }
-
         },
 
         removeCloak() {
@@ -935,7 +944,9 @@ let trongateMXOpeningModal = false;
         handlePageLoadedEvents(element) {
             const attribute = CONFIG.CORE_MX_ATTRIBUTES.find(attr => element.hasAttribute(attr));
             if (attribute) {
-                event.preventDefault();
+                // Programmatic activation (post-XHR mx-on-success / mx-on-error):
+                // there is no user event in scope here, and calling
+                // preventDefault() on one threw a ReferenceError/TypeError.
                 Main.initInvokeHttpRequest(element, attribute);
             }
         },
@@ -947,8 +958,8 @@ let trongateMXOpeningModal = false;
                 validationErrorsAlert.remove();
             }
 
-            // Remove 'validation-error-report' elements within the form
-            containingForm.querySelectorAll('.validation-error-report')
+            // Remove 'validation-errors' elements within the form
+            containingForm.querySelectorAll('.validation-errors')
                 .forEach(el => el.remove());
 
             // Remove the 'form-field-validation-error' class from form fields
@@ -970,16 +981,117 @@ let trongateMXOpeningModal = false;
     };
 
     const Modal = {
-        buildMXModal(modalData, element, httpMethodAttribute, event) {
+        createModalHeading(modalData) {
+            if (typeof modalData !== 'object' || !modalData.modalHeading) {
+                return null;
+            }
 
-            // Is the trigger element inside a modal
+            const modalHeading = document.createElement('div');
+            modalHeading.className = 'modal-heading';
+            let renderCloseIcon = (modalData.renderCloseIcon) ? modalData.renderCloseIcon : true;
+
+            if (renderCloseIcon === false || renderCloseIcon === 'false') {
+                modalHeading.innerHTML = modalData.modalHeading;
+                return modalHeading;
+            }
+
+            modalHeading.classList.add('flex-row');
+            modalHeading.classList.add('align-center');
+            modalHeading.classList.add('justify-between');
+
+            const modalHeadingLhs = document.createElement('div');
+            modalHeadingLhs.innerHTML = modalData.modalHeading;
+            modalHeading.appendChild(modalHeadingLhs);
+
+            const modalHeadingRhs = document.createElement('div');
+
+            // Check if Font Awesome is available
+            const faIconAvailable = document.querySelector('link[href*="font-awesome"]') !== null || document.querySelector('.fa-times') !== null;
+
+            if (faIconAvailable) {
+                // If Font Awesome is available, use the Font Awesome icon
+                const closeIcon = document.createElement('i');
+                closeIcon.classList.add('fa', 'fa-times');
+                closeIcon.style.cursor = 'pointer'; // Add pointer cursor for clickability
+                closeIcon.setAttribute('onclick', 'closeModal()');
+
+                modalHeadingRhs.appendChild(closeIcon);
+            } else {
+                // If Font Awesome is not available, use SVG that mimics the fa-times icon
+                const closeIconSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                closeIconSvg.setAttribute('width', '16');
+                closeIconSvg.setAttribute('height', '16');
+                closeIconSvg.setAttribute('viewBox', '0 0 100 100');
+                closeIconSvg.setAttribute('fill', 'currentColor');
+                closeIconSvg.setAttribute('class', 'bi bi-x');
+                closeIconSvg.style.cursor = 'pointer';
+
+                const crossGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                crossGroup.setAttribute('transform', 'rotate(45, 50, 50)');
+
+                const verticalRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                verticalRect.setAttribute('x', '38');
+                verticalRect.setAttribute('y', '0');
+                verticalRect.setAttribute('width', '24');
+                verticalRect.setAttribute('height', '100');
+                verticalRect.setAttribute('rx', '12');
+                verticalRect.setAttribute('ry', '12');
+
+                const horizontalRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                horizontalRect.setAttribute('x', '0');
+                horizontalRect.setAttribute('y', '38');
+                horizontalRect.setAttribute('width', '100');
+                horizontalRect.setAttribute('height', '24');
+                horizontalRect.setAttribute('rx', '12');
+                horizontalRect.setAttribute('ry', '12');
+
+                crossGroup.appendChild(verticalRect);
+                crossGroup.appendChild(horizontalRect);
+                closeIconSvg.appendChild(crossGroup);
+
+                closeIconSvg.setAttribute('onclick', 'closeModal()');
+                modalHeadingRhs.appendChild(closeIconSvg);
+            }
+
+            modalHeading.appendChild(modalHeadingRhs);
+            return modalHeading;
+        },
+
+        createModalFooter(modalData) {
+            if (typeof modalData !== 'object' || !modalData.modalFooter) {
+                return null;
+            }
+
+            const modalFooter = document.createElement('div');
+            modalFooter.className = 'modal-footer';
+            modalFooter.innerHTML = modalData.modalFooter;
+            return modalFooter;
+        },
+
+        createSpinner() {
+            const spinner = document.createElement('div');
+            spinner.className = 'spinner mt-3 mb-3';
+            return spinner;
+        },
+
+        createModalShell(modalData, element, attributeName, bodyRenderer) {
+            // Is the trigger element inside a modal?
             const containingModal = element.closest('.modal');
             if (containingModal) {
                 closeModal();
             }
 
-            const modalId = typeof modalData === 'string' ? modalData : modalData.id;
+            let modalId;
+            if (typeof modalData === 'string') {
+                modalId = modalData;
+            } else if (typeof modalData === 'object' && modalData.id) {
+                modalId = modalData.id;
+            } else {
+                console.warn(attributeName + ' requires an id (either a string or an object with an id property).');
+                return null;
+            }
 
+            // Remove any pre-existing element that would collide with this id.
             const existingEl = document.getElementById(modalId);
             if (existingEl) {
                 existingEl.remove();
@@ -990,154 +1102,181 @@ let trongateMXOpeningModal = false;
             modal.id = modalId;
             modal.style.display = 'none';
 
-            if (typeof modalData === 'object' && modalData.modalHeading) {
-
-                const modalHeading = document.createElement('div');
-                modalHeading.className = 'modal-heading';
-                let renderCloseIcon = (modalData.renderCloseIcon) ? modalData.renderCloseIcon : true;
-
-                if (renderCloseIcon === false || renderCloseIcon === 'false') {
-                    modalHeading.innerHTML = modalData.modalHeading;
-                } else {
-                    modalHeading.classList.add('flex-row');
-                    modalHeading.classList.add('align-center');
-                    modalHeading.classList.add('justify-between');
-
-                    const modalHeadingLhs = document.createElement('div');
-                    modalHeadingLhs.innerHTML = modalData.modalHeading;
-                    modalHeading.appendChild(modalHeadingLhs);
-
-                    const modalHeadingRhs = document.createElement('div');
-
-                    // Check if Font Awesome is available
-                    const faIconAvailable = document.querySelector('link[href*="font-awesome"]') !== null || document.querySelector('.fa-times') !== null;
-
-                    if (faIconAvailable) {
-                        // If Font Awesome is available, use the Font Awesome icon
-                        const closeIcon = document.createElement('i');
-                        closeIcon.classList.add('fa', 'fa-times');
-                        closeIcon.style.cursor = 'pointer'; // Add pointer cursor for clickability
-                        closeIcon.setAttribute('onclick', 'closeModal()');
-
-                        modalHeadingRhs.appendChild(closeIcon);
-                    } else {
-                        // If Font Awesome is not available, use SVG that mimics the fa-times icon
-                        const closeIconSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-                        closeIconSvg.setAttribute('width', '16');
-                        closeIconSvg.setAttribute('height', '16');
-                        closeIconSvg.setAttribute('viewBox', '0 0 100 100');
-                        closeIconSvg.setAttribute('fill', 'currentColor');
-                        closeIconSvg.setAttribute('class', 'bi bi-x');
-                        closeIconSvg.style.cursor = 'pointer';
-
-                        const crossGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-                        crossGroup.setAttribute('transform', 'rotate(45, 50, 50)');
-
-                        const verticalRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-                        verticalRect.setAttribute('x', '38');
-                        verticalRect.setAttribute('y', '0');
-                        verticalRect.setAttribute('width', '24');
-                        verticalRect.setAttribute('height', '100');
-                        verticalRect.setAttribute('rx', '12');
-                        verticalRect.setAttribute('ry', '12');
-
-                        const horizontalRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-                        horizontalRect.setAttribute('x', '0');
-                        horizontalRect.setAttribute('y', '38');
-                        horizontalRect.setAttribute('width', '100');
-                        horizontalRect.setAttribute('height', '24');
-                        horizontalRect.setAttribute('rx', '12');
-                        horizontalRect.setAttribute('ry', '12');
-
-                        crossGroup.appendChild(verticalRect);
-                        crossGroup.appendChild(horizontalRect);
-                        closeIconSvg.appendChild(crossGroup);
-
-                        closeIconSvg.setAttribute('onclick', 'closeModal()');
-                        modalHeadingRhs.appendChild(closeIconSvg);
-                    }
-
-                    modalHeading.appendChild(modalHeadingRhs);
-                }
-
+            const modalHeading = this.createModalHeading(modalData);
+            if (modalHeading) {
                 modal.appendChild(modalHeading);
             }
 
             const modalBody = document.createElement('div');
             modalBody.className = 'modal-body';
 
-            const tempSpinner = document.createElement('div');
-            tempSpinner.setAttribute('class', 'spinner mt-3 mb-3');
-            modalBody.appendChild(tempSpinner);
+            // Let the caller fill the body while it is still detached.
+            if (typeof bodyRenderer === 'function') {
+                bodyRenderer(modalBody);
+            }
 
             modal.appendChild(modalBody);
 
-            if (typeof modalData === 'object' && modalData.modalFooter) {
-                const modalFooter = document.createElement('div');
-                modalFooter.className = 'modal-footer';
-                modalFooter.innerHTML = modalData.modalFooter;
+            const modalFooter = this.createModalFooter(modalData);
+            if (modalFooter) {
                 modal.appendChild(modalFooter);
             }
 
             document.body.appendChild(modal);
             this.openModal(modalId, modalData);
 
-            const targetModal = document.getElementById(modalId);
+            // Apply the width with a strict object guard; a string id carries no options.
             if (typeof modalData === 'object' && modalData.width) {
-                targetModal.style.maxWidth = modalData.width;
+                modal.style.maxWidth = modalData.width;
             }
 
-            if (element.hasAttribute('mx-target')) {
-                element.removeAttribute('mx-target');
+            return {
+                modal: modal,
+                modalBody: modalBody,
+                modalId: modalId
+            };
+        },
+
+        buildMXModal(modalData, element, httpMethodAttribute, event) {
+            const shell = this.createModalShell(modalData, element, 'mx-build-modal', (modalBody) => {
+                // Spinner shows while the XHR response is awaited; the content
+                // swap replaces it.
+                const tempSpinner = this.createSpinner();
+                modalBody.appendChild(tempSpinner);
+            });
+
+            if (!shell) {
+                return;
             }
-            const modalBodySelector = `#${modalId} .modal-body`;
-            element.setAttribute('mx-target', modalBodySelector);
+
+            const targetModal = shell.modal;
+
+            // mx-target handling: honour a user-supplied target that already points
+            // inside this modal; otherwise route the response into the modal body and
+            // restore the trigger's original mx-target once the request completes.
+            if (element.hasAttribute('mx-target')) {
+                const userTargetStr = element.getAttribute('mx-target');
+                const userTargetInsideModal = Modal.targetInsideModal(userTargetStr, targetModal);
+
+                if (!userTargetInsideModal) {
+                    // Preserve the original value so it can be restored afterwards.
+                    modalRequestTargets.set(element, userTargetStr);
+                    element.removeAttribute('mx-target');
+                }
+            } else {
+                // No original target; remember that so the forced modal-body target
+                // can be removed again once the request has completed.
+                modalRequestTargets.set(element, null);
+            }
+
+            if (!element.hasAttribute('mx-target')) {
+                const modalBodySelector = `#${shell.modalId} .modal-body`;
+                element.setAttribute('mx-target', modalBodySelector);
+            }
 
             Http.invokeHttpRequest(element, httpMethodAttribute, event);
         },
 
-        attemptAddModalButtons(targetEl, element) {
-            if (element.hasAttribute('mx-build-modal')) {
-                const modalValue = element.getAttribute('mx-build-modal');
-                const modalOptions = Utils.parseAttributeValue(modalValue);
+        buildMXIframe(modalData, element, httpMethodAttribute) {
+            const shell = this.createModalShell(modalData, element, 'mx-build-iframe', (modalBody) => {
+                modalBody.style.padding = '0';
 
-                if (modalOptions === false) {
-                    console.warn('Failed to parse mx-build-modal attribute:', modalValue);
-                    return;
+                const iframe = document.createElement('iframe');
+                iframe.style.width = '100%';
+                iframe.style.height = modalData.height || '400px';
+                iframe.style.border = 'none';
+                iframe.style.display = 'block';
+                iframe.style.backgroundColor = '#515151';
+
+                if (modalData.iframeAllow) {
+                    iframe.setAttribute('allow', modalData.iframeAllow);
+                }
+                if (modalData.iframeSandbox) {
+                    iframe.setAttribute('sandbox', modalData.iframeSandbox);
+                }
+                if (modalData.iframeAllowFullscreen !== false) {
+                    iframe.setAttribute('allowfullscreen', '');
                 }
 
-                const buttonPara = document.createElement('p');
-                buttonPara.setAttribute('class', 'text-center');
+                // Resolve ${placeholders} and normalise the URL before loading,
+                // matching the way regular MX request URLs are handled.
+                let iframeSrc = element.getAttribute(httpMethodAttribute);
+                if (iframeSrc) {
+                    iframeSrc = Utils.parseUrlWithPlaceholders(iframeSrc, element);
+                    iframeSrc = Utils.normalizeUrl(iframeSrc);
+                }
+                iframe.src = iframeSrc;
+                modalBody.appendChild(iframe);
+            });
+
+            if (!shell) {
+                return;
+            }
+        },
+
+        attemptAddModalButtons(targetEl, element) {
+            if (!element.hasAttribute('mx-build-modal')) {
+                return;
+            }
+
+            const modalValue = element.getAttribute('mx-build-modal');
+            const modalOptions = Utils.parseAttributeValue(modalValue);
+
+            if (modalOptions === false) {
+                console.warn('Failed to parse mx-build-modal attribute:', modalValue);
+                return;
+            }
+
+            // Buttons belong in the modal footer; if the content target is not inside
+            // a modal there is nowhere sensible to add them, so skip.
+            const containingModal = targetEl.closest('.modal');
+            if (!containingModal) {
+                return;
+            }
+
+            // Add the action buttons once per modal; repeated content swaps must not
+            // duplicate them.
+            if (containingModal.querySelector('.mx-modal-actions')) {
+                return;
+            }
+
+            if (typeof modalOptions === 'object') {
+                const actionsEl = document.createElement('div');
+                actionsEl.setAttribute('class', 'mx-modal-actions text-center');
                 let buttonsAdded = false;
 
-                if (typeof modalOptions === 'object') {
-                    if (modalOptions.hasOwnProperty('showCloseButton')) {
-                        const closeBtn = document.createElement('button');
-                        closeBtn.setAttribute('class', 'alt');
-                        closeBtn.innerText = 'Close';
-                        closeBtn.setAttribute('onclick', 'closeModal()');
-                        buttonPara.appendChild(closeBtn);
-                        buttonsAdded = true;
-                    }
+                if (modalOptions.hasOwnProperty('showCloseButton') && modalOptions.showCloseButton !== false && modalOptions.showCloseButton !== 'false') {
+                    const closeBtn = document.createElement('button');
+                    closeBtn.setAttribute('class', 'alt');
+                    closeBtn.innerText = 'Close';
+                    closeBtn.setAttribute('onclick', 'closeModal()');
+                    actionsEl.appendChild(closeBtn);
+                    buttonsAdded = true;
+                }
 
-                    if (modalOptions.hasOwnProperty('showDestroyButton')) {
-                        const destroyBtn = document.createElement('button');
-                        destroyBtn.setAttribute('class', 'alt');
-                        destroyBtn.innerText = 'Close';
-                        destroyBtn.addEventListener('click', function() {
-                            Modal.closeModal();
-                            let targetModal = this.closest('.modal');
-                            if (targetModal) {
-                                targetModal.remove();
-                            }
-                        });
-                        buttonPara.appendChild(destroyBtn);
-                        buttonsAdded = true;
-                    }
+                if (modalOptions.hasOwnProperty('showDestroyButton') && modalOptions.showDestroyButton !== false && modalOptions.showDestroyButton !== 'false') {
+                    const destroyBtn = document.createElement('button');
+                    destroyBtn.setAttribute('class', 'alt');
+                    destroyBtn.innerText = 'Destroy';
+                    destroyBtn.addEventListener('click', function() {
+                        const destroyModal = this.closest('.modal');
+                        window.closeModal();
+                        if (destroyModal) {
+                            destroyModal.remove();
+                        }
+                    });
+                    actionsEl.appendChild(destroyBtn);
+                    buttonsAdded = true;
                 }
 
                 if (buttonsAdded) {
-                    targetEl.appendChild(buttonPara);
+                    let modalFooter = containingModal.querySelector('.modal-footer');
+                    if (!modalFooter) {
+                        modalFooter = document.createElement('div');
+                        modalFooter.setAttribute('class', 'modal-footer');
+                        containingModal.appendChild(modalFooter);
+                    }
+                    modalFooter.appendChild(actionsEl);
                 }
             }
         },
@@ -1154,6 +1293,38 @@ let trongateMXOpeningModal = false;
                 if (closeOnErrorStr === 'true') {
                     window.closeModal();
                 }
+            }
+        },
+
+        restoreTriggerTarget(element) {
+            if (element && modalRequestTargets.has(element)) {
+                const originalTarget = modalRequestTargets.get(element);
+                if (originalTarget === null) {
+                    element.removeAttribute('mx-target');
+                } else {
+                    element.setAttribute('mx-target', originalTarget);
+                }
+                modalRequestTargets.delete(element);
+            }
+        },
+
+        targetInsideModal(targetStr, targetModal) {
+            if (!targetStr || !targetModal || targetStr === 'body' || targetStr === 'this' || targetStr === 'none') {
+                return false;
+            }
+
+            // Directive-style targets ('closest ...', 'find ...') cannot be resolved
+            // against the modal; treat them as outside it.
+            if (targetStr.startsWith('closest ') || targetStr.startsWith('find ')) {
+                return false;
+            }
+
+            try {
+                const resolvedTarget = document.querySelector(targetStr);
+                return resolvedTarget !== null && resolvedTarget !== document.body && targetModal.contains(resolvedTarget);
+            } catch (error) {
+                // Invalid selector - treat as outside the modal.
+                return false;
             }
         },
 
@@ -1210,27 +1381,7 @@ let trongateMXOpeningModal = false;
     const Animation = {
         // Animation with callback support
         initAnimateSuccessWithCallback(targetEl, http, element, callback) {
-            const animationContainer = this.estAnimationContainer(targetEl, element);
-            const animationContainerChildren = animationContainer.children;
-            const tempContainer = document.createElement('div');
-            tempContainer.setAttribute('class', 'mx-temp-container cloak');
-            const bodyEl = document.body;
-            bodyEl.appendChild(tempContainer);
-
-            // Loop through all the children of animationContainer and move them to tempContainer
-            while (animationContainerChildren.length > 0) {
-                tempContainer.appendChild(animationContainerChildren[0]);
-            }
-
-            this.mxDrawBigTick(animationContainer);
-
-            setTimeout(() => {
-                this.mxDestroyAnimation(animationContainer);
-                // Execute the callback after animation cleanup
-                if (callback && typeof callback === 'function') {
-                    callback();
-                }
-            }, 1300);
+            this.runAnimation(targetEl, element, (container) => this.mxDrawBigTick(container), callback);
         },
 
         initAnimateSuccess(targetEl, http, element) {
@@ -1240,6 +1391,12 @@ let trongateMXOpeningModal = false;
         },
 
         initAnimateError(targetEl, http, element) {
+            this.runAnimation(targetEl, element, (container) => this.mxDrawBigCross(container), () => {
+                Modal.initAttemptCloseModal(targetEl, http, element);
+            });
+        },
+
+        runAnimation(targetEl, element, drawIconFn, callback) {
             const animationContainer = this.estAnimationContainer(targetEl, element);
             const animationContainerChildren = animationContainer.children;
             const tempContainer = document.createElement('div');
@@ -1252,13 +1409,15 @@ let trongateMXOpeningModal = false;
                 tempContainer.appendChild(animationContainerChildren[0]);
             }
 
-            this.mxDrawBigCross(animationContainer);
+            drawIconFn(animationContainer);
 
             setTimeout(() => {
                 this.mxDestroyAnimation(animationContainer);
-                Modal.initAttemptCloseModal(targetEl, http, element);
+                // Execute the callback after animation cleanup
+                if (callback && typeof callback === 'function') {
+                    callback();
+                }
             }, 1300);
-
         },
 
         estAnimationContainer(targetEl, element) {
@@ -1277,88 +1436,69 @@ let trongateMXOpeningModal = false;
             return animationContainer;
         },
 
-        mxDrawBigCross(overlay) {
-            const bigCross = document.createElement("div");
-            bigCross.setAttribute("style", "display: none");
-            const trigger = document.createElement("div");
-            trigger.setAttribute("class", "mx-trigger");
-            bigCross.appendChild(trigger);
+        createAnimationIcon({ id, color, container, polylines }) {
+            const wrapper = document.createElement('div');
+            wrapper.setAttribute('style', 'display: none');
+            const trigger = document.createElement('div');
+            trigger.setAttribute('class', 'mx-trigger');
+            wrapper.appendChild(trigger);
 
-            const crossSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-            crossSvg.setAttribute("version", "1.1");
-            crossSvg.setAttribute("id", "mx-cross");
-            crossSvg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-            crossSvg.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink");
-            crossSvg.setAttribute("x", "0px");
-            crossSvg.setAttribute("y", "0px");
-            crossSvg.setAttribute("viewBox", "0 0 37 37");
-            crossSvg.setAttribute("xml:space", "preserve");
-            bigCross.appendChild(crossSvg);
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('version', '1.1');
+            svg.setAttribute('id', id);
+            svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+            svg.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+            svg.setAttribute('x', '0px');
+            svg.setAttribute('y', '0px');
+            svg.setAttribute('viewBox', '0 0 37 37');
+            svg.setAttribute('xml:space', 'preserve');
+            wrapper.appendChild(svg);
 
-            const crossPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
-            crossPath.setAttribute("class", "mx-circ path");
-            crossPath.setAttribute("style", "fill:none;stroke:#cc0000;stroke-width:3;stroke-linejoin:round;stroke-miterlimit:10");
-            crossPath.setAttribute("d", "M30.5,6.5L30.5,6.5c6.6,6.6,6.6,17.4,0,24l0,0c-6.6,6.6-17.4,6.6-24,0l0,0c-6.6-6.6-6.6-17.4,0-24l0,0C13.1-0.2,23.9-0.2,30.5,6.5z");
-            crossSvg.appendChild(crossPath);
+            // Shared circular outline; identical in both icons.
+            const circlePath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            circlePath.setAttribute('class', 'mx-circ path');
+            circlePath.setAttribute('style', 'fill:none;stroke:' + color + ';stroke-width:3;stroke-linejoin:round;stroke-miterlimit:10');
+            circlePath.setAttribute('d', 'M30.5,6.5L30.5,6.5c6.6,6.6,6.6,17.4,0,24l0,0c-6.6,6.6-17.4,6.6-24,0l0,0c-6.6-6.6-6.6-17.4,0-24l0,0C13.1-0.2,23.9-0.2,30.5,6.5z');
+            svg.appendChild(circlePath);
 
-            const polyline1 = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
-            polyline1.setAttribute("class", "mx-tick path");
-            polyline1.setAttribute("style", "fill:none;stroke:#cc0000;stroke-width:3;");
-            polyline1.setAttribute("points", "11.1,10 25.4,27.2");
-            crossSvg.appendChild(polyline1);
+            polylines.forEach((polylineConfig) => {
+                const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+                polyline.setAttribute('class', polylineConfig.class);
+                polyline.setAttribute('style', 'fill:none;stroke:' + color + ';stroke-width:3;' + (polylineConfig.styleSuffix || ''));
+                polyline.setAttribute('points', polylineConfig.points);
+                svg.appendChild(polyline);
+            });
 
-            const polyline2 = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
-            polyline2.setAttribute("class", "mx-cross path");
-            polyline2.setAttribute("style", "fill:none;stroke:#cc0000;stroke-width:3;");
-            polyline2.setAttribute("points", "24.1,10 12.4,27.2");
-            crossSvg.appendChild(polyline2);
-
-            overlay.appendChild(bigCross);
-            bigCross.style.display = "flex";
+            container.appendChild(wrapper);
+            wrapper.style.display = 'flex';
 
             setTimeout(() => {
-                const things = document.getElementsByClassName("mx-trigger")[0];
-                things.classList.add("mx-drawn");
+                const things = document.getElementsByClassName('mx-trigger')[0];
+                things.classList.add('mx-drawn');
             }, 100);
         },
 
+        mxDrawBigCross(overlay) {
+            this.createAnimationIcon({
+                id: 'mx-cross',
+                color: '#cc0000',
+                container: overlay,
+                polylines: [
+                    { class: 'mx-tick path', points: '11.1,10 25.4,27.2' },
+                    { class: 'mx-cross path', points: '24.1,10 12.4,27.2' }
+                ]
+            });
+        },
+
         mxDrawBigTick(animationContainer) {
-            const bigTick = document.createElement("div");
-            bigTick.setAttribute("style", "display: none");
-            const trigger = document.createElement("div");
-            trigger.setAttribute("class", "mx-trigger");
-            bigTick.appendChild(trigger);
-
-            const tickSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-            tickSvg.setAttribute("version", "1.1");
-            tickSvg.setAttribute("id", "mx-tick");
-            tickSvg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-            tickSvg.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink");
-            tickSvg.setAttribute("x", "0px");
-            tickSvg.setAttribute("y", "0px");
-            tickSvg.setAttribute("viewBox", "0 0 37 37");
-            tickSvg.setAttribute("xml:space", "preserve");
-            bigTick.appendChild(tickSvg);
-
-            const tickPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
-            tickPath.setAttribute("class", "mx-circ path");
-            tickPath.setAttribute("style", "fill:none;stroke:#007700;stroke-width:3;stroke-linejoin:round;stroke-miterlimit:10");
-            tickPath.setAttribute("d", "M30.5,6.5L30.5,6.5c6.6,6.6,6.6,17.4,0,24l0,0c-6.6,6.6-17.4,6.6-24,0l0,0c-6.6-6.6-6.6-17.4,0-24l0,0C13.1-0.2,23.9-0.2,30.5,6.5z");
-            tickSvg.appendChild(tickPath);
-
-            const polyline = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
-            polyline.setAttribute("class", "mx-tick path");
-            polyline.setAttribute("style", "fill:none;stroke:#007700;stroke-width:3;stroke-linejoin:round;stroke-miterlimit:10;");
-            polyline.setAttribute("points", "11.6,20 15.9,24.2 26.4,13.8");
-            tickSvg.appendChild(polyline);
-
-            animationContainer.appendChild(bigTick);
-            bigTick.style.display = "flex";
-
-            setTimeout(() => {
-                const things = document.getElementsByClassName("mx-trigger")[0];
-                things.classList.add("mx-drawn");
-            }, 100);
+            this.createAnimationIcon({
+                id: 'mx-tick',
+                color: '#007700',
+                container: animationContainer,
+                polylines: [
+                    { class: 'mx-tick path', points: '11.6,20 15.9,24.2 26.4,13.8', styleSuffix: 'stroke-linejoin:round;stroke-miterlimit:10;' }
+                ]
+            });
         },
 
         mxDestroyAnimation(animationContainer) {
@@ -1433,9 +1573,7 @@ let trongateMXOpeningModal = false;
             const attribute = CONFIG.CORE_MX_ATTRIBUTES.find(attr => element.hasAttribute(attr));
 
             // Start HTTP request processing before handling mx-remove
-            let httpRequestStarted = false;
             if (attribute && attribute !== 'mx-remove') {
-                httpRequestStarted = true;
                 if ((element.tagName.toLowerCase() === 'form' || element.closest('form')) &&
                     (attribute !== 'mx-get')) {
                     Main.mxSubmitForm(element, triggerEvent, attribute, event);
@@ -1468,19 +1606,6 @@ let trongateMXOpeningModal = false;
                 }, 0);
             }
 
-            // If no HTTP request was started and no mx-remove was handled, process as normal
-            if (!httpRequestStarted && !element.hasAttribute('mx-remove')) {
-                if ((element.tagName.toLowerCase() === 'form' || element.closest('form')) &&
-                    (attribute !== 'mx-get')) {
-                    Main.mxSubmitForm(element, triggerEvent, attribute, event);
-                } else if (element.tagName.toLowerCase() === 'select' &&
-                           attribute === 'mx-get' &&
-                           element.getAttribute('mx-trigger') === 'change') {
-                    Main.initInvokeHttpRequest(element, attribute, event);
-                } else {
-                    Main.initInvokeHttpRequest(element, attribute, event);
-                }
-            }
         },
 
         establishTriggerEvent(element) {
@@ -1524,10 +1649,20 @@ let trongateMXOpeningModal = false;
             }
         },
 
-        initInvokeHttpRequest(element, httpMethodAttribute) {
+        initInvokeHttpRequest(element, httpMethodAttribute, event) {
+            const buildIframeStr = element.getAttribute('mx-build-iframe');
             const buildModalStr = element.getAttribute('mx-build-modal');
 
-            if (buildModalStr) {
+            if (buildIframeStr) {
+                const iframeOptions = Utils.parseAttributeValue(buildIframeStr);
+
+                if (iframeOptions === false) {
+                    console.warn("Invalid JSON in mx-build-iframe:", buildIframeStr);
+                    return;
+                }
+
+                Modal.buildMXIframe(iframeOptions, element, httpMethodAttribute);
+            } else if (buildModalStr) {
                 const modalOptions = Utils.parseAttributeValue(buildModalStr);
 
                 if (modalOptions === false) {
@@ -1539,12 +1674,12 @@ let trongateMXOpeningModal = false;
                     const modalData = {
                         id: modalOptions
                     };
-                    Modal.buildMXModal(modalData, element, httpMethodAttribute);
+                    Modal.buildMXModal(modalData, element, httpMethodAttribute, event);
                 } else {
-                    Modal.buildMXModal(modalOptions, element, httpMethodAttribute);
+                    Modal.buildMXModal(modalOptions, element, httpMethodAttribute, event);
                 }
             } else {
-                Http.invokeHttpRequest(element, httpMethodAttribute);
+                Http.invokeHttpRequest(element, httpMethodAttribute, event);
             }
         },
 
@@ -1612,8 +1747,7 @@ let trongateMXOpeningModal = false;
             }
             
             // Store all original attributes that need to be preserved
-            const attributesToPreserve = ['mx-get', 'mx-select-oob', 'mx-target'];
-            attributesToPreserve.forEach(attr => {
+            CONFIG.POLLING_PRESERVED_ATTRIBUTES.forEach(attr => {
                 if (element.hasAttribute(attr)) {
                     element.setAttribute(`data-original-${attr}`, element.getAttribute(attr));
                 }
@@ -1627,20 +1761,23 @@ let trongateMXOpeningModal = false;
             
             return true;
         },
+        clearPollingTimer(timer) {
+            if (typeof timer === 'number') {
+                clearInterval(timer);
+            } else if (timer && typeof timer === 'object' && timer.timeoutId) {
+                clearTimeout(timer.timeoutId);
+            }
+        },
+
         stopPolling(element) {
             
             const timer = CONFIG.POLLING_INTERVALS.get(element);
             if (timer) {
-                if (typeof timer === 'number') {
-                    clearInterval(timer);
-                } else if (timer && typeof timer === 'object' && timer.timeoutId) {
-                    clearTimeout(timer.timeoutId);
-                }
+                Main.clearPollingTimer(timer);
                 CONFIG.POLLING_INTERVALS.delete(element);
                 
                 // Restore all original attributes
-                const attributesToRestore = ['mx-get', 'mx-select-oob', 'mx-target'];
-                attributesToRestore.forEach(attr => {
+                CONFIG.POLLING_PRESERVED_ATTRIBUTES.forEach(attr => {
                     const originalAttrName = `data-original-${attr}`;
                     if (element.hasAttribute(originalAttrName)) {
                         element.setAttribute(attr, element.getAttribute(originalAttrName));
@@ -1662,11 +1799,7 @@ let trongateMXOpeningModal = false;
         },
         stopAllPolling() {
             CONFIG.POLLING_INTERVALS.forEach((timer, element) => {
-                if (typeof timer === 'number') {
-                    clearInterval(timer);
-                } else if (timer && typeof timer === 'object' && timer.timeoutId) {
-                    clearTimeout(timer.timeoutId);
-                }
+                Main.clearPollingTimer(timer);
                 element.removeAttribute('mx-trigger');
             });
             CONFIG.POLLING_INTERVALS = new WeakMap(); // Reset the WeakMap
@@ -1765,45 +1898,21 @@ let trongateMXOpeningModal = false;
 })(window);
 
 const _mxOpenModal = function(modalId) {
-    trongateMXOpeningModal = true;
-    setTimeout(() => {
-        trongateMXOpeningModal = false;
-    }, 333);
-
-    const mxPageBody = document.body;
-    let mxPageOverlay = document.getElementById("overlay");
-
-    if (typeof mxPageOverlay === "undefined" || mxPageOverlay === null) {
-        const mxModalContainer = document.createElement("div");
-        mxModalContainer.setAttribute("id", "modal-container");
-        mxModalContainer.setAttribute("class", "mx-modal-container");
-        mxModalContainer.setAttribute("style", "z-index: 3;");
-        mxPageBody.prepend(mxModalContainer);
-
-        const mxPageOverlay = document.createElement("div");
-        mxPageOverlay.setAttribute("id", "overlay");
-        mxPageOverlay.setAttribute("style", "z-index: 2");
-        mxPageBody.prepend(mxPageOverlay);
-
-        const mxModal = document.getElementById(modalId);
-        mxModal.removeAttribute('style');
-
-        mxModal.setAttribute("class", "modal");
-        mxModal.setAttribute("id", modalId);
-        mxModal.style.zIndex = 4;
-        mxModalContainer.appendChild(mxModal);
-
-        setTimeout(() => {
-            mxModal.style.opacity = 1;
-            mxModal.style.marginTop = '12vh';
-        }, 0);
-    }
+    // Delegate to the canonical Modal.openModal (exposed via window.TrongateMX) so
+    // that marginTop and other modal options are honoured consistently.
+    window.TrongateMX.openModal(modalId);
 };
 
 const _mxCloseModal = function () {
     const mxModalContainer = document.getElementById("modal-container");
     if (mxModalContainer) {
         const openModal = mxModalContainer.firstChild;
+
+        // Stop any iframe media playback by blanking src before the modal is moved/hidden.
+        // This prevents audio/video continuing in the background after close.
+        const iframes = openModal.querySelectorAll('iframe');
+        iframes.forEach(iframe => { iframe.src = ''; });
+
         openModal.style.zIndex = -4;
         openModal.style.opacity = 0;
         openModal.style.marginTop = '12vh';

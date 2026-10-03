@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="css/trongate-icons.css">
     <link rel="stylesheet" href="css/trongate.css">
     <link rel="stylesheet" href="templates_module/css/admin.css">
+    <script src="js/trongate-mx.min.js"></script>
     <?= $additional_includes_top ?? '' ?>
     <title><?= $page_title ?? 'Admin Panel' ?></title>
 </head>
@@ -43,10 +44,15 @@
 </header>
 
 <aside>
+<?php
+if (strtolower(ENV) === 'dev') {
+    echo Modules::run('trongate_control-flo/draw_flow_trigger');
+}
+    ?>
     <nav aria-label="Main navigation">
         <ul class="side-nav-menu">
             <li>
-                <a href="dashboard">
+                <a href="#">
                     Dashboard
                 </a>
             </li>
@@ -56,14 +62,14 @@
                     <span aria-hidden="true" class="arrow-icon">&#9660;</span>
                 </div>
                 <ul id="messages-submenu" class="nav-submenu">
-                    <li><a href="messages/inbox">Inbox</a></li>
-                    <li><a href="messages/important">Important</a></li>
-                    <li><a href="messages/junk">Junk</a></li>
-                    <li><a href="messages/archives">Archives</a></li>
+                    <li><a href="#">Inbox</a></li>
+                    <li><a href="#">Important</a></li>
+                    <li><a href="#">Junk</a></li>
+                    <li><a href="#">Archives</a></li>
                 </ul>
             </li>
             <li>
-                <a href="news/manage">
+                <a href="#">
                     Manage News
                 </a>
             </li>
@@ -73,18 +79,18 @@
                     <span aria-hidden="true" class="arrow-icon">&#9660;</span>
                 </div>
                 <ul id="reports-submenu" class="nav-submenu">
-                    <li><a href="reports/sales">Sales Reports</a></li>
-                    <li><a href="reports/analytics">Analytics</a></li>
-                    <li><a href="reports/exports">Exports</a></li>
+                    <li><a href="#">Sales Reports</a></li>
+                    <li><a href="#">Analytics</a></li>
+                    <li><a href="#">Exports</a></li>
                 </ul>
             </li>
             <li>
-                <a href="settings">
+                <a href="#">
                     Settings
                 </a>
             </li>
             <li>
-                <a href="users/manage">
+                <a href="#">
                     Manage Users
                 </a>
             </li>
@@ -101,10 +107,10 @@
         <div class="footer-left">
             <span>&copy; <?= date('Y').' '.WEBSITE_NAME ?></span>
             <span class="separator">|</span>
-            <a href="https//trongate.io/" target="_blank">Powered by Trongate</a>
+            <a href="https://trongate.io/" target="_blank">Powered by Trongate</a>
         </div>
         <div class="footer-right">
-            <a href="#">Documentation</a>
+            <a href="https://trongate.io/documentation" target="_blank">Documentation</a>
             <a href="https://github.com/trongate/trongate-framework" target="_blank">GitHub</a>
         </div>
     </div>
@@ -112,11 +118,11 @@
     <div class="footer-sm">
         <div>&copy; <?= date('Y').' '.WEBSITE_NAME ?></div>
         <div class="footer-sm-links">
-            <a href="https//trongate.io/" target="_blank">Powered by Trongate</a>
+            <a href="https://trongate.io/" target="_blank">Powered by Trongate</a>
             <span class="separator">|</span>
-            <a href="#">Documentation</a>
+            <a href="https://trongate.io/documentation" target="_blank">Documentation</a>
             <span class="separator">|</span>
-            <a href="#">Support</a>
+            <a href="https://github.com/trongate/trongate-framework" target="_blank">GitHub</a>
         </div>
     </div>
 </footer>
@@ -130,12 +136,12 @@
   </div>
 
   <ul class="slide-nav-list">
-    <li><a href="dashboard">Dashboard</a></li>
-    <li><a href="users">Manage Users</a></li>
-    <li><a href="products">Products</a></li>
-    <li><a href="orders">Orders</a></li>
-    <li><a href="messages" class="highlight">Messages (1)</a></li>
-    <li><a href="settings">Settings</a></li>
+    <li><a href="#">Dashboard</a></li>
+    <li><a href="#">Manage Users</a></li>
+    <li><a href="#">Products</a></li>
+    <li><a href="#">Orders</a></li>
+    <li><a href="#">Messages (1)</a></li>
+    <li><a href="#">Settings</a></li>
     <li><a href="logout">Log Out</a></li>
   </ul>
 </nav>

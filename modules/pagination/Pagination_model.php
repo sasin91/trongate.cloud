@@ -4,8 +4,7 @@ class Pagination_model extends Model {
     // Required properties with their expected types
     private static $required_properties = [
         "total_rows" => "int",
-        "limit" => "int",
-        "record_name_plural" => "string"
+        "limit" => "int"
     ];
 
     // Optional properties with their default values and expected types
@@ -13,10 +12,12 @@ class Pagination_model extends Model {
         "include_showing_statement" => ["default" => false, "type" => "bool"],
         "page_num_segment" => ["default" => null, "type" => "int"],
         "pagination_root" => ["default" => null, "type" => "string"],
+        "pagination_query" => ["default" => "", "type" => "string"],
         "settings" => ["default" => [], "type" => "array"],
         "include_css" => ["default" => false, "type" => "bool"],
-        "showing_statement" => ["default" => null, "type" => "string"],  // NEW
-        "num_links_per_page" => ["default" => 7, "type" => "int"]  // NEW (moved from hardcoded)
+        "showing_statement" => ["default" => null, "type" => "string"],
+        "num_links_per_page" => ["default" => 7, "type" => "int"],
+        "record_name_plural" => ["default" => "records", "type" => "string"]
     ];
 
     // Map PHP types to expected types

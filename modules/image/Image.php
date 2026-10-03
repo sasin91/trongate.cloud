@@ -10,6 +10,35 @@
 class Image {
 
     /**
+     * Canonical file extension for each image MIME type accepted by upload().
+     *
+     * SECURITY: the extension of a stored upload is decided from this table,
+     * using the MIME type sniffed from the file's CONTENT - never from the
+     * extension the client supplied. A file named 'payload.php' whose bytes
+     * are a GIF is therefore stored as '*.gif'.
+     *
+     * @var array<string, string>
+     */
+    private const MIME_EXTENSIONS = [
+        'image/jpeg' => 'jpg',
+        'image/jpg' => 'jpg',
+        'image/png' => 'png',
+        'image/gif' => 'gif',
+        'image/webp' => 'webp'
+    ];
+
+    /**
+     * Exception code for a valid image whose format this PHP installation
+     * cannot process - typically WebP on a build whose GD extension was
+     * compiled without WebP support.
+     *
+     * The validation module checks for this code, so that it can report the
+     * real problem rather than telling the user that their image is not an
+     * image. 415 is the HTTP status code for 'Unsupported Media Type'.
+     */
+    public const UNSUPPORTED_FORMAT = 415;
+
+    /**
      * Holds the GD image resource instance.
      * @var resource|GdImage|null
      */
@@ -48,7 +77,7 @@ class Image {
     public function __construct(?string $filename = null) {
 
         // Protect this module from unwanted browser access
-        block_url_invocation('image');
+        block_url('image');
         
         if (!extension_loaded('gd')) {
             echo "<h1 style='color: red;'>*** Warning ***</h1>";
@@ -82,6 +111,12 @@ class Image {
      *                    - 'upload_to_module' (bool, optional): Whether to upload the file to a module-specific directory (default: false).
      *                    - 'make_rand_name' (bool, optional): Whether to generate a random name for the uploaded file (default: false).
      *                    - 'target_module' (string, optional): The target module for module-specific uploads (default: segment(1)).
+     *
+     * NOTE ON STORED FILE NAMES: the extension of the stored file always
+     * follows the MIME type sniffed from the file's content, never the
+     * extension carried in the client's file name. When 'make_rand_name' is
+     * true the base name is 16 cryptographically random bytes (hex-encoded),
+     * so the stored name is neither guessable nor derived from client input.
      *
      * @return array An associative array containing details about the uploaded file, including:
      *               - 'file_name' (string): The name of the uploaded file.
@@ -123,7 +158,6 @@ class Image {
         $allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
         $finfo = finfo_open(FILEINFO_MIME_TYPE);
         $mime_type = finfo_file($finfo, $uploaded_file['tmp_name']);
-        finfo_close($finfo);
         
         if (!in_array($mime_type, $allowed_types)) {
             throw new Exception("Invalid file type. Only image files are allowed.");
@@ -141,10 +175,19 @@ class Image {
             }
         }
 
+        // The stored extension is decided by the MIME type sniffed from the
+        // file's CONTENT (finfo, above) - never by the extension carried in
+        // the client's file name. A polyglot or misnamed upload therefore
+        // cannot land on disk under an extension it did not earn.
+        $extension = $this->extension_for_mime_type($mime_type);
+
+        if ($extension === '') {
+            throw new Exception('Invalid file type. Only image files are allowed.');
+        }
+
         // Generate file name with duplicate checking
         if ($make_rand_name === true) {
-            $extension = pathinfo($uploaded_file['name'], PATHINFO_EXTENSION);
-            $base_name = uniqid('img_', true);
+            $base_name = $this->random_base_name();
             $extension_with_dot = '.' . $extension;
             
             // Get unique file path
@@ -155,10 +198,9 @@ class Image {
             $sanitized = sanitize_filename($uploaded_file['name']);
             $file_info_parts = return_file_info($sanitized);
             $base_name = $file_info_parts['file_name'];
-            $extension = $file_info_parts['file_extension']; // Already includes dot
             
             // Get unique file path
-            $file_path = $this->ensure_unique_path($destination, $base_name, $extension);
+            $file_path = $this->ensure_unique_path($destination, $base_name, '.' . $extension);
             $file_name = basename($file_path);
         }
 
@@ -179,6 +221,8 @@ class Image {
         $this->load($file_path);
 
         // Resize the image if necessary
+        $reencode = false;
+
         if (($max_width > 0 && $this->get_width() > $max_width) || ($max_height > 0 && $this->get_height() > $max_height)) {
             $resize_factor_w = $this->get_width() / $max_width;
             $resize_factor_h = $this->get_height() / $max_height;
@@ -189,7 +233,21 @@ class Image {
                 $this->resize_to_height($max_height);
             }
 
-            // Save the resized image
+            $reencode = true;
+        }
+
+        // A file that is not resized above is otherwise published exactly as
+        // the client sent it. An image whose first 4 KB contain a short open
+        // tag byte pair ('<?') is re-encoded instead, so that no such bytes
+        // can survive in the published file. The pair is expected noise inside
+        // compressed image data, which is why the validation module's content
+        // scan does not reject images over it; this is the other half of that
+        // agreement. See Validation_model::scan_file_content().
+        if (!$reencode && $this->carries_short_open_tag_bytes($file_path)) {
+            $reencode = true;
+        }
+
+        if ($reencode) {
             $this->save($file_path);
         }
 
@@ -260,6 +318,57 @@ class Image {
     }
 
     /**
+     * The canonical file extension for a sniffed image MIME type.
+     *
+     * @param string $mime_type The MIME type detected with finfo_file().
+     * @return string The extension, without a leading dot; '' when the
+     *                MIME type is not an accepted image type.
+     */
+    private function extension_for_mime_type(string $mime_type): string {
+        return self::MIME_EXTENSIONS[strtolower(trim($mime_type))] ?? '';
+    }
+
+    /**
+     * Check whether a file's first 4 KB contain a short open tag ('<?').
+     *
+     * This is a storage decision, never a validation verdict: the byte pair
+     * 0x3C 0x3F occurs by chance in compressed image data (roughly one in
+     * every sixteen 4 KB windows), so a file cannot be refused over it. The
+     * pair is instead treated as a reason to re-encode before publishing.
+     *
+     * The 4 KB window matches the one used by the validation module's content
+     * scan, so the two checks stay in step.
+     *
+     * @param string $file_path The path of the file that was uploaded.
+     * @return bool True when the byte pair is present.
+     */
+    private function carries_short_open_tag_bytes(string $file_path): bool {
+        $handle = fopen($file_path, 'rb');
+
+        if ($handle === false) {
+            return false;
+        }
+
+        $content = fread($handle, 4096);
+        fclose($handle);
+
+        return strpos($content, '<?') !== false;
+    }
+
+    /**
+     * A cryptographically random base name for a stored upload.
+     *
+     * random_bytes() (128 bits, hex-encoded) replaces the previous uniqid()
+     * name, whose leading characters were derived from the current time and
+     * were therefore neither secret nor unpredictable.
+     *
+     * @return string The base name, without an extension.
+     */
+    private function random_base_name(): string {
+        return 'img_' . bin2hex(random_bytes(16));
+    }
+
+    /**
      * Generate a unique file path by appending incremental numbers if the file already exists.
      *
      * @param string $directory The target directory path.
@@ -320,12 +429,12 @@ class Image {
                 break;
             case IMAGETYPE_WEBP:
                 if (!function_exists('imagecreatefromwebp')) {
-                    throw new RuntimeException('WebP support not available in this PHP installation');
+                    throw new RuntimeException('WebP support not available in this PHP installation', self::UNSUPPORTED_FORMAT);
                 }
                 $this->image = imagecreatefromwebp($filename);
                 break;
             default:
-                throw new InvalidArgumentException("Unsupported image type");
+                throw new InvalidArgumentException('Unsupported image type: ' . image_type_to_mime_type($this->image_type), self::UNSUPPORTED_FORMAT);
         }
 
         if ($this->image === false) {
@@ -357,10 +466,13 @@ class Image {
         // Enhanced MIME validation with double-checking
         $finfo = finfo_open(FILEINFO_MIME_TYPE);
         $mime_type = finfo_file($finfo, $filename);
-        finfo_close($finfo);
 
         $allowed_types = array_values($this->content_type);
         if (!in_array($mime_type, $allowed_types)) {
+            if (strpos($mime_type, 'image/') === 0) {
+                // A valid image, in a format that Trongate does not accept.
+                throw new InvalidArgumentException('Unsupported image type: ' . $mime_type, self::UNSUPPORTED_FORMAT);
+            }
             throw new InvalidArgumentException('Invalid image type');
         }
 
@@ -405,8 +517,13 @@ class Image {
         $opening_bytes = fread($file, 256);
         fclose($file);
 
-        // Enhanced pattern including PHP tags
-        if (preg_match('/<(script|iframe|object|embed|applet)[\s>]|<\?php|<\?/i', $opening_bytes)) {
+        // Enhanced pattern including PHP tags. The '<?' pattern is not used
+        // here: the byte pair 0x3C 0x3F occurs by chance in compressed image
+        // data, so matching it against a binary file produces false positives.
+        // A bare short open tag in an image is handled where it belongs -
+        // such a file is re-encoded before it is published. See
+        // Image::carries_short_open_tag_bytes().
+        if (preg_match('/<(script|iframe|object|embed|applet)[\s>]|<\?php/i', $opening_bytes)) {
             throw new InvalidArgumentException('Potential security threat detected in image');
         }
 
@@ -822,7 +939,6 @@ class Image {
      */
     public function destroy(): void {
         if ($this->image !== null) {
-            imagedestroy($this->image);
             $this->image = null; // Explicitly unset the image to ensure it's no longer usable.
         }
     }

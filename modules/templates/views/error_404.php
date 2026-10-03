@@ -17,8 +17,8 @@
             <div class="mt-3">
                 <?php
                 echo anchor(BASE_URL, 'Go to Homepage', ['class' => 'button']);
-                echo form_button('back', 'Go Back', ['class' => 'button alt', 'onclick' => 'history.back()']);
-                ?>
+    echo form_button('back', 'Go Back', ['class' => 'button alt', 'onclick' => 'history.back()']);
+    ?>
             </div>
         </div>
     </div>
