@@ -16,3 +16,7 @@ ca_user_key.pub
 .env
 .env.*
 !.env.example
+
+# Tooling
+/vendor/
+.php-cs-fixer.cache

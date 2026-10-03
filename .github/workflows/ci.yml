@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  php:
+    name: PHP (lint, style, static analysis)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: curl, mysqli, pdo_mysql, sodium, pcntl
+          coverage: none
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer
+          key: composer-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-
+
+      - run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Syntax
+        run: composer lint
+
+      - name: Code style
+        run: composer cs
+
+      - name: PHPStan
+        run: vendor/bin/phpstan analyse --memory-limit=1G --error-format=github
+
+  shell:
+    name: Shell scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: ShellCheck
+        run: shellcheck --severity=warning bin/*.sh scripts/*.sh
+
+  docker:
+    name: Dockerfiles
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        dockerfile: [Dockerfile, Dockerfile.worker]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: ${{ matrix.dockerfile }}
+          failure-threshold: error
+
+  sql:
+    name: Migrations apply cleanly
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.2
+        env:
+          MARIADB_ROOT_PASSWORD: root
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply db/*.sql in order
+        run: |
+          mysql -h127.0.0.1 -uroot -proot < db/000_create_db.sql
+          for f in $(ls db/*.sql | sort | tail -n +2); do
+            echo "::group::$f"
+            mysql -h127.0.0.1 -uroot -proot tcloud < "$f"
+            echo "::endgroup::"
+          done
