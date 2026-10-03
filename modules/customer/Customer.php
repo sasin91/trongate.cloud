@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/traits/Customer_guard.php';
+require_once APPPATH . 'modules/platform/traits/Live_app_state.php';
 
 /**
  * Login, logout and lockouts are handled by the login module (user level 2).
@@ -13,16 +14,25 @@ require_once __DIR__ . '/traits/Customer_guard.php';
  */
 class Customer extends Trongate {
     use Customer_guard;
+    use Live_app_state;
 
     const CUSTOMER_USER_LEVEL = 2;
 
     function index(): void {
         $this->_make_sure_allowed();
 
+        $team_id = $this->_team_id_or_redirect();
+        $projects = $this->model->team_projects($team_id);
+        $live_states = $this->_live_app_states($team_id);
+
+        foreach ($projects as $project) {
+            $project->live_state = $this->_live_state_of($live_states, $project);
+        }
+
         $data = [
             'view_module' => 'customer',
             'view_file' => 'index',
-            'projects' => $this->model->team_projects($this->_team_id_or_redirect()),
+            'projects' => $projects,
             'additional_includes_top' => ['deployments_module/css/deployments.css'],
         ];
         $this->module('templates');

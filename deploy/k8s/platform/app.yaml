@@ -17,7 +17,9 @@ spec:
       labels:
         app.kubernetes.io/name: trongate-cloud-app
     spec:
-      automountServiceAccountToken: false
+      # Read-only access to tenant Deployments/Pods for live app state (app-rbac.yaml)
+      serviceAccountName: trongate-cloud-app
+      automountServiceAccountToken: true
       enableServiceLinks: false
       securityContext:
         runAsNonRoot: true

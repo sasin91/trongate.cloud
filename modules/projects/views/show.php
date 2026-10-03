@@ -48,6 +48,12 @@ $short_sha = fn(?string $sha) => $sha ? substr($sha, 0, 7) : '';
                 <?php if ($current->completed_at): ?><span class="muted"><?= htmlspecialchars($current->completed_at) ?></span><?php endif; ?>
             <?php endif; ?>
         </div>
+
+        <?php if ($live_state !== null): ?>
+            <div class="project-live" id="live-state" mx-get="projects/<?= $project->id ?>/live-state" mx-trigger="every 5s">
+                <?php require __DIR__ . '/_live_state.php'; ?>
+            </div>
+        <?php endif; ?>
     </div>
 
     <div class="section-header">

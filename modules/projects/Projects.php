@@ -4,6 +4,7 @@ require_once APPPATH . 'modules/customer/traits/Customer_guard.php';
 require_once APPPATH . 'modules/services/traits/Provider_clients.php';
 require_once __DIR__ . '/traits/Project_form.php';
 require_once APPPATH . 'modules/platform/manifests/Manifests.php';
+require_once APPPATH . 'modules/platform/traits/Live_app_state.php';
 
 /**
  * Customer projects: create, overview, deploy/rollback and platform settings.
@@ -19,6 +20,7 @@ class Projects extends Trongate {
     use Customer_guard;
     use Provider_clients;
     use Project_form;
+    use Live_app_state;
 
     const MAX_PERSISTENT_PATHS = 20;
 
@@ -100,6 +102,7 @@ class Projects extends Trongate {
             'current' => $current,
             'deployments' => $deployments,
             'can_rollback' => $this->model->rollback_target($project) !== false,
+            'live_state' => $this->_live_app_state($project),
             'additional_includes_top' => [
                 'deployments_module/css/deployments.css',
                 'projects_module/css/projects.css',
@@ -107,6 +110,22 @@ class Projects extends Trongate {
         ];
         $this->module('templates');
         $this->templates->customer($data);
+    }
+
+    /**
+     * MX partial polled by the project page: the app's live state in the cluster.
+     */
+    function live_state(): void {
+        $this->_make_sure_allowed();
+        $team_id = $this->_team_id_or_redirect();
+        $project = $this->model->find_team_project($team_id, segment(3, 'int'));
+
+        if ($project === false) {
+            http_response_code(404);
+            return;
+        }
+
+        $this->view('_live_state', ['live_state' => $this->_live_app_state($project)]);
     }
 
     function deploy(): void {

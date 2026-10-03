@@ -85,6 +85,29 @@
     color: #3730a3;
 }
 
+/* Live app states (App_state) */
+.live-running {
+    background-color: #d1fae5;
+    color: #065f46;
+}
+
+.live-asleep,
+.live-not_running {
+    background-color: #f3f4f6;
+    color: #374151;
+}
+
+.live-starting {
+    background-color: #fef3c7;
+    color: #92400e;
+}
+
+.live-crashing,
+.live-stuck {
+    background-color: #fee2e2;
+    color: #991b1b;
+}
+
 @media (max-width: 550px) {
     .deployment-meta {
         grid-template-columns: 1fr;

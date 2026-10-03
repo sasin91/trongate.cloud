@@ -12,7 +12,9 @@
                 <a href="projects/<?= $project->id ?>" class="card">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
                         <h3><?= htmlspecialchars($project->label) ?></h3>
-                        <?php if (!empty($project->current_status)): ?>
+                        <?php if ($project->live_state !== null): ?>
+                            <span class="status-pill live-<?= htmlspecialchars($project->live_state['state']) ?>" title="<?= htmlspecialchars($project->live_state['detail']) ?>"><?= htmlspecialchars($project->live_state['label']) ?></span>
+                        <?php elseif (!empty($project->current_status)): ?>
                             <span class="status-pill status-<?= htmlspecialchars($project->current_status) ?>"><?= htmlspecialchars(str_replace('_', ' ', $project->current_status)) ?></span>
                         <?php else: ?>
                             <span class="status-pill status-pending">not live</span>

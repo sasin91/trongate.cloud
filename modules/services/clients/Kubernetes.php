@@ -38,8 +38,21 @@ class Kubernetes extends Client {
         'k8s.mariadb.com/v1alpha1/Grant' => ['grants', true],
     ];
 
+    /** Overrides Client's 30s request timeout when set (see with_timeout) */
+    private ?int $timeout_seconds = null;
+
     function __construct(string $api_url, private string $token, private ?string $ca_file = null) {
         $this->api_base = rtrim($api_url, '/');
+    }
+
+    /**
+     * A copy whose requests (and connection attempts) give up after $seconds
+     */
+    function with_timeout(int $seconds): self {
+        $client = clone $this;
+        $client->timeout_seconds = $seconds;
+
+        return $client;
     }
 
     /**
@@ -79,7 +92,14 @@ class Kubernetes extends Client {
     }
 
     function _curl_options(): array {
-        return $this->ca_file ? [CURLOPT_CAINFO => $this->ca_file] : [];
+        $options = $this->ca_file ? [CURLOPT_CAINFO => $this->ca_file] : [];
+
+        if ($this->timeout_seconds !== null) {
+            $options[CURLOPT_TIMEOUT] = $this->timeout_seconds;
+            $options[CURLOPT_CONNECTTIMEOUT] = $this->timeout_seconds;
+        }
+
+        return $options;
     }
 
     /**

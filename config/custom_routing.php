@@ -25,6 +25,7 @@ $routes = [
     'projects/(:num)/settings' => 'projects/settings/$1',
     'projects/(:num)/settings/submit' => 'projects/submit_settings/$1',
     'projects/(:num)/verify-domain' => 'projects/verify_domain/$1',
+    'projects/(:num)/live-state' => 'projects/live_state/$1',
     'projects/(:num)' => 'projects/show/$1',
 
     // Deployments

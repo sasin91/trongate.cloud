@@ -53,8 +53,8 @@ Done in code:
 - **Platform actions** (`modules/platform/traits/Platform_actions.php`): queue deploys and rollbacks, and read projects, deployments and logs by explicit team id. A project has at most one queued deploy; new requests update it instead of adding another. Also handles custom-domain verification (`_trongate-cloud.{domain}` TXT record). The UI, webhooks and MCP all use it.
 - **Customer UI**:
   - Onboarding: team → GitHub token → first project. The project gets a slug and webhook secret, and its first deploy is queued.
-  - Dashboard: the team's projects with their live status.
-  - Project page: live URLs, the current deployment, deployment history, Deploy and Rollback (to the previous deployment or one you pick).
+  - Dashboard: the team's projects with their live state from the cluster (running, asleep, starting, crashing, stuck).
+  - Project page: live URLs, the current deployment, the app's live state (polled every 5s), deployment history, Deploy and Rollback (to the previous deployment or one you pick).
   - Project settings: custom domain with DNS verification, persistent paths, extra PHP extensions, always-on, and the GitHub webhook URL and secret.
   - Deployment page: logs polled with MX.
   - Team switcher: CSRF-protected.
@@ -70,6 +70,7 @@ Done in code:
   - BuildKit: a namespace, quota and NetworkPolicy; daemons are created per build.
   - Sablier.
   - Platform: the app, the worker, and its own MariaDB `platform`, which tenants cannot reach.
+  - App access: a cluster-wide read-only role on Deployments and Pods for live app state (`platform/app-rbac.yaml`).
   - Worker access: RBAC with write-only Secrets, plus admission policies that limit where the worker writes and what the objects contain.
 
 Still open:
