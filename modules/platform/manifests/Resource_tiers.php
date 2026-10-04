@@ -63,6 +63,22 @@ class Resource_tiers {
     }
 
     /**
+     * A rung's position on the ladder, 0 = smallest (unknown names rank as the default)
+     */
+    static function rank(string $tier): int {
+        return (int) array_search(self::exists($tier) ? $tier : self::DEFAULT_TIER, array_keys(self::TIERS), true);
+    }
+
+    /**
+     * The highest rung among these tier names
+     *
+     * @param list<string> $tiers
+     */
+    static function largest(array $tiers): string {
+        return array_reduce($tiers, fn(string $carry, string $tier) => self::rank($tier) > self::rank($carry) ? $tier : $carry, self::DEFAULT_TIER);
+    }
+
+    /**
      * Container requests/limits (cpu + memory) for a rung
      *
      * @return array{requests: array{cpu: string, memory: string}, limits: array{cpu: string, memory: string}}

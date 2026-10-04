@@ -34,7 +34,9 @@ class Manifests {
         'limits' => ['cpu' => '200m', 'memory' => '128Mi', 'ephemeral-storage' => '256Mi'],
     ];
 
-    // cpu/memory must admit two pods of the top Resource_tiers rung (_assert_quota_fits_ladder)
+    // Shared by every project in the team: projects are refused a tier (or a new
+    // project) that would not fit (quota_shortfall). cpu/memory must admit two
+    // pods of the top Resource_tiers rung (_assert_quota_fits_ladder).
     const TENANT_QUOTA = [
         'requests.cpu' => '2',
         'requests.memory' => '4Gi',
@@ -660,25 +662,52 @@ class Manifests {
     }
 
     /**
-     * A rollout runs the old and the new pod side by side (maxSurge 1), so the
-     * quota must admit two pods of the top rung or an app on it could never be
-     * redeployed. Fails loudly when someone grows the ladder past the quota.
+     * The TENANT_QUOTA key a team would exceed if it ran one pod of each of these
+     * tiers, or null when they fit.
+     *
+     * The quota covers the whole team namespace, so every project counts, asleep
+     * ones too (they wake up). A rollout also runs the old and the new pod side by
+     * side (maxSurge 1), so there must be room for one more pod of the largest
+     * tier; one is enough because the worker runs one task at a time. Init
+     * containers are smaller than any rung, so they never decide the fit.
+     *
+     * @param list<string> $tiers one resource tier name per project
+     */
+    static function quota_shortfall(array $tiers): ?string {
+        if (empty($tiers)) {
+            return null;
+        }
+
+        $pods = array_map(fn(string $tier) => Resource_tiers::resources($tier), $tiers);
+        $largest = Resource_tiers::resources(Resource_tiers::largest($tiers));
+        $pods[] = $largest;
+
+        foreach (['requests.cpu', 'limits.cpu', 'requests.memory', 'limits.memory'] as $key) {
+            [$kind, $resource] = explode('.', $key);
+            $parse = $resource === 'cpu' ? self::_millicores(...) : self::_mebibytes(...);
+            $total = array_sum(array_map(fn(array $pod) => $parse($pod[$kind][$resource]), $pods));
+
+            if ($total > $parse(self::TENANT_QUOTA[$key])) {
+                return $key;
+            }
+        }
+
+        if (count($pods) > (int) self::TENANT_QUOTA['pods']) {
+            return 'pods';
+        }
+
+        return null;
+    }
+
+    /**
+     * A team with a single app on the top rung must be able to redeploy it.
+     * Fails loudly when someone grows the ladder past the quota.
      */
     static function _assert_quota_fits_ladder(): void {
-        $top = Resource_tiers::resources(array_key_last(Resource_tiers::TIERS));
-        $pairs = [
-            'requests.cpu' => $top['requests']['cpu'],
-            'limits.cpu' => $top['limits']['cpu'],
-            'requests.memory' => $top['requests']['memory'],
-            'limits.memory' => $top['limits']['memory'],
-        ];
+        $key = self::quota_shortfall([array_key_last(Resource_tiers::TIERS)]);
 
-        foreach ($pairs as $key => $quantity) {
-            $parse = str_ends_with($key, '.cpu') ? self::_millicores(...) : self::_mebibytes(...);
-
-            if (2 * $parse($quantity) > $parse(self::TENANT_QUOTA[$key])) {
-                throw new LogicException("TENANT_QUOTA {$key} cannot fit two pods of the top resource tier");
-            }
+        if ($key !== null) {
+            throw new LogicException("TENANT_QUOTA {$key} cannot fit two pods of the top resource tier");
         }
     }
 

@@ -68,4 +68,21 @@ trait Project_records {
 
         return (int) $count > 0;
     }
+
+    /**
+     * The resource tier of every project in a team, for the tenant quota check
+     * (Manifests::quota_shortfall).
+     *
+     * @return list<string>
+     */
+    function team_resource_tiers(int $team_id, ?int $except_project_id = null): array {
+        $sql = <<<SQL
+            SELECT resource_tier
+            FROM project
+            WHERE team_id = :team_id AND id <> :except_id
+        SQL;
+        $rows = $this->db->query_bind($sql, ['team_id' => $team_id, 'except_id' => $except_project_id ?? 0], 'array');
+
+        return array_map(fn(array $row) => (string) $row['resource_tier'], $rows);
+    }
 }

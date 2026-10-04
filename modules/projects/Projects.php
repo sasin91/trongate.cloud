@@ -357,9 +357,28 @@ class Projects extends Trongate {
         return true;
     }
 
+    /**
+     * The tier must be on the ladder, and the team's apps must still fit its
+     * quota with it (Manifests::quota_shortfall); otherwise every later rollout
+     * in the team would hang on "exceeded quota". Moving down is always allowed.
+     */
     function _validate_resource_tier(string $tier): bool|string {
         if (!Resource_tiers::exists($tier)) {
             return 'Please choose one of the listed resource sizes.';
+        }
+
+        $team_id = $this->_team_id_or_redirect();
+        $project = $this->_find_or_redirect($team_id, segment(3, 'int'));
+
+        if (Resource_tiers::rank($tier) <= Resource_tiers::rank((string) $project->resource_tier)) {
+            return true;
+        }
+
+        $tiers = $this->model->team_resource_tiers($team_id, (int) $project->id);
+        $tiers[] = $tier;
+
+        if (Manifests::quota_shortfall($tiers) !== null) {
+            return "Your team's apps would not fit in its resources with this size. Choose a smaller size, or make another app smaller first.";
         }
 
         return true;
