@@ -2,20 +2,19 @@
 
 /**
  * App writes shared by onboarding and the apps module.
- * Requires the Platform_actions trait in the same model (slug + webhook secret helpers).
+ * Requires the Platform_actions trait in the same model (slug helper).
  *
  * @property-read Db $db
  */
 trait App_records {
 
     /**
-     * Create an app with a unique slug and a fresh webhook secret.
-     * $source_customer_id is whose GitHub token picked the repository; deploys fetch it with that token.
+     * Create an app with a unique slug. The repository must be one the GitHub
+     * App is installed on: deploys read it with an installation token.
      */
-    function create_app(int $project_id, int $source_customer_id, string $label, string $type, string $source_url, string $source_provider, string $source_branch = 'main', ?string $domain = null, bool $auto_deploy = true): int|false {
+    function create_app(int $project_id, string $label, string $type, string $source_url, string $source_provider, string $source_branch = 'main', ?string $domain = null, bool $auto_deploy = true): int|false {
         return $this->db->insert([
             'project_id' => $project_id,
-            'source_customer_id' => $source_customer_id,
             'label' => $label,
             'slug' => $this->generate_app_slug($label),
             'type' => $type,
@@ -25,7 +24,6 @@ trait App_records {
             'domain' => $domain,
             'auto_deploy' => $auto_deploy ? 1 : 0,
             'persistent_paths' => '[]',
-            'webhook_secret' => $this->generate_webhook_secret(),
         ], 'app');
     }
 

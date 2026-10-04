@@ -17,10 +17,9 @@ require_once __DIR__ . '/../../worker/Worker_actions.php';
  * - only apps that deploy on push: Deploy on push on (app.auto_deploy,
  *   the customer's switch) and a webhook deployment at some point, so
  *   manual-only apps never cost a GitHub call;
- * - before queueing, the app's webhook must still be on the repository
- *   (GitHub hooks API; the classic `repo` scope onboarding asks for covers it).
- *   A customer who deletes the webhook to stop push deploys gets none from
- *   here either, and a token that may not read hooks deploys nothing;
+ * - the trongate.cloud GitHub App must still be installed on the repository:
+ *   a customer who removes it (or the repository from its selection) gets no
+ *   deploys from here either;
  * - the app's own repository and branch, and a full 40-char head SHA;
  * - a SHA with ANY deployment row is never queued again, whatever its status:
  *   a failed build is for a human to retry, not for this job to loop on;
@@ -34,10 +33,10 @@ require_once __DIR__ . '/../../worker/Worker_actions.php';
  * that never finishes) is counted as stuck: app_deploy_reconcile_stuck_heads.
  *
  * Deploys go through Platform_actions::queue_deploy like the UI, webhooks and
- * MCP. GitHub calls use the token of the customer who added the app (as
- * deploy.php does), one per repository branch, spaced by GITHUB_DELAY_MS; a
- * rate-limited or rejected token skips the remaining apps using it until the
- * next run.
+ * MCP. GitHub calls use an installation token of the GitHub App per
+ * repository (as deploy.php does), one per repository branch, spaced by
+ * GITHUB_DELAY_MS; a rate-limited or rejected token skips the remaining apps
+ * on that repository until the next run.
  *
  * The worker runs one task at a time, so a run must not hold up customer
  * deploys: it stops as soon as a project task is waiting, and when GitHub itself
@@ -56,10 +55,10 @@ class Deploy_reconcile {
 
     /**
      * Outcomes where the head is undeployed and nothing will deploy it.
-     * too-recent is a webhook in flight, head-failed and no-webhook are on
+     * too-recent is a webhook in flight, head-failed and not-installed are on
      * purpose; none of them is a lost push.
      */
-    const STUCK_OUTCOMES = ['deploy-active', 'queue-failed', 'webhook-unverifiable'];
+    const STUCK_OUTCOMES = ['deploy-active', 'queue-failed'];
 
     /** Most apps checked per run, longest unchecked first (app.reconciled_at) */
     const MAX_APPS_PER_RUN = 200;
@@ -73,29 +72,25 @@ class Deploy_reconcile {
         'recovered',      // a missed push: deploy queued
         'too-recent',     // its webhook may still be on the way
         'deploy-active',  // a deployment is pending or running
-        'no-token',       // whoever added the app has no GitHub token
-        'token-rejected', // GitHub refused the token (401/403)
+        'not-installed',  // the GitHub App is not installed on the repository: not a missed push
+        'token-rejected', // GitHub refused the App or its token (401/403)
         'rate-limited',   // GitHub rate limit; retried next run
         'github-unavailable', // GitHub 5xx or unreachable; the run stops
         'branch-missing', // repository or branch not found (404)
-        'no-webhook',     // the webhook is gone from the repository: not a missed push
-        'webhook-unverifiable', // the token may not read the repository's hooks
         'queue-failed',
         'error',
     ];
 
     private mysqli $db;
 
-    private Runtime $runtime;
-
     private Task_log $log;
 
     private Worker_actions $actions;
 
-    /** @var array<int, Github|string> Owner (customer) id => client, or why their apps are skipped */
+    /** @var array<string, Github|string> Repository (lowercase owner/name) => client, or why its apps are skipped */
     private array $clients = [];
 
-    /** @var array<string, array{sha: string, committed_at: ?int}> "owner|repo|branch" => head */
+    /** @var array<string, array{sha: string, committed_at: ?int}> "repo|branch" => head */
     private array $heads = [];
 
     private int $github_calls = 0;
@@ -104,7 +99,6 @@ class Deploy_reconcile {
     private ?int $head_age = null;
 
     function __construct(Runtime $runtime, Task_log $log) {
-        $this->runtime = $runtime;
         $this->db = $runtime->db();
         $this->log = $log;
         $this->actions = new Worker_actions($this->db);
@@ -188,7 +182,7 @@ class Deploy_reconcile {
      */
     function apps(): array {
         $sql = <<<SQL
-            SELECT a.id, a.project_id, COALESCE(a.source_customer_id, p.owner_id) AS owner_id, a.source_url, a.source_branch
+            SELECT a.id, a.project_id, a.source_url, a.source_branch
             FROM app a
             JOIN project p ON p.id = a.project_id
             WHERE a.source_provider = 'github'
@@ -196,8 +190,6 @@ class Deploy_reconcile {
               AND p.deleted_at IS NULL
               AND a.source_url <> ''
               AND a.auto_deploy = 1
-              AND a.webhook_secret IS NOT NULL
-              AND a.webhook_secret <> ''
               AND EXISTS (
                   SELECT 1 FROM deployment d
                   WHERE d.app_id = a.id
@@ -250,7 +242,6 @@ class Deploy_reconcile {
     function reconcile(array $app): string {
         $app_id = (int) $app['id'];
         $project_id = (int) $app['project_id'];
-        $owner_id = (int) $app['owner_id'];
         $branch = (string) ($app['source_branch'] ?: 'main');
         $this->head_age = null;
 
@@ -259,18 +250,18 @@ class Deploy_reconcile {
         }
 
         $repo = $match[1];
-        $github = $this->client($owner_id);
+        $github = $this->client($repo, $app_id);
 
         if (is_string($github)) {
             return $github;
         }
 
-        $key = strtolower("{$owner_id}|{$repo}|{$branch}");
+        $key = strtolower("{$repo}|{$branch}");
 
         try {
             $head = $this->heads[$key] ??= $this->branch_head($github, $repo, $branch);
         } catch (Client_Error $e) {
-            return $this->github_failure($owner_id, $app_id, $e);
+            return $this->github_failure($repo, $app_id, $e);
         }
 
         $sha = $head['sha'];
@@ -305,22 +296,6 @@ class Deploy_reconcile {
 
         if ($active !== null) {
             return 'deploy-active';
-        }
-
-        // The customer may have removed the webhook to stop push deploys
-        try {
-            if (!$this->webhook_exists($github, $repo, $app_id)) {
-                return 'no-webhook';
-            }
-        } catch (Client_Error $e) {
-            $rate_limited = stripos($e->getMessage(), 'rate limit') !== false;
-
-            if ($e->getCode() === 404 || ($e->getCode() === 403 && !$rate_limited)) {
-                $this->log->warn("App #{$app_id}: the GitHub token that added it may not read {$repo}'s webhooks; not deploying " . substr($sha, 0, 7));
-                return 'webhook-unverifiable';
-            }
-
-            return $this->github_failure($owner_id, $app_id, $e);
         }
 
         try {
@@ -369,49 +344,31 @@ class Deploy_reconcile {
     }
 
     /**
-     * Whether the repository still has an active webhook pointing at this
-     * app's endpoint (webhooks/github/{id}). Only asked for a head that is
-     * about to be deployed, so it costs a call per missed push, not per app.
-     *
-     * @throws Client_Error 403/404 when the token may not read hooks
+     * A GitHub client with an installation token for the repository, or the
+     * outcome that skips the apps on it this run.
      */
-    function webhook_exists(Github $github, string $repo, int $app_id): bool {
-        usleep(self::GITHUB_DELAY_MS * 1000);
+    function client(string $repo, int $app_id): Github|string {
+        $key = strtolower($repo);
 
-        $this->github_calls++;
-        $hooks = $github->request('GET', "/repos/{$repo}/hooks?per_page=100");
-        $path = "/webhooks/github/{$app_id}";
+        if (!isset($this->clients[$key])) {
+            // The installation lookup and the token
+            $this->github_calls += 2;
 
-        foreach ($hooks as $hook) {
-            $url = rtrim((string) ($hook['config']['url'] ?? ''), '/');
-
-            if (!empty($hook['active']) && str_ends_with((string) parse_url($url, PHP_URL_PATH), $path)) {
-                return true;
+            try {
+                $this->clients[$key] = Platform_task::github_client($repo);
+            } catch (Client_Error $e) {
+                $this->clients[$key] = $e->getCode() === 404 ? 'not-installed' : $this->github_failure($repo, $app_id, $e);
             }
         }
 
-        return false;
-    }
-
-    /**
-     * A GitHub client with the customer's token, or the outcome that skips
-     * the apps using it.
-     */
-    function client(int $owner_id): Github|string {
-        if (!isset($this->clients[$owner_id])) {
-            $token = Platform_task::github_token($this->runtime, $owner_id);
-
-            $this->clients[$owner_id] = $token !== '' ? new Github($token) : 'no-token';
-        }
-
-        return $this->clients[$owner_id];
+        return $this->clients[$key];
     }
 
     /**
      * Map a GitHub error to an outcome. A refused or rate-limited token skips
-     * the owner's remaining apps this run instead of spending more calls.
+     * the repository's remaining apps this run instead of spending more calls.
      */
-    function github_failure(int $owner_id, int $app_id, Client_Error $e): string {
+    function github_failure(string $repo, int $app_id, Client_Error $e): string {
         $code = $e->getCode();
 
         $outcome = match (true) {
@@ -423,8 +380,8 @@ class Deploy_reconcile {
         };
 
         if ($outcome === 'token-rejected' || $outcome === 'rate-limited') {
-            $this->clients[$owner_id] = $outcome;
-            $this->log->warn("Customer #{$owner_id}'s GitHub token: GitHub answered {$code}; skipping the apps using it until the next run");
+            $this->clients[strtolower($repo)] = $outcome;
+            $this->log->warn("GitHub App token for {$repo}: GitHub answered {$code}; skipping the apps on it until the next run");
         } else {
             $this->log->warn("App #{$app_id}: {$e->getMessage()}");
         }

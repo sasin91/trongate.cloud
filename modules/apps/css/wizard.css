@@ -470,6 +470,11 @@
     font-size: 15px;
 }
 
+.wz-help p {
+    margin: 0;
+    font-size: 15px;
+}
+
 .wz-help ol {
     margin: 0;
     padding-left: 20px;
@@ -517,6 +522,7 @@
     display: inline-flex;
     align-items: center;
     gap: 10px;
+    text-decoration: none;
 }
 
 .wz-ok:hover {

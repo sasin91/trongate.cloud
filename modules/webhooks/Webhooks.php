@@ -1,13 +1,14 @@
 <?php
 
 /**
- * Public GitHub webhook endpoint: POST webhooks/github/{app_id}.
+ * The GitHub App's webhook: POST webhooks/github.
  *
- * Each app has its own secret (derived from the app.webhook_secret seed and
- * APP_KEY, shown in app settings); GitHub signs the raw body with it in
- * X-Hub-Signature-256. A signed push to the app's branch queues a deployment,
- * unless the customer turned Deploy on push off (app.auto_deploy).
- * The deploy task builds the branch head, so replaying an old push cannot roll back.
+ * GitHub signs the raw body with the App's webhook secret
+ * (GITHUB_APP_WEBHOOK_SECRET) in X-Hub-Signature-256, for every repository
+ * the App is installed on. A signed push queues a deployment of every app
+ * built from that repository and branch, unless its customer turned Deploy on
+ * push off (app.auto_deploy). The deploy task builds the branch head, so
+ * replaying an old push cannot roll back.
  *
  * @property-read Webhooks_model $model
  */
@@ -22,10 +23,8 @@ class Webhooks extends Trongate {
             return;
         }
 
-        $app = $this->model->find_webhook_app(segment(3, 'int'));
-
-        if ($app === false || empty($app->webhook_secret)) {
-            $this->_respond(404, ['error' => 'not_found']);
+        if (GITHUB_APP_WEBHOOK_SECRET === '') {
+            $this->_respond(503, ['error' => 'not_configured']);
             return;
         }
 
@@ -36,9 +35,7 @@ class Webhooks extends Trongate {
             return;
         }
 
-        $secret = $this->model->webhook_signing_secret((int) $app->id, (string) $app->webhook_secret);
-
-        if (!$this->_valid_signature($body, (string) ($_SERVER['HTTP_X_HUB_SIGNATURE_256'] ?? ''), $secret)) {
+        if (!$this->_valid_signature($body, (string) ($_SERVER['HTTP_X_HUB_SIGNATURE_256'] ?? ''), GITHUB_APP_WEBHOOK_SECRET)) {
             $this->_respond(401, ['error' => 'invalid_signature']);
             return;
         }
@@ -54,26 +51,22 @@ class Webhooks extends Trongate {
         if ($event === 'ping') {
             $this->_respond(200, ['ok' => true, 'message' => 'pong']);
         } elseif ($event === 'push') {
-            $this->_handle_push($app, $payload);
+            $this->_handle_push($payload);
         } else {
             $this->_respond(202, ['ok' => true, 'ignored' => 'event']);
         }
     }
 
     /**
-     * Queue a deploy for a push to the app's branch; ignore other refs, tags and branch deletions.
+     * Queue a deploy of each app on the pushed repository and branch; ignore
+     * tags, branch deletions and repositories no app is built from.
      */
-    function _handle_push(object $app, array $payload): void {
-        if (empty($app->auto_deploy)) {
-            $this->_respond(202, ['ok' => true, 'ignored' => 'auto_deploy_off']);
-            return;
-        }
-
+    function _handle_push(array $payload): void {
         $ref = (string) ($payload['ref'] ?? '');
         $sha = strtolower((string) ($payload['after'] ?? ''));
-        $branch = (string) ($app->source_branch ?: 'main');
+        $repository = $this->_repository_path((string) ($payload['repository']['html_url'] ?? ''));
 
-        if ($ref !== 'refs/heads/' . $branch) {
+        if (!str_starts_with($ref, 'refs/heads/') || $repository === '') {
             $this->_respond(202, ['ok' => true, 'ignored' => 'ref', 'ref' => $ref]);
             return;
         }
@@ -83,19 +76,29 @@ class Webhooks extends Trongate {
             return;
         }
 
-        if (!$this->_same_repository($app, $payload)) {
-            $this->_respond(202, ['ok' => true, 'ignored' => 'repository']);
+        $branch = substr($ref, strlen('refs/heads/'));
+        $deployments = [];
+        $skipped = [];
+
+        foreach ($this->model->apps_on_branch('https://github.com/' . $repository, $branch) as $app) {
+            if (empty($app->auto_deploy)) {
+                $skipped[(int) $app->id] = 'auto_deploy_off';
+                continue;
+            }
+
+            try {
+                $deployments[(int) $app->id] = $this->model->queue_deploy((int) $app->project_id, (int) $app->id, null, 'webhook', $sha);
+            } catch (RuntimeException $e) {
+                $skipped[(int) $app->id] = 'not_deployable';
+            }
+        }
+
+        if ($deployments === [] && $skipped === []) {
+            $this->_respond(202, ['ok' => true, 'ignored' => 'no_app']);
             return;
         }
 
-        try {
-            $deployment_id = $this->model->queue_deploy((int) $app->project_id, (int) $app->id, null, 'webhook', $sha);
-        } catch (RuntimeException $e) {
-            $this->_respond(422, ['error' => 'not_deployable', 'message' => $e->getMessage()]);
-            return;
-        }
-
-        $this->_respond(202, ['ok' => true, 'deployment_id' => $deployment_id, 'commit_sha' => $sha]);
+        $this->_respond(202, ['ok' => true, 'deployments' => $deployments, 'skipped' => $skipped, 'commit_sha' => $sha]);
     }
 
     /**
@@ -123,16 +126,6 @@ class Webhooks extends Trongate {
         $payload = json_decode($body, true);
 
         return is_array($payload) ? $payload : null;
-    }
-
-    /**
-     * The push must come from the app's repository (guards against a secret reused across repos).
-     */
-    function _same_repository(object $app, array $payload): bool {
-        $expected = $this->_repository_path((string) $app->source_url);
-        $actual = $this->_repository_path((string) ($payload['repository']['html_url'] ?? ''));
-
-        return $expected !== '' && $expected === $actual;
     }
 
     function _repository_path(string $url): string {

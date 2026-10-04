@@ -5,8 +5,8 @@
  *
  * Builds an app's GitHub repository with Railpack (FrankenPHP image) on
  * a BuildKit daemon started for this build only, pushes it to PLATFORM_REGISTRY
- * and rolls it out to its project's namespace. GitHub is read with the token
- * of the project's owner.
+ * and rolls it out to its project's namespace. GitHub is read with an
+ * installation token of the trongate.cloud GitHub App.
  *
  * Payload: {deployment_id, app_id, project_id, commit_sha?}
  *
@@ -42,14 +42,16 @@ return function (Task_log $log) use ($payload, $runtime): int {
     }
 
     $repo = $match[1];
-    // The token of whoever picked the repository: a member's private repo may be out of the owner's reach
-    $token = Platform_task::github_token($runtime, (int) $app['token_customer_id']);
 
-    if ($token === '') {
-        throw new RuntimeException('The GitHub account that added this app is not connected; they need to reconnect GitHub');
+    try {
+        $github = Platform_task::github_client($repo);
+    } catch (Client_Error $e) {
+        if ($e->getCode() === 404) {
+            throw new RuntimeException("The trongate.cloud GitHub app cannot read {$repo}; install it on the repository on GitHub");
+        }
+
+        throw $e;
     }
-
-    $github = new Github($token);
     $commit_sha = strtolower((string) ($payload['commit_sha'] ?? ''));
 
     // Webhook pushes always build the branch head: a replayed (validly signed) old

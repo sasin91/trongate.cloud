@@ -42,6 +42,10 @@ spec:
             - secretRef:
                 name: trongate-cloud-mcp
                 optional: true
+            # The GitHub App (sign-in, webhook); docs/github-app.md
+            - secretRef:
+                name: trongate-cloud-github
+                optional: true
           readinessProbe:
             tcpSocket:
               port: http

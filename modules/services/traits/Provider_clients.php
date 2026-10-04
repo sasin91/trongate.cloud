@@ -9,7 +9,7 @@
 trait Provider_clients {
 
     /**
-     * Get a client for the customer's provider credentials (GitHub is the only provider)
+     * Get a client with the customer's GitHub sign-in (GitHub is the only provider)
      * @return Github
      */
     function _provider_client(int $customer_id, string $provider): Client {
@@ -35,21 +35,6 @@ trait Provider_clients {
     function _validate_source_provider(string $provider): bool|string {
         if (($this->services::PROVIDERS[$provider] ?? null) !== 'source') {
             return 'Invalid provider.';
-        }
-
-        return true;
-    }
-
-    /**
-     * Validation callback: the GitHub token must authenticate
-     */
-    function _validate_github_token(string $token): bool|string {
-        if (empty($token)) {
-            return 'Personal Access Token is required.';
-        }
-
-        if (!$this->services->make('github', $token)->validate_credentials()) {
-            return 'Invalid token. Please check your GitHub Personal Access Token.';
         }
 
         return true;

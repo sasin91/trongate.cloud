@@ -7,6 +7,9 @@ $routes = [
     'logout' => 'login/logout',
     'register' => 'customer/register',
     'register/submit' => 'customer/submit_register',
+    'auth/github' => 'github_auth/start',
+    'auth/github/callback' => 'github_auth/callback',
+    'auth/github/installed' => 'github_auth/installed',
 
     // Dashboard: the customer's projects
     'dashboard' => 'customer',
@@ -21,7 +24,6 @@ $routes = [
     'projects/new/submit' => 'projects/submit',
     'projects/(:num)/apps/new' => 'apps/create/$1',
     'projects/(:num)/apps/submit' => 'apps/submit/$1',
-    'projects/(:num)/apps/source' => 'apps/submit_source/$1',
     'projects/(:num)/settings' => 'projects/settings/$1',
     'projects/(:num)/settings/submit' => 'projects/submit_settings/$1',
     'projects/(:num)/delete' => 'projects/submit_delete/$1',
@@ -45,8 +47,8 @@ $routes = [
     'deployments/(:num)' => 'deployments/show/$1',
     'deployments/(:num)/logs' => 'deployments/logs_partial/$1',
 
-    // GitHub push webhooks (public, HMAC-signed per app)
-    'webhooks/github/(:num)' => 'webhooks/github/$1',
+    // The GitHub App's webhook (public, HMAC-signed with GITHUB_APP_WEBHOOK_SECRET)
+    'webhooks/github' => 'webhooks/github',
 
     // Admin MCP endpoint (modules/mcp), MCP_SECRET bearer auth
     'mcp' => 'mcp/index',

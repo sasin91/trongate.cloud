@@ -13,6 +13,8 @@
 <body>
     <main>
         <h1>Create Account</h1>
+        <?= flashdata('<div class="flash-message" role="alert">', '</div>') ?>
+        <?php require APPPATH . 'modules/customer/views/_github_button.php'; ?>
         <?= form_open($form_location, ['class' => 'login-form']) ?>
         <?= validation_errors('<div class="validation-errors">', '</div>') ?>
 

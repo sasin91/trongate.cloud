@@ -50,7 +50,7 @@ Start Claude Code on your machine with the server configured, then enable **Remo
 ## Security
 
 - The secret is compared with `hash_equals` over sha256 digests. It is never logged or returned.
-- Tools resolve an app's or deployment's project first and then go through `Platform_actions` with that project id. `webhook_secret` and other internal columns are never returned.
+- Tools resolve an app's or deployment's project first and then go through `Platform_actions` with that project id. Internal columns are never returned.
 - Missing or wrong secret: `401`. Unsupported `MCP-Protocol-Version`: `400`. Body over 1 MB: `413`.
 - **DNS rebinding:** a request with an `Origin` header must match `BASE_URL`'s origin or an entry in `MCP_ALLOWED_ORIGINS` (comma separated), otherwise `403`. CLI clients send no `Origin`.
 - The web server must pass the `Authorization` header to PHP. Nginx/Herd and FrankenPHP do by default.

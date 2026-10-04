@@ -130,3 +130,49 @@ button[type="submit"]:active, input[type="submit"]:active {
 .validation-errors p {
     margin: 0;
 }
+
+/* Continue with GitHub (modules/github_auth) */
+.github-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.75rem;
+    border-radius: 4px;
+    background-color: #24292f;
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.github-btn:hover {
+    background-color: #32383f;
+}
+
+.or-divider {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 1.25rem 0;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.or-divider::before,
+.or-divider::after {
+    content: "";
+    flex: 1;
+    border-top: 1px solid var(--border-dim);
+}
+
+.flash-message {
+    background: #fbe5e5;
+    color: #a12c2c;
+    border-radius: 4px;
+    padding: 0.75rem;
+    margin-bottom: 1.25rem;
+    font-size: 0.9rem;
+}
