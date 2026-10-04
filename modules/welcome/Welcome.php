@@ -38,7 +38,7 @@ class Welcome extends Trongate {
         ];
 
         $data = [
-            'project' => (object) [
+            'app' => (object) [
                 'id' => 0,
                 'label' => 'Storefront',
                 'slug' => 'storefront',

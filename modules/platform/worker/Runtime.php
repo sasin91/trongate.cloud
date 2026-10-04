@@ -158,7 +158,7 @@ class Runtime {
 
     /**
      * Resolve a module reference to its value.
-     * Example: secrets:project,12,github
+     * Example: secrets:customer,12,github (a customer's GitHub token)
      */
     function resolve_reference(string $ref): mixed {
         return $this->module_ref->resolve($ref);

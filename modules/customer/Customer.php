@@ -18,24 +18,32 @@ class Customer extends Trongate {
 
     const CUSTOMER_USER_LEVEL = 2;
 
+    /**
+     * Dashboard: every project the customer is a member of, with its apps.
+     */
     function index(): void {
         $this->_make_sure_allowed();
+        $customer = $this->_customer_or_redirect();
 
-        $project_id = $this->_project_id_or_redirect();
-        $apps = $this->model->project_apps($project_id);
-        $live_states = $this->_live_app_states($project_id);
+        $projects = $this->model->member_projects((int) $customer->id);
 
-        foreach ($apps as $app) {
-            $app->live_state = $this->_live_state_of($live_states, $app);
+        foreach ($projects as $project) {
+            $project->apps = $this->model->project_apps((int) $project->id);
+            $live_states = empty($project->apps) ? null : $this->_live_app_states($project);
+
+            foreach ($project->apps as $app) {
+                $app->live_state = $this->_live_state_of($live_states, $app);
+            }
         }
 
         $data = [
             'view_module' => 'customer',
             'view_file' => 'index',
-            'apps' => $apps,
+            'projects' => $projects,
             'additional_includes_top' => [
                 'deployments_module/css/deployments.css',
                 'apps_module/css/apps.css',
+                'projects_module/css/projects.css',
             ],
         ];
         $this->module('templates');
@@ -71,27 +79,5 @@ class Customer extends Trongate {
             return 'This email is already registered.';
         }
         return true;
-    }
-
-    function switch_project(): void {
-        $this->_make_sure_allowed();
-
-        if (REQUEST_TYPE !== 'POST') {
-            http_response_code(405);
-            die('Method not allowed');
-        }
-
-        // No rules: run() only enforces the CSRF token from form_close()
-        $this->validation->run();
-
-        $project_id = (int) post('project_id');
-
-        if ($project_id > 0) {
-            $this->model->set_current_project($project_id);
-        }
-
-        // Redirect back to referrer (same site only) or dashboard
-        $referrer = $_SERVER['HTTP_REFERER'] ?? '';
-        redirect(str_starts_with($referrer, BASE_URL) ? $referrer : BASE_URL . 'dashboard');
     }
 }

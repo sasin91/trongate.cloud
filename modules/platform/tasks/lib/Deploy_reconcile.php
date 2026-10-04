@@ -34,9 +34,10 @@ require_once __DIR__ . '/../../worker/Worker_actions.php';
  * that never finishes) is counted as stuck: app_deploy_reconcile_stuck_heads.
  *
  * Deploys go through Platform_actions::queue_deploy like the UI, webhooks and
- * MCP. GitHub calls use the project's stored token (as deploy.php does), one per
- * repository branch, spaced by GITHUB_DELAY_MS; a rate-limited or rejected
- * token skips the project's remaining apps until the next run.
+ * MCP. GitHub calls use the token of the app's project owner (as deploy.php
+ * does), one per repository branch, spaced by GITHUB_DELAY_MS; a rate-limited
+ * or rejected token skips the remaining apps of that owner's projects until
+ * the next run.
  *
  * The worker runs one task at a time, so a run must not hold up customer
  * deploys: it stops as soon as a project task is waiting, and when GitHub itself
@@ -72,7 +73,7 @@ class Deploy_reconcile {
         'recovered',      // a missed push: deploy queued
         'too-recent',     // its webhook may still be on the way
         'deploy-active',  // a deployment is pending or running
-        'no-token',       // the project has no GitHub token
+        'no-token',       // the project owner has no GitHub token
         'token-rejected', // GitHub refused the token (401/403)
         'rate-limited',   // GitHub rate limit; retried next run
         'github-unavailable', // GitHub 5xx or unreachable; the run stops
@@ -91,10 +92,10 @@ class Deploy_reconcile {
 
     private Worker_actions $actions;
 
-    /** @var array<int, Github|string> Project id => client, or why the project is skipped */
+    /** @var array<int, Github|string> Owner (customer) id => client, or why their apps are skipped */
     private array $clients = [];
 
-    /** @var array<string, array{sha: string, committed_at: ?int}> "project|repo|branch" => head */
+    /** @var array<string, array{sha: string, committed_at: ?int}> "owner|repo|branch" => head */
     private array $heads = [];
 
     private int $github_calls = 0;
@@ -187,20 +188,22 @@ class Deploy_reconcile {
      */
     function apps(): array {
         $sql = <<<SQL
-            SELECT p.id, p.project_id, p.source_url, p.source_branch
-            FROM app p
-            WHERE p.source_provider = 'github'
+            SELECT a.id, a.project_id, p.owner_id, a.source_url, a.source_branch
+            FROM app a
+            JOIN project p ON p.id = a.project_id
+            WHERE a.source_provider = 'github'
+              AND a.deleted_at IS NULL
               AND p.deleted_at IS NULL
-              AND p.source_url <> ''
-              AND p.auto_deploy = 1
-              AND p.webhook_secret IS NOT NULL
-              AND p.webhook_secret <> ''
+              AND a.source_url <> ''
+              AND a.auto_deploy = 1
+              AND a.webhook_secret IS NOT NULL
+              AND a.webhook_secret <> ''
               AND EXISTS (
                   SELECT 1 FROM deployment d
-                  WHERE d.app_id = p.id
+                  WHERE d.app_id = a.id
                     AND d.trigger_type = 'webhook'
               )
-            ORDER BY p.reconciled_at IS NOT NULL, p.reconciled_at, p.id
+            ORDER BY a.reconciled_at IS NOT NULL, a.reconciled_at, a.id
             LIMIT ?
             SQL;
 
@@ -247,6 +250,7 @@ class Deploy_reconcile {
     function reconcile(array $app): string {
         $app_id = (int) $app['id'];
         $project_id = (int) $app['project_id'];
+        $owner_id = (int) $app['owner_id'];
         $branch = (string) ($app['source_branch'] ?: 'main');
         $this->head_age = null;
 
@@ -255,18 +259,18 @@ class Deploy_reconcile {
         }
 
         $repo = $match[1];
-        $github = $this->client($project_id);
+        $github = $this->client($owner_id);
 
         if (is_string($github)) {
             return $github;
         }
 
-        $key = strtolower("{$project_id}|{$repo}|{$branch}");
+        $key = strtolower("{$owner_id}|{$repo}|{$branch}");
 
         try {
             $head = $this->heads[$key] ??= $this->branch_head($github, $repo, $branch);
         } catch (Client_Error $e) {
-            return $this->github_failure($project_id, $app_id, $e);
+            return $this->github_failure($owner_id, $app_id, $e);
         }
 
         $sha = $head['sha'];
@@ -312,11 +316,11 @@ class Deploy_reconcile {
             $rate_limited = stripos($e->getMessage(), 'rate limit') !== false;
 
             if ($e->getCode() === 404 || ($e->getCode() === 403 && !$rate_limited)) {
-                $this->log->warn("App #{$app_id}: the project's GitHub token may not read {$repo}'s webhooks; not deploying " . substr($sha, 0, 7));
+                $this->log->warn("App #{$app_id}: the project owner's GitHub token may not read {$repo}'s webhooks; not deploying " . substr($sha, 0, 7));
                 return 'webhook-unverifiable';
             }
 
-            return $this->github_failure($project_id, $app_id, $e);
+            return $this->github_failure($owner_id, $app_id, $e);
         }
 
         try {
@@ -390,24 +394,24 @@ class Deploy_reconcile {
     }
 
     /**
-     * The project's GitHub client, or the outcome that skips its apps.
+     * A GitHub client with the project owner's token, or the outcome that
+     * skips the apps of their projects.
      */
-    function client(int $project_id): Github|string {
-        if (!isset($this->clients[$project_id])) {
-            $secret = $this->runtime->resolve_reference("secrets:project,{$project_id},github");
-            $token = is_array($secret) ? (string) ($secret['token'] ?? '') : '';
+    function client(int $owner_id): Github|string {
+        if (!isset($this->clients[$owner_id])) {
+            $token = Platform_task::github_token($this->runtime, $owner_id);
 
-            $this->clients[$project_id] = $token !== '' ? new Github($token) : 'no-token';
+            $this->clients[$owner_id] = $token !== '' ? new Github($token) : 'no-token';
         }
 
-        return $this->clients[$project_id];
+        return $this->clients[$owner_id];
     }
 
     /**
      * Map a GitHub error to an outcome. A refused or rate-limited token skips
-     * the project's remaining apps this run instead of spending more calls.
+     * the owner's remaining apps this run instead of spending more calls.
      */
-    function github_failure(int $project_id, int $app_id, Client_Error $e): string {
+    function github_failure(int $owner_id, int $app_id, Client_Error $e): string {
         $code = $e->getCode();
 
         $outcome = match (true) {
@@ -419,8 +423,8 @@ class Deploy_reconcile {
         };
 
         if ($outcome === 'token-rejected' || $outcome === 'rate-limited') {
-            $this->clients[$project_id] = $outcome;
-            $this->log->warn("Project #{$project_id}: GitHub answered {$code}; skipping its apps until the next run");
+            $this->clients[$owner_id] = $outcome;
+            $this->log->warn("Customer #{$owner_id}'s GitHub token: GitHub answered {$code}; skipping the apps of their projects until the next run");
         } else {
             $this->log->warn("App #{$app_id}: {$e->getMessage()}");
         }

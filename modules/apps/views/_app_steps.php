@@ -1,7 +1,7 @@
 <?php
 /**
  * New-app questions, one at a time: repository, branch, name, Trongate version.
- * Shared by onboarding/app and apps/new.
+ * Shared by onboarding/app and projects/{id}/apps/new.
  *
  * Expects: $provider, $repositories, $app_types, $branches_url (returns <option>s),
  * $form_action, $q_offset (questions answered before this page), $q_total,

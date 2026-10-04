@@ -3,9 +3,10 @@
 /**
  * Deploy Task
  *
- * Builds a app's GitHub repository with Railpack (FrankenPHP image) on
- * a BuildKit daemon started for this build only, pushes it to PLATFORM_REGISTRY and rolls it out to the project's
- * tenant namespace.
+ * Builds an app's GitHub repository with Railpack (FrankenPHP image) on
+ * a BuildKit daemon started for this build only, pushes it to PLATFORM_REGISTRY
+ * and rolls it out to its project's namespace. GitHub is read with the token
+ * of the project's owner.
  *
  * Payload: {deployment_id, app_id, project_id, commit_sha?}
  *
@@ -41,11 +42,10 @@ return function (Task_log $log) use ($payload, $runtime): int {
     }
 
     $repo = $match[1];
-    $secret = $runtime->resolve_reference("secrets:project,{$project_id},github");
-    $token = is_array($secret) ? (string) ($secret['token'] ?? '') : '';
+    $token = Platform_task::github_token($runtime, (int) $app['project_owner_id']);
 
     if ($token === '') {
-        throw new RuntimeException('The project has no GitHub token; reconnect GitHub');
+        throw new RuntimeException("The project owner's GitHub account is not connected; they need to reconnect GitHub");
     }
 
     $github = new Github($token);

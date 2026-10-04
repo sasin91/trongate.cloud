@@ -8,17 +8,28 @@ $routes = [
     'register' => 'customer/register',
     'register/submit' => 'customer/submit_register',
 
-    // Dashboard
+    // Dashboard: the customer's projects
     'dashboard' => 'customer',
-    'switch-project' => 'customer/switch_project',
 
     // Onboarding
     'onboarding' => 'customer-onboarding',
     'onboarding/branches' => 'customer-onboarding/repository_branch_options',
     'onboarding/(:any)' => 'customer-onboarding/$1',
 
-    // Apps
-    'apps/new' => 'apps/create',
+    // Projects (apps grouped in one namespace, with members)
+    'projects/new' => 'projects/create',
+    'projects/new/submit' => 'projects/submit',
+    'projects/(:num)/apps/new' => 'apps/create/$1',
+    'projects/(:num)/apps/submit' => 'apps/submit/$1',
+    'projects/(:num)/apps/source' => 'apps/submit_source/$1',
+    'projects/(:num)/settings' => 'projects/settings/$1',
+    'projects/(:num)/settings/submit' => 'projects/submit_settings/$1',
+    'projects/(:num)/delete' => 'projects/submit_delete/$1',
+    'projects/(:num)/members/add' => 'projects/add_member/$1',
+    'projects/(:num)/members/(:num)/remove' => 'projects/remove_member/$1/$2',
+    'projects/(:num)' => 'projects/show/$1',
+
+    // Apps (each in one project; ids are global, membership is checked per request)
     'apps/branches' => 'apps/repository_branch_options',
     'apps/(:num)/deploy' => 'apps/deploy/$1',
     'apps/(:num)/rollback' => 'apps/rollback/$1',

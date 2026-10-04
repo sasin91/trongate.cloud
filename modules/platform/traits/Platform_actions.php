@@ -1,26 +1,31 @@
 <?php
 
+require_once __DIR__ . '/../manifests/Manifests.php';
+
 /**
- * Platform actions for models: queue deployments/rollbacks, delete apps and
- * read apps, deployments and logs.
+ * Platform actions for models: projects and their members, queue
+ * deployments/rollbacks, delete apps and projects, and read apps, deployments
+ * and logs.
  *
- * Every method takes an explicit project id instead of reading the session, so the
- * same code serves the customer UI, GitHub webhooks, the admin MCP and the
- * worker (Worker_actions). Anything fetched by id is checked against that project.
+ * Every method takes an explicit project (or customer) id instead of reading
+ * the session, so the same code serves the customer UI, GitHub webhooks, the
+ * admin MCP and the worker (Worker_actions). Anything fetched by id is checked
+ * against that project. The find_member_* methods are the customer UI's way
+ * in: they only return what an active member of the project may see.
  *
  * @property-read Db $db
  */
 trait Platform_actions {
 
-    /** Subdomains a app slug may not take */
+    /** Subdomains an app slug may not take */
     const RESERVED_SLUGS = ['www', 'api', 'app', 'admin', 'mail', 'mcp', 'oauth', 'status', 'docs', 'registry'];
 
     /**
      * Queue a deployment of the app's configured source.
      *
-     * A app has at most one queued (not yet started) deploy: a new request
+     * An app has at most one queued (not yet started) deploy: a new request
      * replaces its commit instead of adding another, so pushes or button presses
-     * cannot pile up builds ahead of other projects.
+     * cannot pile up builds ahead of other apps.
      *
      * @return int The deployment id (new, or the queued one that was updated)
      * @throws RuntimeException when the app is not the project's or has no source
@@ -145,9 +150,9 @@ trait Platform_actions {
     }
 
     /**
-     * Delete a app: soft-delete its row (it disappears everywhere) and queue
-     * destroy_app, which removes its app from the cluster but keeps its
-     * database and files (see that task for exactly what is kept).
+     * Delete an app: soft-delete its row (it disappears everywhere) and queue
+     * destroy_app, which removes it from the cluster but keeps its database
+     * and files (see that task for exactly what is kept).
      *
      * Deploys that have not started yet are cancelled. While one is running the
      * delete is refused, so a rollout can never recreate the app after cleanup.
@@ -207,10 +212,10 @@ trait Platform_actions {
     }
 
     /**
-     * Queue destroy_app again for a app that is already deleted, after
+     * Queue destroy_app again for an app that is already deleted, after
      * the first run failed (an API outage, an object that was not ours, ...).
      * A deleted app is hidden everywhere else, so this is the only way to
-     * finish its cleanup; until then its app may still serve traffic and its
+     * finish its cleanup; until then it may still serve traffic and its
      * verified domain stays held. The worker never retries on its own.
      *
      * @return int The destroy_app task id
@@ -246,32 +251,35 @@ trait Platform_actions {
     function project_apps(int $project_id): array {
         $sql = <<<SQL
             SELECT
-                p.id, p.project_id, p.label, p.slug, p.type, p.domain, p.verified_domain,
-                p.domain_pointed_at, p.domain_secured_at, p.domain_checked_at,
-                p.source_provider, p.source_url, p.source_branch,
-                p.persistent_paths, p.php_extensions, p.always_on, p.resource_tier,
-                p.database_server_id, p.current_deployment_id, p.created_at,
+                a.id, a.project_id, a.label, a.slug, a.type, a.domain, a.verified_domain,
+                a.domain_pointed_at, a.domain_secured_at, a.domain_checked_at,
+                a.source_provider, a.source_url, a.source_branch,
+                a.persistent_paths, a.php_extensions, a.always_on, a.resource_tier,
+                a.database_server_id, a.current_deployment_id, a.created_at,
                 cd.status AS current_status,
                 cd.commit_sha AS current_commit_sha,
                 cd.image AS current_image,
                 cd.completed_at AS current_deployed_at
-            FROM app p
-            LEFT JOIN deployment cd ON cd.id = p.current_deployment_id
-            WHERE p.project_id = :project_id AND p.deleted_at IS NULL
-            ORDER BY p.label ASC
+            FROM app a
+            LEFT JOIN deployment cd ON cd.id = a.current_deployment_id
+            WHERE a.project_id = :project_id AND a.deleted_at IS NULL
+            ORDER BY a.label ASC
         SQL;
         return $this->db->query_bind($sql, ['project_id' => $project_id], 'object');
     }
 
     /**
-     * A app row (including the webhook_secret seed) if it belongs to the project
-     * and is not deleted. Every action on a app starts here.
+     * An app row (including the webhook_secret seed) with its project's
+     * namespace, if it belongs to the project and neither is deleted. Every
+     * action on an app starts here.
      */
     function find_project_app(int $project_id, int $app_id): object|false {
         $sql = <<<SQL
-            SELECT *
-            FROM app
-            WHERE id = :app_id AND project_id = :project_id AND deleted_at IS NULL
+            SELECT a.*, p.namespace
+            FROM app a
+            JOIN project p ON p.id = a.project_id
+            WHERE a.id = :app_id AND a.project_id = :project_id
+              AND a.deleted_at IS NULL AND p.deleted_at IS NULL
             LIMIT 1
         SQL;
         $rows = $this->db->query_bind($sql, ['app_id' => $app_id, 'project_id' => $project_id], 'object');
@@ -286,9 +294,9 @@ trait Platform_actions {
         $limit = max(1, min($limit, 100));
 
         $sql = <<<SQL
-            SELECT d.*, (p.current_deployment_id = d.id) AS is_current
+            SELECT d.*, (a.current_deployment_id = d.id) AS is_current
             FROM deployment d
-            JOIN app p ON p.id = d.app_id
+            JOIN app a ON a.id = d.app_id
             WHERE d.app_id = :app_id AND d.project_id = :project_id
             ORDER BY d.id DESC
             LIMIT {$limit}
@@ -301,9 +309,9 @@ trait Platform_actions {
      */
     function find_project_deployment(int $project_id, int $deployment_id): object|false {
         $sql = <<<SQL
-            SELECT d.*, p.label AS app_label, p.slug AS app_slug
+            SELECT d.*, a.label AS app_label, a.slug AS app_slug
             FROM deployment d
-            JOIN app p ON p.id = d.app_id
+            JOIN app a ON a.id = d.app_id
             WHERE d.id = :deployment_id AND d.project_id = :project_id
             LIMIT 1
         SQL;
@@ -338,7 +346,7 @@ trait Platform_actions {
     }
 
     /**
-     * A DNS-label safe, unique slug for a app label (max 40 chars).
+     * A DNS-label safe, unique slug for an app label (max 40 chars).
      */
     function generate_app_slug(string $label, ?int $ignore_app_id = null): string {
         $base = strtolower(trim($label));
@@ -510,6 +518,377 @@ trait Platform_actions {
         return $this->webhook_signing_secret($app_id, $seed);
     }
 
+    // -------------------------------------------------------------------------
+    // Projects and members
+    // -------------------------------------------------------------------------
+
+    /**
+     * Create a project owned by the customer: its row, with the namespace
+     * Manifests::new_namespace() gives its id, and the owner's membership, in
+     * one transaction. The namespace itself is created by the first deploy.
+     *
+     * @return int The new project id
+     * @throws InvalidArgumentException when the name is empty or too long
+     */
+    function create_project(int $owner_customer_id, string $name): int {
+        $name = $this->_clean_project_name($name);
+
+        return $this->db->transaction(function () use ($owner_customer_id, $name) {
+            // namespace is NOT NULL UNIQUE and derives from the id: a unique
+            // placeholder until the id is known, never visible outside this transaction
+            $project_id = $this->db->insert([
+                'name' => $name,
+                'namespace' => 'new-' . bin2hex(random_bytes(8)),
+                'owner_id' => $owner_customer_id,
+            ], 'project');
+
+            $this->db->update($project_id, ['namespace' => Manifests::new_namespace($project_id)], 'project');
+
+            $this->db->insert([
+                'project_id' => $project_id,
+                'customer_id' => $owner_customer_id,
+                'role' => 'owner',
+                'status' => 'active',
+            ], 'project_member');
+
+            return $project_id;
+        });
+    }
+
+    /**
+     * A project the customer is an active member of (not deleted), with their
+     * role as member_role and their membership id as project_member_id.
+     */
+    function find_member_project(int $customer_id, int $project_id): object|false {
+        $sql = <<<SQL
+            SELECT p.*, pm.role AS member_role, pm.id AS project_member_id
+            FROM project p
+            JOIN project_member pm ON pm.project_id = p.id
+            WHERE p.id = :project_id
+              AND p.deleted_at IS NULL
+              AND pm.customer_id = :customer_id
+              AND pm.status = 'active'
+            LIMIT 1
+        SQL;
+        $rows = $this->db->query_bind($sql, ['project_id' => $project_id, 'customer_id' => $customer_id], 'object');
+
+        return $rows[0] ?? false;
+    }
+
+    /**
+     * The customer's projects (active memberships, not deleted), by name, with
+     * their role (member_role) and how many apps each holds (app_count).
+     */
+    function member_projects(int $customer_id): array {
+        $sql = <<<SQL
+            SELECT p.id, p.name, p.namespace, p.owner_id, p.created_at,
+                pm.role AS member_role, pm.id AS project_member_id,
+                COUNT(a.id) AS app_count
+            FROM project p
+            JOIN project_member pm ON pm.project_id = p.id
+            LEFT JOIN app a ON a.project_id = p.id AND a.deleted_at IS NULL
+            WHERE pm.customer_id = :customer_id
+              AND pm.status = 'active'
+              AND p.deleted_at IS NULL
+            GROUP BY p.id, p.name, p.namespace, p.owner_id, p.created_at, pm.role, pm.id
+            ORDER BY p.name ASC, p.id ASC
+        SQL;
+        return $this->db->query_bind($sql, ['customer_id' => $customer_id], 'object');
+    }
+
+    /**
+     * An app (not deleted) in a project the customer is an active member of:
+     * the app row (webhook_secret seed included) plus project_name, namespace,
+     * member_role and project_member_id. Pass (int) $app->project_id on to the
+     * other actions.
+     */
+    function find_member_app(int $customer_id, int $app_id): object|false {
+        $sql = <<<SQL
+            SELECT a.*, p.name AS project_name, p.namespace,
+                pm.role AS member_role, pm.id AS project_member_id
+            FROM app a
+            JOIN project p ON p.id = a.project_id
+            JOIN project_member pm ON pm.project_id = p.id
+            WHERE a.id = :app_id
+              AND a.deleted_at IS NULL
+              AND p.deleted_at IS NULL
+              AND pm.customer_id = :customer_id
+              AND pm.status = 'active'
+            LIMIT 1
+        SQL;
+        $rows = $this->db->query_bind($sql, ['app_id' => $app_id, 'customer_id' => $customer_id], 'object');
+
+        return $rows[0] ?? false;
+    }
+
+    /**
+     * A deployment (with its app's label and slug, and the member's role as
+     * member_role) of an app in a project the customer is an active member
+     * of. Deployments of deleted apps stay readable, like their logs.
+     */
+    function find_member_deployment(int $customer_id, int $deployment_id): object|false {
+        $sql = <<<SQL
+            SELECT d.*, a.label AS app_label, a.slug AS app_slug, pm.role AS member_role
+            FROM deployment d
+            JOIN app a ON a.id = d.app_id
+            JOIN project p ON p.id = d.project_id
+            JOIN project_member pm ON pm.project_id = p.id
+            WHERE d.id = :deployment_id
+              AND p.deleted_at IS NULL
+              AND pm.customer_id = :customer_id
+              AND pm.status = 'active'
+            LIMIT 1
+        SQL;
+        $rows = $this->db->query_bind($sql, ['deployment_id' => $deployment_id, 'customer_id' => $customer_id], 'object');
+
+        return $rows[0] ?? false;
+    }
+
+    /**
+     * The project's active members: the owner first, then by email.
+     * Rows: id (membership), customer_id, email, role, created_at.
+     */
+    function project_members(int $project_id): array {
+        $sql = <<<SQL
+            SELECT pm.id, pm.customer_id, c.email, pm.role, pm.created_at
+            FROM project_member pm
+            JOIN customer c ON c.id = pm.customer_id
+            WHERE pm.project_id = :project_id
+              AND pm.status = 'active'
+            ORDER BY pm.role = 'owner' DESC, c.email ASC
+        SQL;
+        return $this->db->query_bind($sql, ['project_id' => $project_id], 'object');
+    }
+
+    /**
+     * Add an existing customer account to the project as a member, by email.
+     * A former member (removed, so suspended) is made active again.
+     *
+     * @return bool|string true, or why not (safe to show the owner)
+     */
+    function add_project_member(int $project_id, string $email): bool|string {
+        $email = strtolower(trim($email));
+
+        if ($email === '' || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+            return 'Enter a valid email address.';
+        }
+
+        $customer_id = $this->db->query_bind(
+            'SELECT id FROM customer WHERE email = :email AND active = 1 LIMIT 1',
+            ['email' => $email],
+            'column'
+        );
+
+        if ($customer_id === false) {
+            return 'No Trongate Cloud account uses that email address. Ask them to sign up first.';
+        }
+
+        $member = $this->db->query_bind(
+            'SELECT id, status FROM project_member WHERE project_id = :project_id AND customer_id = :customer_id LIMIT 1',
+            ['project_id' => $project_id, 'customer_id' => (int) $customer_id],
+            'object'
+        );
+        $member = $member[0] ?? false;
+
+        if ($member !== false && $member->status === 'active') {
+            return 'They are already a member of this project.';
+        }
+
+        if ($this->_live_project_id($project_id) === false) {
+            return 'Project not found.';
+        }
+
+        if ($member !== false) {
+            $this->db->update((int) $member->id, ['status' => 'active', 'role' => 'member'], 'project_member');
+        } else {
+            $this->db->insert([
+                'project_id' => $project_id,
+                'customer_id' => (int) $customer_id,
+                'role' => 'member',
+                'status' => 'active',
+            ], 'project_member');
+        }
+
+        return true;
+    }
+
+    /**
+     * Take a member out of the project. The membership row is suspended, not
+     * deleted: their past deployments still point at it. The owner can't be
+     * removed.
+     *
+     * @return bool|string true, or why not (safe to show the owner)
+     */
+    function remove_project_member(int $project_id, int $customer_id): bool|string {
+        $sql = <<<SQL
+            SELECT pm.id, pm.role, p.owner_id
+            FROM project_member pm
+            JOIN project p ON p.id = pm.project_id
+            WHERE pm.project_id = :project_id
+              AND pm.customer_id = :customer_id
+              AND pm.status = 'active'
+            LIMIT 1
+        SQL;
+        $rows = $this->db->query_bind($sql, ['project_id' => $project_id, 'customer_id' => $customer_id], 'object');
+        $member = $rows[0] ?? false;
+
+        if ($member === false) {
+            return 'They are not a member of this project.';
+        }
+
+        if ($member->role === 'owner' || (int) $member->owner_id === $customer_id) {
+            return "The project's owner can't be removed.";
+        }
+
+        $this->db->update((int) $member->id, ['status' => 'suspended'], 'project_member');
+
+        return true;
+    }
+
+    /**
+     * @return bool|string true, or why not (safe to show the owner)
+     */
+    function rename_project(int $project_id, string $name): bool|string {
+        try {
+            $name = $this->_clean_project_name($name);
+        } catch (InvalidArgumentException $e) {
+            return $e->getMessage();
+        }
+
+        if ($this->_live_project_id($project_id) === false) {
+            return 'Project not found.';
+        }
+
+        $this->db->update($project_id, ['name' => $name], 'project');
+
+        return true;
+    }
+
+    /**
+     * Delete an empty project: soft-delete its row (it disappears everywhere)
+     * and queue destroy_project, which deletes its namespace once the cluster
+     * confirms nothing of an app is left in it.
+     *
+     * Refused while the project has an app, or any unfinished task (an app's
+     * destroy_app still running, a deploy, a domain check): delete the apps
+     * first and wait for their cleanup.
+     *
+     * @return int The destroy_project task id
+     * @throws RuntimeException when the project is not found or not empty
+     */
+    function queue_project_delete(int $project_id): int {
+        return $this->db->transaction(function () use ($project_id) {
+            // Row lock: a concurrent delete waits here, then finds it gone. An
+            // app being added to the project waits too (its foreign key check
+            // share-locks this row); destroy_project checks for apps again
+            // before it deletes anything.
+            $live = $this->db->query_bind(
+                'SELECT id FROM project WHERE id = :project_id AND deleted_at IS NULL FOR UPDATE',
+                ['project_id' => $project_id],
+                'column'
+            );
+
+            if ($live === false) {
+                throw new RuntimeException('Project not found');
+            }
+
+            $apps = (int) $this->db->query_bind(
+                'SELECT COUNT(*) FROM app WHERE project_id = :project_id AND deleted_at IS NULL',
+                ['project_id' => $project_id],
+                'column'
+            );
+
+            if ($apps > 0) {
+                throw new RuntimeException('Delete the apps in this project first.');
+            }
+
+            if ($this->_open_project_tasks($project_id) !== []) {
+                throw new RuntimeException('An app of this project is still being removed. Try again in a minute.');
+            }
+
+            $this->db->query_bind(
+                'UPDATE project SET deleted_at = NOW() WHERE id = :project_id AND deleted_at IS NULL',
+                ['project_id' => $project_id]
+            );
+
+            return $this->_queue_task($project_id, null, null, 'destroy_project', ['project_id' => $project_id]);
+        });
+    }
+
+    /**
+     * Queue destroy_project again for a deleted project whose namespace is
+     * still there (the first run failed or found leftovers; see the admin
+     * MCP's audit_app_resources). The worker never retries on its own.
+     *
+     * @return int The destroy_project task id
+     * @throws RuntimeException when the project is not deleted, or its cleanup is still queued or running
+     */
+    function requeue_project_destroy(int $project_id): int {
+        return $this->db->transaction(function () use ($project_id) {
+            $deleted = $this->db->query_bind(
+                'SELECT id FROM project WHERE id = :project_id AND deleted_at IS NOT NULL FOR UPDATE',
+                ['project_id' => $project_id],
+                'column'
+            );
+
+            if ($deleted === false) {
+                throw new RuntimeException('No deleted project with that id');
+            }
+
+            if ($this->_open_project_tasks($project_id) !== []) {
+                throw new RuntimeException('Its cleanup is already queued or running');
+            }
+
+            return $this->_queue_task($project_id, null, null, 'destroy_project', ['project_id' => $project_id]);
+        });
+    }
+
+    /**
+     * A trimmed project name of 1 to 255 characters
+     *
+     * @throws InvalidArgumentException (the message is safe to show)
+     */
+    function _clean_project_name(string $name): string {
+        $name = trim(preg_replace('/\s+/u', ' ', $name) ?? '');
+
+        if ($name === '') {
+            throw new InvalidArgumentException('Enter a name for the project.');
+        }
+
+        if (mb_strlen($name) > 255) {
+            throw new InvalidArgumentException('The project name can be at most 255 characters.');
+        }
+
+        return $name;
+    }
+
+    function _live_project_id(int $project_id): int|false {
+        $id = $this->db->query_bind(
+            'SELECT id FROM project WHERE id = :project_id AND deleted_at IS NULL',
+            ['project_id' => $project_id],
+            'column'
+        );
+
+        return $id === false ? false : (int) $id;
+    }
+
+    /**
+     * The project's unfinished tasks (any app's, or its own), row-locked for
+     * the surrounding transaction like _open_app_tasks().
+     */
+    function _open_project_tasks(int $project_id): array {
+        $sql = <<<SQL
+            SELECT id, app_id, script, started_at
+            FROM tasks
+            WHERE project_id = :project_id
+              AND completed_at IS NULL
+              AND failed_at IS NULL
+            ORDER BY id
+            FOR UPDATE
+        SQL;
+        return $this->db->query_bind($sql, ['project_id' => $project_id], 'object');
+    }
+
     function _app_or_fail(int $project_id, int $app_id): object {
         $app = $this->find_project_app($project_id, $app_id);
 
@@ -575,9 +954,9 @@ trait Platform_actions {
 
     function _previous_successful_deployment(object $app): object|false {
         $sql = <<<SQL
-            SELECT d.*, p.label AS app_label, p.slug AS app_slug
+            SELECT d.*, a.label AS app_label, a.slug AS app_slug
             FROM deployment d
-            JOIN app p ON p.id = d.app_id
+            JOIN app a ON a.id = d.app_id
             WHERE d.app_id = :app_id
               AND d.project_id = :project_id
               AND d.status IN ('success', 'rolled_back')

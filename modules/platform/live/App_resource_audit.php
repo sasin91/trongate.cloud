@@ -36,9 +36,9 @@ class App_resource_audit {
 
     /**
      * Labelled objects whose app is not one of $apps in their namespace.
-     * A app deleted a moment ago shows up until its destroy_app has run.
+     * An app deleted a moment ago shows up until its destroy_app has run.
      *
-     * @param iterable<array{id: int|string, project_id: int|string}> $apps every app that is not deleted
+     * @param iterable<array{id: int|string, namespace: string}> $apps every app that is not deleted, with its project's namespace
      * @return list<array{kind: string, namespace: string, name: string, app_id: int}>
      */
     static function orphans(Kubernetes $kube, iterable $apps): array {
@@ -46,10 +46,11 @@ class App_resource_audit {
 
         $expected = [];
         foreach ($apps as $app) {
-            $expected[Manifests::namespace_name((int) $app['project_id'])][(int) $app['id']] = true;
+            $expected[Manifests::namespace_name($app)][(int) $app['id']] = true;
         }
 
-        // One cluster-wide list per kind; the worker can only write in tc-team-* namespaces
+        // One cluster-wide list per kind; the worker can only write in tenant
+        // namespaces (project-* and, from before db/020, tc-team-*)
         $selector = 'app.kubernetes.io/managed-by=' . Manifests::MANAGED_BY . ',' . Manifests::APP_LABEL;
 
         $orphans = [];
@@ -58,7 +59,7 @@ class App_resource_audit {
                 $namespace = (string) ($object['metadata']['namespace'] ?? '');
                 $app_id = (int) ($object['metadata']['labels'][Manifests::APP_LABEL] ?? 0);
 
-                if (!str_starts_with($namespace, 'tc-team-') || isset($expected[$namespace][$app_id])) {
+                if (!Manifests::is_tenant_namespace($namespace) || isset($expected[$namespace][$app_id])) {
                     continue;
                 }
 

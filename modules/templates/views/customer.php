@@ -16,17 +16,18 @@
                 <?php require __DIR__ . '/_mark.php'; ?>
                 <div class="header-title">trongate<span>.cloud</span></div>
             </a>
-            <div class="header-separator"></div>
-            <?= form_open('switch-project', ['class' => 'project-switcher-form']) ?>
-                <select name="project_id" onchange="this.form.submit()" class="form-select project-switcher-select">
-                    <?php foreach($projects as $project): ?>
-                        <option value="<?= $project->id ?>" <?= ($project->id == $current_project_id) ? 'selected' : '' ?>><?= htmlspecialchars($project->name) ?></option>
+            <?php if (!empty($crumbs)): ?>
+                <div class="header-separator"></div>
+                <nav class="header-crumbs" aria-label="Breadcrumb">
+                    <?php foreach ($crumbs as $i => [$href, $label]): ?>
+                        <?php if ($i > 0): ?><span class="header-crumb-sep" aria-hidden="true">/</span><?php endif; ?>
+                        <a href="<?= htmlspecialchars($href) ?>" class="nav-link"<?= $i === count($crumbs) - 1 ? ' aria-current="page"' : '' ?>><?= htmlspecialchars($label) ?></a>
                     <?php endforeach; ?>
-                </select>
-            <?= form_close() ?>
+                </nav>
+            <?php endif; ?>
         </div>
         <nav class="header-nav" style="display: flex; gap: 1.25rem; align-items: center;">
-            <a href="dashboard" class="nav-link">Dashboard</a>
+            <a href="dashboard" class="nav-link">Projects</a>
             <a href="logout" class="nav-link">Sign Out</a>
         </nav>
     </header>

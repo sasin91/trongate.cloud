@@ -80,7 +80,7 @@ class Trongate_config {
     }
 
     /**
-     * Public URL of a app (trailing slash, as Trongate expects): its custom
+     * Public URL of an app (trailing slash, as Trongate expects): its custom
      * domain once that is routed and its certificate issued, the {slug} host
      * until then. It must follow Manifests::secured_domains, never
      * verified_domain or the DNS gate alone, or every link the app generates

@@ -9,19 +9,19 @@
 trait Provider_clients {
 
     /**
-     * Get a client for the project's provider credentials (GitHub is the only provider)
+     * Get a client for the customer's provider credentials (GitHub is the only provider)
      * @return Github
      */
-    function _provider_client(int $project_id, string $provider): Client {
-        return $this->services->for_project($project_id, $provider);
+    function _provider_client(int $customer_id, string $provider): Client {
+        return $this->services->for_customer($customer_id, $provider);
     }
 
     /**
-     * First registered provider of a type (e.g. 'source') the project has credentials for
+     * First registered provider of a type (e.g. 'source') the customer has connected
      */
-    function _project_provider(int $project_id, string $type): string|false {
+    function _customer_provider(int $customer_id, string $type): string|false {
         foreach ($this->services::PROVIDERS as $provider => $provider_type) {
-            if ($provider_type === $type && $this->secrets->exists('project', $project_id, $provider)) {
+            if ($provider_type === $type && $this->secrets->exists('customer', $customer_id, $provider)) {
                 return $provider;
             }
         }

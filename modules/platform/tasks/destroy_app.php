@@ -3,13 +3,13 @@
 /**
  * Destroy App Task
  *
- * Deletes a deleted app's resources from its tenant namespace. Queued by
+ * Deletes a deleted app's resources from its project's namespace. Queued by
  * Platform_actions::queue_app_delete, which soft-deletes the app row
  * (app.deleted_at) first.
  *
- * Payload: {app_id, project_id}. Works from the payload alone, so the app
- * row may be gone. A row that still exists must belong to the project and be
- * soft-deleted, otherwise nothing is touched.
+ * Payload: {app_id, project_id}. Works from the payload and the project's
+ * stored namespace, so the app row may be gone. A row that still exists must
+ * belong to the project and be soft-deleted, otherwise nothing is touched.
  *
  * Only objects carrying the app's ownership labels are deleted
  * (Platform_task::delete_owned); anything else under an expected name is
@@ -24,7 +24,8 @@
  * them are gone, the app's verified custom domain is released.
  *
  * Kept on purpose:
- * - the tenant namespace: other apps of the project live there
+ * - the project's namespace: other apps of the project live there (an empty
+ *   one goes with the project, see destroy_project)
  * - the MariaDB database: the Database CR uses cleanupPolicy Skip, so the
  *   data survives deleting the CR (drop it by hand after the backup window)
  * - the uploaded files: the tenant-files StorageClass uses reclaimPolicy
@@ -54,7 +55,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
     $kube = $runtime->kube();
     $failures = 0;
 
-    $namespace = Manifests::namespace_name($project_id);
+    $namespace = Platform_task::project_namespace($db, $project_id);
 
     // Custom-domain Gateways first (traffic), found by label because their names
     // carry a domain hash; each is ownership-checked like everything else, and
@@ -64,7 +65,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
             $gateway_name = (string) $gateway['metadata']['name'];
 
             try {
-                Platform_task::delete_owned($kube, 'gateway.networking.k8s.io/v1', 'Gateway', $project_id, $app_id, $gateway_name);
+                Platform_task::delete_owned($kube, 'gateway.networking.k8s.io/v1', 'Gateway', $namespace, $app_id, $gateway_name);
                 Platform_task::delete_domain_tls_secret($kube, $namespace, $gateway_name);
                 $log->info("Deleted Gateway {$gateway_name} and its certificate");
             } catch (Throwable $e) {
@@ -79,7 +80,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
 
     foreach (Manifests::app_objects($app_id) as [$api_version, $kind, $name]) {
         try {
-            $deleted = Platform_task::delete_owned($kube, $api_version, $kind, $project_id, $app_id, $name);
+            $deleted = Platform_task::delete_owned($kube, $api_version, $kind, $namespace, $app_id, $name);
             // A Secret cannot be read, so "not there" and "not ours" look the same
             $gone = $kind === 'Secret' ? "was already gone or does not carry the app's labels (left in place)" : 'was already gone';
             $log->info($deleted ? "Deleted {$kind} {$name}" : "{$kind} {$name} {$gone}");
@@ -99,7 +100,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
     $stmt->execute();
     $stmt->close();
 
-    $log->info("App #{$app_id} removed from " . Manifests::namespace_name($project_id) . '; its database and files are kept');
+    $log->info("App #{$app_id} removed from {$namespace}; its database and files are kept");
 
     return 0;
 };

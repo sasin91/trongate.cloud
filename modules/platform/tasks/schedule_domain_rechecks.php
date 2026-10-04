@@ -4,10 +4,10 @@
  * Schedule Domain Rechecks Task
  *
  * Periodic (Runtime::PERIODIC_TASKS, every DOMAIN_RECHECK_INTERVAL seconds):
- * queues recheck_domains for each project with a verified custom domain on a live
- * app, skipping a project that still has one waiting. recheck_domains is
- * project-scoped (it re-applies apps in the project's namespace), so the platform-wide
- * schedule only fans out; the checks themselves run as the project's tasks.
+ * queues recheck_domains for each project with a verified custom domain on a
+ * live app, skipping a project that still has one waiting. recheck_domains is
+ * project-scoped (it re-applies apps in the project's namespace), so the
+ * platform-wide schedule only fans out; the checks run as the project's tasks.
  *
  * Payload: {} (platform-wide, no project).
  *
@@ -20,13 +20,13 @@ require_once __DIR__ . '/lib/Platform_task.php';
 return function (Task_log $log) use ($runtime): int {
     $sql = <<<SQL
         INSERT INTO tasks (project_id, script, payload)
-        SELECT DISTINCT p.project_id, 'recheck_domains', JSON_OBJECT('project_id', p.project_id)
-        FROM app p
-        WHERE p.verified_domain IS NOT NULL
-          AND p.deleted_at IS NULL
+        SELECT DISTINCT a.project_id, 'recheck_domains', JSON_OBJECT('project_id', a.project_id)
+        FROM app a
+        WHERE a.verified_domain IS NOT NULL
+          AND a.deleted_at IS NULL
           AND NOT EXISTS (
             SELECT 1 FROM tasks t
-            WHERE t.project_id = p.project_id AND t.script = 'recheck_domains'
+            WHERE t.project_id = a.project_id AND t.script = 'recheck_domains'
               AND t.started_at IS NULL AND t.completed_at IS NULL AND t.failed_at IS NULL
           )
         SQL;

@@ -3,8 +3,6 @@
  * Template management class for rendering application templates.
  * Handles theme displays with support for additional CSS/JS includes.
  * Provides secure template rendering with URL invocation blocking and error handling.
- *
- * @property-read Customer $customer
  */
 class Templates extends Trongate {
 
@@ -44,16 +42,13 @@ class Templates extends Trongate {
 
     /**
      * Display customer dashboard template with provided data.
+     * Optional $data['crumbs']: list of [href, label] shown after the logo (project, app).
      *
      * @param array $data The data to pass to the template view
      * @return void
      */
     public function customer(array $data): void {
-        // Fetch project data for header selector
-        $this->module('customer');
-        $data['projects'] = $this->customer->model->get_customer_projects();
-        $data['current_project_id'] = $this->customer->model->_get_current_project_id();
-
+        $data['crumbs'] = $data['crumbs'] ?? [];
         $this->display('customer', $data);
     }
 

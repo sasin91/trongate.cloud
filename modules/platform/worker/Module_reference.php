@@ -6,7 +6,7 @@ require_once APPPATH . 'modules/encryption/Encryptor.php';
  * Module Reference DSL
  *
  * Parses and resolves reference syntax like:
- *   secrets:project,12,github
+ *   secrets:customer,12,github
  *
  * Extensible to future reference types (env:, vault:, etc.)
  */

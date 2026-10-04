@@ -9,7 +9,7 @@
 trait App_records {
 
     /**
-     * Create a app with a unique slug and a fresh webhook secret.
+     * Create an app with a unique slug and a fresh webhook secret.
      */
     function create_app(int $project_id, string $label, string $type, string $source_url, string $source_provider, string $source_branch = 'main', ?string $domain = null, bool $auto_deploy = true): int|false {
         return $this->db->insert([
@@ -28,7 +28,7 @@ trait App_records {
     }
 
     /**
-     * Update a project app's platform settings.
+     * Update an app's platform settings (the app must be in the project).
      *
      * @param array{domain: ?string, persistent_paths: list<string>, php_extensions: string, always_on: bool, resource_tier: string, auto_deploy: bool} $settings
      */

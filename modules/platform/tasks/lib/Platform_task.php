@@ -2,7 +2,7 @@
 
 /**
  * Helpers shared by the platform task scripts (deploy, rollback, destroy_app,
- * recheck_domains, prune_domains).
+ * destroy_project, recheck_domains, prune_domains).
  *
  * Lives in tasks/lib/ so the Runtime can never run it as a task
  * (it only includes tasks/{script}.php). Framework-free.
@@ -67,13 +67,15 @@ class Platform_task {
     }
 
     /**
-     * The app row; fails unless it belongs to the project and is not deleted
+     * The app row plus its project's namespace and owner_id (project_owner_id);
+     * fails unless it belongs to the project and neither is deleted
      */
     static function app(mysqli $db, int $project_id, int $app_id): array {
         $sql = <<<SQL
-            SELECT *
-            FROM app
-            WHERE id = ? AND project_id = ? AND deleted_at IS NULL
+            SELECT a.*, p.namespace, p.owner_id AS project_owner_id
+            FROM app a
+            JOIN project p ON p.id = a.project_id
+            WHERE a.id = ? AND a.project_id = ? AND a.deleted_at IS NULL AND p.deleted_at IS NULL
             SQL;
 
         $app = self::row($db, $sql, 'ii', $app_id, $project_id);
@@ -83,6 +85,35 @@ class Platform_task {
         }
 
         return $app;
+    }
+
+    /**
+     * The namespace of a project, deleted or not (destroy_app and
+     * destroy_project run after the rows are soft-deleted)
+     */
+    static function project_namespace(mysqli $db, int $project_id): string {
+        $project = self::row($db, 'SELECT namespace FROM project WHERE id = ?', 'i', $project_id);
+
+        if ($project === null) {
+            throw new RuntimeException("Project #{$project_id} not found");
+        }
+
+        return Manifests::namespace_name($project);
+    }
+
+    /**
+     * The GitHub token of the app's project owner (secrets module 'customer',
+     * saved when they connected GitHub), or '' when there is none. Every member
+     * deploys the project's apps with the owner's token.
+     */
+    static function github_token(Runtime $runtime, int $owner_id): string {
+        if ($owner_id <= 0) {
+            return '';
+        }
+
+        $secret = $runtime->resolve_reference("secrets:customer,{$owner_id},github");
+
+        return is_array($secret) ? (string) ($secret['token'] ?? '') : '';
     }
 
     /**
@@ -120,9 +151,9 @@ class Platform_task {
         }
 
         $sql = <<<SQL
-            SELECT ds.*, COUNT(p.id) AS app_count
+            SELECT ds.*, COUNT(a.id) AS app_count
             FROM database_server ds
-            LEFT JOIN app p ON p.database_server_id = ds.id
+            LEFT JOIN app a ON a.database_server_id = ds.id
             WHERE ds.active = 1
             GROUP BY ds.id
             HAVING app_count < ds.capacity
@@ -159,7 +190,7 @@ class Platform_task {
     }
 
     /**
-     * Apply the tenant namespace and the app's app manifests, then remove
+     * Apply the tenant namespace and the app's manifests, then remove
      * custom-domain Gateways the app no longer routes.
      *
      * Re-reads the custom-domain gate first: a build takes minutes, and
@@ -168,7 +199,7 @@ class Platform_task {
      */
     static function apply(Runtime $runtime, Task_log $log, array &$app, array $deployment, array $database): void {
         $kube = $runtime->kube();
-        $project_id = (int) $app['project_id'];
+        $namespace = Manifests::namespace_name($app);
 
         $gate = self::row(
             $runtime->db(),
@@ -178,8 +209,8 @@ class Platform_task {
         );
         $app = ($gate ?? []) + $app;
 
-        $log->info('Applying tenant namespace ' . Manifests::namespace_name($project_id));
-        $kube->apply_all(Manifests::tenant($project_id));
+        $log->info("Applying tenant namespace {$namespace}");
+        $kube->apply_all(Manifests::tenant($namespace));
 
         self::release_domains($runtime, $log, $app);
 
@@ -198,12 +229,12 @@ class Platform_task {
      * Delete the app's custom-domain Gateways for domains it no longer routes
      * (changed, removed, or demoted by recheck_domains). Also run on its own by
      * the prune_domains task, queued when a verified domain is changed or
-     * removed, so a app that does not deploy again still lets go of it.
+     * removed, so an app that does not deploy again still lets go of it.
      * Never throws: logs instead.
      */
     static function prune_domain_gateways(Runtime $runtime, Task_log $log, array $app): bool {
         $app_id = (int) $app['id'];
-        $namespace = Manifests::namespace_name((int) $app['project_id']);
+        $namespace = Manifests::namespace_name($app);
         $keep = array_map(
             fn(string $domain) => Manifests::domain_gateway_name($app_id, $domain),
             Manifests::custom_domains($app)
@@ -244,9 +275,9 @@ class Platform_task {
                 foreach ($gateways as $gateway) {
                     $namespace = (string) ($gateway['metadata']['namespace'] ?? '');
                     $name = (string) ($gateway['metadata']['name'] ?? '');
-                    $owner = (string) ($gateway['metadata']['labels'][Manifests::LABEL_PREFIX . '/project-id'] ?? '');
+                    $owner = (string) ($gateway['metadata']['labels'][Manifests::APP_LABEL] ?? '');
 
-                    if ($owner === (string) $app['id'] || !str_starts_with($namespace, 'tc-team-') || $name === '') {
+                    if ($owner === (string) $app['id'] || !Manifests::is_tenant_namespace($namespace) || $name === '') {
                         continue;
                     }
 
@@ -285,7 +316,7 @@ class Platform_task {
      */
     static function wait_for_rollout(Runtime $runtime, Task_log $log, array $app): bool {
         $kube = $runtime->kube();
-        $namespace = Manifests::namespace_name((int) $app['project_id']);
+        $namespace = Manifests::namespace_name($app);
         $name = Manifests::app_name((int) $app['id']);
 
         $done = $kube->wait_for_rollout($namespace, $name, self::ROLLOUT_TIMEOUT_SECONDS, function (string $message) use ($log) {
@@ -352,7 +383,7 @@ class Platform_task {
     }
 
     /**
-     * Delete one of a app's objects, but only after checking that it carries
+     * Delete one of an app's objects, but only after checking that it carries
      * the app's ownership labels (Manifests::owned_by_app). The delete is
      * pinned to the checked object's uid, so a replacement is never removed.
      *
@@ -366,8 +397,10 @@ class Platform_task {
      * @return bool false when the object was already gone (for a Secret: or is not the app's)
      * @throws RuntimeException when the object exists but is not the app's
      */
-    static function delete_owned(Kubernetes $kube, string $api_version, string $kind, int $project_id, int $app_id, string $name): bool {
-        $namespace = Manifests::namespace_name($project_id);
+    static function delete_owned(Kubernetes $kube, string $api_version, string $kind, string $namespace, int $app_id, string $name): bool {
+        if (!Manifests::is_tenant_namespace($namespace)) {
+            throw new InvalidArgumentException("Not a tenant namespace: '{$namespace}'");
+        }
 
         if ($api_version === 'v1' && $kind === 'Secret') {
             $labels = array_map(fn(string $key, string $value) => "{$key}={$value}", array_keys(Manifests::app_labels($app_id)), Manifests::app_labels($app_id));
@@ -381,7 +414,7 @@ class Platform_task {
             return false;
         }
 
-        if (!Manifests::owned_by_app($object, $project_id, $app_id)) {
+        if (!Manifests::owned_by_app($object, $namespace, $app_id)) {
             throw new RuntimeException("{$kind} {$name} does not carry app #{$app_id}'s labels; left in place");
         }
 

@@ -35,5 +35,5 @@ defined('FILES_STORAGE_CLASS') || define('FILES_STORAGE_CLASS', getenv('FILES_ST
 // head that a missed GitHub push webhook never built. 0 turns it off.
 defined('DEPLOY_RECONCILE_INTERVAL') || define('DEPLOY_RECONCILE_INTERVAL', getenv('DEPLOY_RECONCILE_INTERVAL') !== false ? (int) getenv('DEPLOY_RECONCILE_INTERVAL') : 600);
 // Seconds between schedule_domain_rechecks runs: the worker queues recheck_domains
-// for every team with a verified custom domain (the DNS gate and promotion). 0 turns it off.
+// for every project with a verified custom domain (the DNS gate and promotion). 0 turns it off.
 defined('DOMAIN_RECHECK_INTERVAL') || define('DOMAIN_RECHECK_INTERVAL', getenv('DOMAIN_RECHECK_INTERVAL') !== false ? (int) getenv('DOMAIN_RECHECK_INTERVAL') : 600);

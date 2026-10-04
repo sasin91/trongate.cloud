@@ -7,8 +7,9 @@ require_once __DIR__ . '/Resource_tiers.php';
 /**
  * Kubernetes manifests for tenants and their apps, as arrays ready for Kubernetes::apply_all().
  *
- * Naming (C2): namespace "tc-team-{project_id}", per-app resources "p{app_id}-…",
- * MariaDB database + user "tc_p{app_id}".
+ * Naming (C2): one namespace per project, stored in project.namespace
+ * ("project-{project_id}", or "tc-team-{id}" for projects created before db/020),
+ * per-app resources "p{app_id}-…", MariaDB database + user "tc_p{app_id}".
  *
  * Framework-free: loaded by the worker.
  */
@@ -17,8 +18,19 @@ class Manifests {
     const LABEL_PREFIX = 'platform.example.com';
     const MANAGED_BY = 'trongate-cloud';
 
-    /** Every per-app object carries this label (the app id) next to managed-by */
+    /**
+     * Every per-app object carries this label (the app id) next to managed-by.
+     * The key dates from when apps were called projects; it stays
+     * "project-id" because live objects and worker-admission-policy.yaml use it.
+     */
     const APP_LABEL = self::LABEL_PREFIX . '/project-id';
+
+    /**
+     * Tenant namespace names: "project-{id}" for new projects, "tc-team-{id}"
+     * for projects created before db/020. The worker may only write in these
+     * (worker-admission-policy.yaml has the same pattern).
+     */
+    const NAMESPACE_PATTERN = '/^(project|tc-team)-[1-9][0-9]{0,9}$/';
 
     // Railpack's FrankenPHP Caddyfile serves ":{$PORT:80}" from /app (or RAILPACK_PHP_ROOT_DIR).
     // We set PORT because restricted pods run as non-root and cannot bind :80.
@@ -84,8 +96,37 @@ class Manifests {
     const ACME_GATEWAY = 'acme-http01';
     const DOMAIN_COMPONENT = 'custom-domain';
 
-    static function namespace_name(int $project_id): string {
-        return "tc-team-{$project_id}";
+    /**
+     * The namespace for a new project. Platform_actions::create_project stores
+     * it in project.namespace; everything else reads it from there.
+     */
+    static function new_namespace(int $project_id): string {
+        if ($project_id <= 0) {
+            throw new InvalidArgumentException('A project id is required for its namespace');
+        }
+
+        return "project-{$project_id}";
+    }
+
+    /**
+     * The tenant namespace of an app or project row: its project.namespace
+     * (app rows carry it through a JOIN on project, see Platform_task::app).
+     * Never derived from an id, so older projects keep "tc-team-{id}".
+     *
+     * @throws InvalidArgumentException when the row has no valid tenant namespace
+     */
+    static function namespace_name(array|object $row): string {
+        $namespace = (string) (is_array($row) ? ($row['namespace'] ?? '') : ($row->namespace ?? ''));
+
+        if (!self::is_tenant_namespace($namespace)) {
+            throw new InvalidArgumentException("Not a tenant namespace: '{$namespace}'");
+        }
+
+        return $namespace;
+    }
+
+    static function is_tenant_namespace(string $namespace): bool {
+        return preg_match(self::NAMESPACE_PATTERN, $namespace) === 1;
     }
 
     static function app_name(int $app_id): string {
@@ -97,7 +138,7 @@ class Manifests {
     }
 
     /**
-     * Hostnames routed to a app: "{slug}.PLATFORM_APPS_DOMAIN" plus its routed
+     * Hostnames routed to an app: "{slug}.PLATFORM_APPS_DOMAIN" plus its routed
      * custom domains (custom_domains())
      */
     static function hostnames(array $app): array {
@@ -178,15 +219,15 @@ class Manifests {
     }
 
     /**
-     * Label selector for a app's custom-domain Gateways (to prune the ones it no longer routes)
+     * Label selector for an app's custom-domain Gateways (to prune the ones it no longer routes)
      */
     static function domain_gateway_selector(int $app_id): string {
-        return 'app.kubernetes.io/component=' . self::DOMAIN_COMPONENT . ',' . self::LABEL_PREFIX . '/project-id=' . $app_id;
+        return 'app.kubernetes.io/component=' . self::DOMAIN_COMPONENT . ',' . self::APP_LABEL . '=' . $app_id;
     }
 
     /**
      * Label selector for every app's Gateways for one domain, in any
-     * namespace (to release the domain from a app that no longer owns it)
+     * namespace (to release the domain from an app that no longer owns it)
      */
     static function domain_hostname_selector(string $domain): string {
         return 'app.kubernetes.io/component=' . self::DOMAIN_COMPONENT . ',' . self::LABEL_PREFIX . '/domain-hash=' . self::domain_hash($domain);
@@ -237,7 +278,7 @@ class Manifests {
     }
 
     /**
-     * The app container's requests/limits for a app's resource tier
+     * The app container's requests/limits for an app's resource tier
      */
     static function app_resources(?string $tier): array {
         $resources = Resource_tiers::resources($tier);
@@ -249,11 +290,16 @@ class Manifests {
 
     /**
      * Tenant namespace with quota, limits and network isolation
+     *
+     * @param string $namespace project.namespace (Manifests::namespace_name)
      */
-    static function tenant(int $project_id): array {
+    static function tenant(string $namespace): array {
         self::_assert_quota_fits_ladder();
 
-        $namespace = self::namespace_name($project_id);
+        if (!self::is_tenant_namespace($namespace)) {
+            throw new InvalidArgumentException("Not a tenant namespace: '{$namespace}'");
+        }
+
         $labels = self::_labels(['app.kubernetes.io/part-of' => $namespace]);
 
         $manifests = [];
@@ -320,6 +366,19 @@ class Manifests {
                     $namespace_peer([self::LABEL_PREFIX . '/role' => 'sablier']),
                 ],
             ]],
+        ]);
+
+        // The apps of one project may call each other (http://p{id}-app), on
+        // the app port only. A podSelector without a namespaceSelector matches
+        // pods in this namespace alone, so other projects stay unreachable.
+        // Both directions: default-deny covers egress too, and allow-internet
+        // leaves out the cluster's private ranges.
+        $same_namespace = [['podSelector' => (object) []]];
+
+        $manifests[] = $network_policy('allow-same-project', [
+            'policyTypes' => ['Ingress', 'Egress'],
+            'ingress' => [['from' => $same_namespace, 'ports' => [$tcp(self::APP_PORT)]]],
+            'egress' => [['to' => $same_namespace, 'ports' => [$tcp(self::APP_PORT)]]],
         ]);
 
         $manifests[] = $network_policy('allow-dns', [
@@ -419,7 +478,7 @@ class Manifests {
         $name = self::domain_gateway_name($app_id, $domain);
         // The app's ownership labels (app_labels), so destroy_app and
         // the trongate-worker-owned-deletes policy recognise it as the app's
-        $metadata = self::_metadata($name, self::namespace_name((int) $app['project_id']), self::app_labels($app_id) + [
+        $metadata = self::_metadata($name, self::namespace_name($app), self::app_labels($app_id) + [
             'app.kubernetes.io/component' => self::DOMAIN_COMPONENT,
             self::LABEL_PREFIX . '/domain-hash' => self::domain_hash($domain),
         ]);
@@ -452,13 +511,13 @@ class Manifests {
     /**
      * Everything one app needs inside its tenant namespace, in apply order
      *
-     * @param array $app    app row (id, project_id, slug, label, type, verified_domain, domain_pointed_at, domain_secured_at, persistent_paths, always_on, resource_tier)
+     * @param array $app        app row (id, namespace, slug, label, type, verified_domain, domain_pointed_at, domain_secured_at, persistent_paths, always_on, resource_tier)
      * @param array $deployment deployment row (id, image)
      * @param array $database   database_server row (host, port, operator_name, operator_namespace); optional 'password'
      */
     static function app(array $app, array $deployment, array $database): array {
         $app_id = (int) $app['id'];
-        $namespace = self::namespace_name((int) $app['project_id']);
+        $namespace = self::namespace_name($app);
         $name = self::app_name($app_id);
         $secret_name = "p{$app_id}-database";
         $pvc_name = "p{$app_id}-files";
@@ -656,7 +715,7 @@ class Manifests {
     }
 
     /**
-     * Ownership labels of every object app() emits for a app
+     * Ownership labels of every object app() emits for an app
      */
     static function app_labels(int $app_id): array {
         return self::_labels([
@@ -666,14 +725,14 @@ class Manifests {
     }
 
     /**
-     * Whether a live object is one of this app's: it sits in the project's
+     * Whether a live object is one of this app's: it sits in its project's
      * namespace and carries all of app_labels(). Cleanup checks this before
      * deleting anything, so a wrong name can never remove someone else's object.
      */
-    static function owned_by_app(array $object, int $project_id, int $app_id): bool {
+    static function owned_by_app(array $object, string $namespace, int $app_id): bool {
         $metadata = $object['metadata'] ?? [];
 
-        if (($metadata['namespace'] ?? null) !== self::namespace_name($project_id)) {
+        if (!self::is_tenant_namespace($namespace) || ($metadata['namespace'] ?? null) !== $namespace) {
             return false;
         }
 
@@ -687,7 +746,22 @@ class Manifests {
     }
 
     /**
-     * [apiVersion, kind, name] of everything app() may create for a app, in
+     * Whether a live Namespace is a tenant namespace the platform created
+     * (tenant()): a tenant name, managed-by and its own tenant label.
+     * destroy_project checks this before deleting one.
+     */
+    static function owned_tenant_namespace(array $object): bool {
+        $name = (string) ($object['metadata']['name'] ?? '');
+        $labels = $object['metadata']['labels'] ?? [];
+
+        return self::is_tenant_namespace($name)
+            && ($labels['app.kubernetes.io/managed-by'] ?? null) === self::MANAGED_BY
+            && ($labels[self::LABEL_PREFIX . '/managed'] ?? null) === 'tenant'
+            && ($labels[self::LABEL_PREFIX . '/tenant'] ?? null) === $name;
+    }
+
+    /**
+     * [apiVersion, kind, name] of everything app() may create for an app, in
      * teardown order: traffic first, then workloads, then data access, then config
      *
      * @return list<array{string, string, string}>
@@ -712,7 +786,7 @@ class Manifests {
      * Sablier group shared by the Deployment labels and the Middleware (label-value safe, cluster unique)
      */
     static function sablier_group(array $app): string {
-        return self::namespace_name((int) $app['project_id']) . '-p' . (int) $app['id'];
+        return self::namespace_name($app) . '-p' . (int) $app['id'];
     }
 
     /**

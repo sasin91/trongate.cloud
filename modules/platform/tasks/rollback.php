@@ -3,7 +3,7 @@
 /**
  * Rollback Task
  *
- * Re-applies a app's app manifests with an earlier, already-built image.
+ * Re-applies an app's manifests with an earlier, already-built image.
  * The rollback deployment row (trigger rollback) already carries that image.
  *
  * Payload: {deployment_id, app_id, project_id, target_deployment_id, image}

@@ -4,7 +4,7 @@ require_once __DIR__ . '/../platform/traits/Platform_actions.php';
 
 /**
  * Data access for the admin MCP endpoint. Sees every project: tools look up the
- * owning project of a app or deployment, then go through Platform_actions
+ * owning project of an app or deployment, then go through Platform_actions
  * with that project id.
  *
  * @property-read Db $db
@@ -28,24 +28,49 @@ class Mcp_model extends Model {
     }
 
     /**
-     * Id and project of every app that is not deleted (all projects).
+     * Id, project and namespace of every app that is not deleted (all projects).
      */
     function live_app_refs(): array {
-        return $this->db->query('SELECT id, project_id FROM app WHERE deleted_at IS NULL', 'array');
+        $sql = <<<SQL
+            SELECT a.id, a.project_id, p.namespace
+            FROM app a
+            JOIN project p ON p.id = a.project_id
+            WHERE a.deleted_at IS NULL
+        SQL;
+        return $this->db->query($sql, 'array');
     }
 
     /**
-     * Deleted apps whose app may still be on the cluster: their latest
+     * Deleted apps that may still be on the cluster: their latest
      * destroy_app task failed, has not finished, or was never queued.
      * Each row says how far the last attempt got (all projects).
      */
     function unfinished_cleanups(): array {
         $sql = <<<SQL
-            SELECT p.id AS app_id, p.project_id, p.label, p.slug, p.verified_domain, p.deleted_at,
+            SELECT a.id AS app_id, a.project_id, a.label, a.slug, a.verified_domain, a.deleted_at,
                 t.id AS task_id, t.started_at, t.failed_at, t.error_message
-            FROM app p
+            FROM app a
             LEFT JOIN tasks t ON t.id = (
-                SELECT MAX(lt.id) FROM tasks lt WHERE lt.app_id = p.id AND lt.script = 'destroy_app'
+                SELECT MAX(lt.id) FROM tasks lt WHERE lt.app_id = a.id AND lt.script = 'destroy_app'
+            )
+            WHERE a.deleted_at IS NOT NULL
+              AND t.completed_at IS NULL
+            ORDER BY a.deleted_at ASC
+        SQL;
+        return $this->db->query($sql, 'object');
+    }
+
+    /**
+     * Deleted projects whose namespace may still be on the cluster: their
+     * latest destroy_project task failed, has not finished, or was never queued.
+     */
+    function unfinished_project_cleanups(): array {
+        $sql = <<<SQL
+            SELECT p.id AS project_id, p.name, p.namespace, p.deleted_at,
+                t.id AS task_id, t.started_at, t.failed_at, t.error_message
+            FROM project p
+            LEFT JOIN tasks t ON t.id = (
+                SELECT MAX(lt.id) FROM tasks lt WHERE lt.project_id = p.id AND lt.script = 'destroy_project'
             )
             WHERE p.deleted_at IS NOT NULL
               AND t.completed_at IS NULL
@@ -66,13 +91,13 @@ class Mcp_model extends Model {
      */
     function platform_status(?int $project_id = null): array {
         $params = $project_id === null ? [] : ['project_id' => $project_id];
-        $app_filter = $project_id === null ? 'WHERE p.deleted_at IS NULL' : 'WHERE p.project_id = :project_id AND p.deleted_at IS NULL';
+        $app_filter = $project_id === null ? 'WHERE a.deleted_at IS NULL' : 'WHERE a.project_id = :project_id AND a.deleted_at IS NULL';
         $deployment_filter = $project_id === null ? '' : 'AND d.project_id = :project_id';
 
         $sql = <<<SQL
             SELECT COALESCE(cd.status, 'never_deployed') AS status, COUNT(*) AS total
-            FROM app p
-            LEFT JOIN deployment cd ON cd.id = p.current_deployment_id
+            FROM app a
+            LEFT JOIN deployment cd ON cd.id = a.current_deployment_id
             {$app_filter}
             GROUP BY COALESCE(cd.status, 'never_deployed')
         SQL;
@@ -87,9 +112,9 @@ class Mcp_model extends Model {
         $deployments = $this->db->query_bind($sql, $params, 'object');
 
         $sql = <<<SQL
-            SELECT d.id, d.project_id, d.app_id, p.label AS app_label, d.status, d.trigger_type, d.created_at
+            SELECT d.id, d.project_id, d.app_id, a.label AS app_label, d.status, d.trigger_type, d.created_at
             FROM deployment d
-            JOIN app p ON p.id = d.app_id
+            JOIN app a ON a.id = d.app_id
             WHERE d.status IN ('pending', 'building', 'deploying') {$deployment_filter}
             ORDER BY d.id DESC
             LIMIT 20
@@ -97,9 +122,9 @@ class Mcp_model extends Model {
         $in_progress = $this->db->query_bind($sql, $params, 'object');
 
         $sql = <<<SQL
-            SELECT d.id, d.project_id, d.app_id, p.label AS app_label, d.trigger_type, d.created_at, d.completed_at
+            SELECT d.id, d.project_id, d.app_id, a.label AS app_label, d.trigger_type, d.created_at, d.completed_at
             FROM deployment d
-            JOIN app p ON p.id = d.app_id
+            JOIN app a ON a.id = d.app_id
             WHERE d.status = 'failed' {$deployment_filter}
             ORDER BY d.id DESC
             LIMIT 5

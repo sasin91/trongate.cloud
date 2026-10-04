@@ -9,14 +9,14 @@
     <?= validation_errors() ?>
 
     <div class="card settings-card danger-card">
-        <p>Deleting the app removes it from your dashboard right away, and its app is taken offline within a few moments. This cannot be undone here.</p>
+        <p>Deleting the app removes it from <?= htmlspecialchars((string) $app->project_name) ?> right away, for every member, and takes it offline within a few moments. This cannot be undone here.</p>
 
         <h3>Removed</h3>
         <ul class="delete-list">
             <?php foreach ($urls as $url): ?>
                 <li>The app at <code><?= htmlspecialchars($url) ?></code></li>
             <?php endforeach; ?>
-            <li>Its access to the database, and any queued deployments</li>
+            <li>Its access to its database, and any queued deployments</li>
         </ul>
 
         <h3>Kept</h3>

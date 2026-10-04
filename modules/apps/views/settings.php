@@ -128,13 +128,13 @@
 
     <h2>Delete app</h2>
     <div class="card settings-card danger-card">
-        <p>Take the app offline and remove it from your dashboard. Its database and files are kept.</p>
+        <p>Take the app offline and remove it from <?= htmlspecialchars((string) $app->project_name) ?>. Its database and files are kept.</p>
         <?php if ($can_delete): ?>
             <div class="form-actions">
                 <a href="apps/<?= $app->id ?>/delete" class="btn-danger">Delete app&hellip;</a>
             </div>
         <?php else: ?>
-            <p class="form-hint">Only project owners and admins can delete a app.</p>
+            <p class="form-hint">Only the project owner can delete an app.</p>
         <?php endif; ?>
     </div>
 </div>

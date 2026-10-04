@@ -6,8 +6,8 @@ require_once __DIR__ . '/../../platform/live/App_resource_audit.php';
 /**
  * MCP tools for controllers: definitions (tools/list) and handlers (tools/call).
  *
- * Admin scope: tools see every project. Handlers resolve the owning project of a
- * app or deployment first and pass that project id to Platform_actions.
+ * Admin scope: tools see every project. Handlers resolve the owning project of
+ * an app or deployment first and pass that project id to Platform_actions.
  *
  * Add a tool by adding its name to TOOLS, a definition to _tool_definitions()
  * and a _tool_{name}(array $args): array method. Override any of them in the
@@ -27,6 +27,7 @@ trait Mcp_tools {
         'rollback_app',
         'audit_app_resources',
         'retry_app_cleanup',
+        'retry_project_cleanup',
     ];
 
     /** Deployment statuses after which nothing changes */
@@ -35,13 +36,13 @@ trait Mcp_tools {
     function _tool_definitions(): array {
         $read_only = ['readOnlyHint' => true, 'destructiveHint' => false, 'idempotentHint' => true, 'openWorldHint' => false];
         $app_id = ['type' => 'integer', 'minimum' => 1, 'description' => 'App id (from list_apps)'];
-        $project_filter = ['type' => 'object', 'properties' => ['project_id' => ['type' => 'integer', 'minimum' => 1, 'description' => 'Optional: only this project']], 'additionalProperties' => false];
+        $project_filter = ['type' => 'object', 'properties' => ['project_id' => ['type' => 'integer', 'minimum' => 1, 'description' => 'Optional: only the apps of this project (a project groups apps in one namespace)']], 'additionalProperties' => false];
 
         return [
             [
                 'name' => 'list_apps',
                 'title' => 'List apps',
-                'description' => 'List apps across all projects (or one project) with their URLs and current deployment status.',
+                'description' => 'List apps (deployed repositories) across all projects, or in one project, with their project, URLs and current deployment status.',
                 'inputSchema' => $project_filter,
                 'annotations' => $read_only,
             ],
@@ -60,7 +61,7 @@ trait Mcp_tools {
             [
                 'name' => 'list_deployments',
                 'title' => 'List deployments',
-                'description' => "List a app's latest deployments, newest first.",
+                'description' => "List an app's latest deployments, newest first.",
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
@@ -127,7 +128,7 @@ trait Mcp_tools {
             [
                 'name' => 'audit_app_resources',
                 'title' => 'Audit app resources',
-                'description' => 'List cluster objects labelled as a trongate.cloud app that no longer match a live app in their namespace, and deleted apps whose cleanup (destroy_app) failed or has not finished. Read-only: reports, never repairs.',
+                'description' => "List cluster objects labelled as a trongate.cloud app that no longer match a live app in their project's namespace, deleted apps whose cleanup (destroy_app) failed or has not finished, and deleted projects whose namespace removal (destroy_project) failed or has not finished. Read-only: reports, never repairs.",
                 'inputSchema' => ['type' => 'object', 'properties' => (object) [], 'additionalProperties' => false],
                 'annotations' => $read_only,
             ],
@@ -139,6 +140,18 @@ trait Mcp_tools {
                     'type' => 'object',
                     'properties' => ['app_id' => ['type' => 'integer', 'minimum' => 1, 'description' => 'Deleted app id (from audit_app_resources)']],
                     'required' => ['app_id'],
+                    'additionalProperties' => false,
+                ],
+                'annotations' => ['readOnlyHint' => false, 'destructiveHint' => true, 'idempotentHint' => false, 'openWorldHint' => false],
+            ],
+            [
+                'name' => 'retry_project_cleanup',
+                'title' => 'Retry project cleanup',
+                'description' => "Queue destroy_project again for a deleted project whose namespace is still there (see audit_app_resources). It deletes the namespace only if no app object is left in it.",
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => ['project_id' => ['type' => 'integer', 'minimum' => 1, 'description' => 'Deleted project id (from audit_app_resources)']],
+                    'required' => ['project_id'],
                     'additionalProperties' => false,
                 ],
                 'annotations' => ['readOnlyHint' => false, 'destructiveHint' => true, 'idempotentHint' => false, 'openWorldHint' => false],
@@ -169,12 +182,17 @@ trait Mcp_tools {
     function _tool_list_apps(array $args): array {
         $project_names = $this->model->project_names();
         $project_id = $this->_int_arg($args, 'project_id', false);
+
+        if ($project_id > 0 && !isset($project_names[$project_id])) {
+            throw new RuntimeException('Project not found');
+        }
+
         $project_ids = $project_id > 0 ? [$project_id] : array_keys($project_names);
 
         $apps = [];
         foreach ($project_ids as $id) {
             foreach ($this->model->project_apps((int) $id) as $app) {
-                $apps[] = $this->_app_summary($app) + ['project' => $project_names[$id] ?? null];
+                $apps[] = $this->_app_summary($app) + ['project_id' => (int) $id, 'project' => $project_names[$id]];
             }
         }
 
@@ -324,11 +342,27 @@ trait Mcp_tools {
             'error' => $row->error_message,
         ], $this->model->unfinished_cleanups());
 
+        $project_cleanups = array_map(fn(object $row) => [
+            'project_id' => (int) $row->project_id,
+            'name' => $row->name,
+            'namespace' => $row->namespace,
+            'deleted_at' => $row->deleted_at,
+            'task_id' => $row->task_id === null ? null : (int) $row->task_id,
+            'state' => match (true) {
+                $row->task_id === null => 'never_queued',
+                $row->failed_at !== null => 'failed',
+                $row->started_at !== null => 'running',
+                default => 'queued',
+            },
+            'error' => $row->error_message,
+        ], $this->model->unfinished_project_cleanups());
+
         return [
             'orphans' => $orphans,
             'unfinished_cleanups' => $cleanups,
+            'unfinished_project_cleanups' => $project_cleanups,
             'checked_kinds' => array_column(App_resource_audit::KINDS, 1),
-            'note' => 'Read-only: nothing was changed. Secrets are not listed (the app cannot read them); a failed or never-queued cleanup may also have left the database Secret. Re-run one with retry_app_cleanup {"app_id": ...}.',
+            'note' => 'Read-only: nothing was changed. Secrets are not listed (the web app cannot read them); a failed or never-queued cleanup may also have left the database Secret. Re-run an app cleanup with retry_app_cleanup {"app_id": ...} and a project cleanup with retry_project_cleanup {"project_id": ...}.',
         ];
     }
 
@@ -345,6 +379,17 @@ trait Mcp_tools {
         return [
             'task_id' => $task_id,
             'app_id' => $app_id,
+            'next' => 'Check the result with audit_app_resources once the worker has run it',
+        ];
+    }
+
+    function _tool_retry_project_cleanup(array $args): array {
+        $project_id = $this->_int_arg($args, 'project_id');
+        $task_id = $this->model->requeue_project_destroy($project_id);
+
+        return [
+            'task_id' => $task_id,
+            'project_id' => $project_id,
             'next' => 'Check the result with audit_app_resources once the worker has run it',
         ];
     }

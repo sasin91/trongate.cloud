@@ -8,7 +8,8 @@ require_once APPPATH . 'modules/platform/manifests/Domain_dns.php';
 require_once APPPATH . 'modules/platform/traits/Live_app_state.php';
 
 /**
- * Customer apps: create, overview, deploy/rollback, platform settings and delete.
+ * Apps inside a project: create, overview, deploy/rollback, platform settings and delete.
+ * Every member of the app's project may do all of it except delete, which is the owner's.
  *
  * @property-read Apps_model $model
  * @property-read Trongate_tokens $trongate_tokens
@@ -28,20 +29,24 @@ class Apps extends Trongate {
     /** Top-level directories the platform mounts or owns; never persistent */
     const RESERVED_PATHS = ['config', 'engine'];
 
-    /** Project roles that may delete a app (db/003_projects.sql); deploys are open to every member */
-    const DELETE_ROLES = ['owner', 'admin'];
-
     /** The app submit_delete() checks the typed confirmation against */
     private ?object $app_to_delete = null;
 
+    /**
+     * projects/{id}/apps/new: the new-app questions, or the GitHub question first
+     * when the customer has not connected GitHub yet.
+     */
     function create(): void {
         $this->_make_sure_allowed();
-        $project_id = $this->_project_id_or_redirect();
+        $project = $this->_member_project_or_redirect(segment(3, 'int'));
+        $customer = $this->_customer_or_redirect();
 
         $data = [
             'view_module' => 'apps',
             'view_file' => 'create',
-            'form' => $this->_app_form_data($project_id),
+            'project' => $project,
+            'form' => $this->_app_form_data((int) $customer->id),
+            'crumbs' => [['projects/' . $project->id, (string) $project->name], ['projects/' . $project->id . '/apps/new', 'New app']],
             'additional_includes_top' => ['apps_module/css/wizard.css'],
         ];
         $this->module('templates');
@@ -50,33 +55,36 @@ class Apps extends Trongate {
 
     function submit(): void {
         $this->_make_sure_allowed();
-        $project_id = $this->_project_id_or_redirect();
+        $project = $this->_member_project_or_redirect(segment(3, 'int'));
+        $customer = $this->_customer_or_redirect();
 
-        $this->_set_app_rules();
+        $this->_set_app_rules((int) $project->id);
 
         if ($this->validation->run() !== true) {
             $this->create();
             return;
         }
 
-        $app_id = $this->_create_app_from_post($project_id);
+        $app_id = $this->_create_app_from_post((int) $project->id, (int) $customer->id);
 
         if ($app_id === false) {
             set_flashdata('The app could not be created, please try again.');
-            redirect('apps/new');
+            redirect('projects/' . $project->id . '/apps/new');
         }
 
-        $deployment_id = $this->_queue_first_deploy($project_id, $app_id);
+        $deployment_id = $this->_queue_first_deploy((int) $customer->id, $app_id);
 
         redirect($deployment_id === false ? 'apps/' . $app_id : 'deployments/' . $deployment_id);
     }
 
     /**
-     * Connect GitHub for a project that has none yet (projects created after onboarding).
+     * Connect GitHub for a customer who has not yet (e.g. a member added to
+     * someone else's project). The token is the customer's, for every project.
      */
     function submit_source(): void {
         $this->_make_sure_allowed();
-        $project_id = $this->_project_id_or_redirect();
+        $project = $this->_member_project_or_redirect(segment(3, 'int'));
+        $customer = $this->_customer_or_redirect();
 
         $this->validation->set_rules('provider', 'Source Control Provider', 'required|callback__validate_source_provider');
         $this->validation->set_rules('token', 'Personal Access Token', 'required|min_length[10]|callback__validate_github_token');
@@ -86,15 +94,15 @@ class Apps extends Trongate {
             return;
         }
 
-        $this->secrets->save('project', $project_id, post('provider', true), ['token' => post('token', true)]);
+        $this->secrets->save('customer', (int) $customer->id, post('provider', true), ['token' => post('token', true)]);
 
-        redirect('apps/new');
+        redirect('projects/' . $project->id . '/apps/new');
     }
 
     function show(): void {
         $this->_make_sure_allowed();
-        $project_id = $this->_project_id_or_redirect();
-        $app = $this->_find_or_redirect($project_id, segment(3, 'int'));
+        $app = $this->_member_app_or_redirect(segment(3, 'int'));
+        $project_id = (int) $app->project_id;
 
         $deployments = $this->model->app_deployments($project_id, (int) $app->id);
         $current = empty($app->current_deployment_id)
@@ -111,6 +119,7 @@ class Apps extends Trongate {
             'can_rollback' => $this->model->rollback_target($app) !== false,
             'live_state' => $this->_live_app_state($app),
             'database_name' => Manifests::database_name((int) $app->id),
+            'crumbs' => $this->_app_crumbs($app),
             'additional_includes_top' => [
                 'deployments_module/css/deployments.css',
                 'apps_module/css/apps.css',
@@ -125,8 +134,8 @@ class Apps extends Trongate {
      */
     function live_state(): void {
         $this->_make_sure_allowed();
-        $project_id = $this->_project_id_or_redirect();
-        $app = $this->model->find_project_app($project_id, segment(3, 'int'));
+        $customer = $this->_customer_or_redirect();
+        $app = $this->model->find_member_app((int) $customer->id, segment(3, 'int'));
 
         if ($app === false) {
             http_response_code(404);
@@ -138,20 +147,18 @@ class Apps extends Trongate {
 
     function deploy(): void {
         $this->_make_sure_allowed();
-        $project_id = $this->_project_id_or_redirect();
-        $app = $this->_find_or_redirect($project_id, segment(3, 'int'));
+        $app = $this->_member_app_or_redirect(segment(3, 'int'));
 
         $this->_require_post_with_csrf();
 
-        $customer = $this->model->_get_current_customer();
-        $member = $this->model->get_current_project_member();
+        $customer = $this->_customer_or_redirect();
 
         try {
             $deployment_id = $this->model->queue_deploy(
-                $project_id,
+                (int) $app->project_id,
                 (int) $app->id,
-                $member === false ? null : (int) $member->id,
-                $customer === false ? null : (int) $customer->id,
+                (int) $app->project_member_id,
+                (int) $customer->id,
                 'manual'
             );
         } catch (RuntimeException $e) {
@@ -167,19 +174,18 @@ class Apps extends Trongate {
      */
     function rollback(): void {
         $this->_make_sure_allowed();
-        $project_id = $this->_project_id_or_redirect();
-        $app = $this->_find_or_redirect($project_id, segment(3, 'int'));
+        $app = $this->_member_app_or_redirect(segment(3, 'int'));
 
         $this->_require_post_with_csrf();
 
         $target_id = (int) post('deployment_id', true);
-        $customer = $this->model->_get_current_customer();
+        $customer = $this->_customer_or_redirect();
 
         try {
             $deployment_id = $this->model->queue_rollback(
-                $project_id,
+                (int) $app->project_id,
                 (int) $app->id,
-                $customer === false ? null : (int) $customer->id,
+                (int) $customer->id,
                 $target_id > 0 ? $target_id : null
             );
         } catch (RuntimeException $e) {
@@ -192,8 +198,7 @@ class Apps extends Trongate {
 
     function settings(): void {
         $this->_make_sure_allowed();
-        $project_id = $this->_project_id_or_redirect();
-        $app = $this->_find_or_redirect($project_id, segment(3, 'int'));
+        $app = $this->_member_app_or_redirect(segment(3, 'int'));
 
         $is_resubmit = REQUEST_TYPE === 'POST';
         $paths = Manifests::persistent_paths((array) $app);
@@ -215,8 +220,9 @@ class Apps extends Trongate {
             'domain_secured' => Manifests::secured_domains((array) $app) !== [],
             'ingress_addresses' => Domain_dns::ingress_addresses(),
             'webhook_url' => BASE_URL . 'webhooks/github/' . $app->id,
-            'webhook_secret' => $this->model->ensure_webhook_secret($project_id, (int) $app->id),
-            'can_delete' => $this->_may_delete_apps(),
+            'webhook_secret' => $this->model->ensure_webhook_secret((int) $app->project_id, (int) $app->id),
+            'can_delete' => $this->_is_owner($app),
+            'crumbs' => $this->_app_crumbs($app),
             'additional_includes_top' => ['apps_module/css/apps.css'],
         ];
         $this->module('templates');
@@ -225,8 +231,8 @@ class Apps extends Trongate {
 
     function submit_settings(): void {
         $this->_make_sure_allowed();
-        $project_id = $this->_project_id_or_redirect();
-        $app = $this->_find_or_redirect($project_id, segment(3, 'int'));
+        $app = $this->_member_app_or_redirect(segment(3, 'int'));
+        $this->editing_app_id = (int) $app->id;
 
         $this->validation->set_rules('domain', 'Custom Domain', 'max_length[253]|callback__validate_domain');
         $this->validation->set_rules('persistent_paths', 'Persistent Paths', 'max_length[4000]|callback__validate_persistent_paths');
@@ -238,7 +244,7 @@ class Apps extends Trongate {
             return;
         }
 
-        $this->model->update_app_settings($project_id, (int) $app->id, [
+        $this->model->update_app_settings((int) $app->project_id, (int) $app->id, [
             'domain' => $this->_normalise_domain((string) post('domain', true)),
             'persistent_paths' => $this->_parse_persistent_paths((string) post('persistent_paths')),
             'php_extensions' => implode(',', $this->_parse_php_extensions((string) post('php_extensions', true))),
@@ -257,11 +263,10 @@ class Apps extends Trongate {
      */
     function verify_domain(): void {
         $this->_make_sure_allowed();
-        $project_id = $this->_project_id_or_redirect();
-        $app = $this->_find_or_redirect($project_id, segment(3, 'int'));
+        $app = $this->_member_app_or_redirect(segment(3, 'int'));
         $this->_require_post_with_csrf();
 
-        $result = $this->model->verify_app_domain($project_id, (int) $app->id);
+        $result = $this->model->verify_app_domain((int) $app->project_id, (int) $app->id);
 
         set_flashdata($result === true
             ? 'Domain verified. It goes live by itself once its DNS points here; checking now.'
@@ -270,19 +275,19 @@ class Apps extends Trongate {
     }
 
     /**
-     * Confirmation page for deleting a app.
+     * Confirmation page for deleting an app (project owner only).
      */
     function delete(): void {
         $this->_make_sure_allowed();
-        $project_id = $this->_project_id_or_redirect();
-        $app = $this->_find_or_redirect($project_id, segment(3, 'int'));
-        $this->_make_sure_may_delete($app);
+        $app = $this->_member_app_or_redirect(segment(3, 'int'));
+        $this->_make_sure_owner($app, 'Only the project owner can delete an app.', 'apps/' . $app->id . '/settings');
 
         $data = [
             'view_module' => 'apps',
             'view_file' => 'delete',
             'app' => $app,
             'urls' => $this->_app_urls($app),
+            'crumbs' => $this->_app_crumbs($app),
             'additional_includes_top' => ['apps_module/css/apps.css'],
         ];
         $this->module('templates');
@@ -294,9 +299,8 @@ class Apps extends Trongate {
      */
     function submit_delete(): void {
         $this->_make_sure_allowed();
-        $project_id = $this->_project_id_or_redirect();
-        $app = $this->_find_or_redirect($project_id, segment(3, 'int'));
-        $this->_make_sure_may_delete($app);
+        $app = $this->_member_app_or_redirect(segment(3, 'int'));
+        $this->_make_sure_owner($app, 'Only the project owner can delete an app.', 'apps/' . $app->id . '/settings');
 
         if (REQUEST_TYPE !== 'POST') {
             http_response_code(405);
@@ -312,65 +316,37 @@ class Apps extends Trongate {
         }
 
         try {
-            $this->model->queue_app_delete($project_id, (int) $app->id);
+            $this->model->queue_app_delete((int) $app->project_id, (int) $app->id);
         } catch (RuntimeException $e) {
             set_flashdata('Could not delete the app: ' . $e->getMessage());
             redirect('apps/' . $app->id);
         }
 
-        set_flashdata(htmlspecialchars($app->label) . ' was deleted. Its app is being removed now.');
-        redirect('dashboard');
+        set_flashdata(htmlspecialchars($app->label) . ' was deleted. It is being taken offline now.');
+        redirect('projects/' . $app->project_id);
     }
 
     // --- Helpers ---
 
-    function _find_or_redirect(int $project_id, int $app_id): object {
-        $app = $this->model->find_project_app($project_id, $app_id);
-
-        if ($app === false) {
-            redirect('dashboard');
-        }
-
-        return $app;
-    }
-
     /**
-     * Whether the current customer's role in the current project may delete
-     * apps. Deleting is the one irreversible app action, so unlike
-     * deploys and rollbacks it is not open to every member.
+     * Header breadcrumb: the app's project, then the app
+     *
+     * @return list<array{0: string, 1: string}>
      */
-    function _may_delete_apps(): bool {
-        $member = $this->model->get_current_project_member();
-
-        return $member !== false && in_array((string) $member->role, self::DELETE_ROLES, true);
-    }
-
-    function _make_sure_may_delete(object $app): void {
-        if (!$this->_may_delete_apps()) {
-            set_flashdata('Only project owners and admins can delete a app.');
-            redirect('apps/' . $app->id . '/settings');
-        }
+    function _app_crumbs(object $app): array {
+        return [
+            ['projects/' . $app->project_id, (string) $app->project_name],
+            ['apps/' . $app->id, (string) $app->label],
+        ];
     }
 
     /**
-     * Public URLs of a app: the platform subdomain first, then the custom domain.
+     * Public URLs of an app: the platform subdomain first, then the custom domain.
      *
      * @return list<string>
      */
     function _app_urls(object $app): array {
         return array_map(fn(string $host) => 'https://' . $host, Manifests::hostnames((array) $app));
-    }
-
-    /**
-     * Only accept POSTs carrying a valid CSRF token (Validation::run() blocks the request otherwise).
-     */
-    function _require_post_with_csrf(): void {
-        if (REQUEST_TYPE !== 'POST') {
-            http_response_code(405);
-            die('Method not allowed');
-        }
-
-        $this->validation->run();
     }
 
     /**
@@ -461,18 +437,17 @@ class Apps extends Trongate {
             return 'Please choose one of the listed resource sizes.';
         }
 
-        $project_id = $this->_project_id_or_redirect();
-        $app = $this->_find_or_redirect($project_id, segment(3, 'int'));
+        $app = $this->_member_app_or_redirect(segment(3, 'int'));
 
         if (Resource_tiers::rank($tier) <= Resource_tiers::rank((string) $app->resource_tier)) {
             return true;
         }
 
-        $tiers = $this->model->project_resource_tiers($project_id, (int) $app->id);
+        $tiers = $this->model->project_resource_tiers((int) $app->project_id, (int) $app->id);
         $tiers[] = $tier;
 
         if (Manifests::quota_shortfall($tiers) !== null) {
-            return "Your project's apps would not fit in its resources with this size. Choose a smaller size, or make another app smaller first.";
+            return "This project's apps would not fit in its resources with this size. Choose a smaller size, or make another app in the project smaller first.";
         }
 
         return true;

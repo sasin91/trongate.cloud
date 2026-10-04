@@ -36,11 +36,13 @@ class Services extends Trongate {
     }
 
     /**
-     * Build a client using the project's stored provider token
+     * Build a client using the customer's stored provider token
+     * (secrets module 'customer'; the worker reads the same row through
+     * Module_reference as secrets:customer,{id},{provider})
      * @return Github
      */
-    function for_project(int $project_id, string $provider): Client {
-        $secret = $this->secrets->get('project', $project_id, $provider);
+    function for_customer(int $customer_id, string $provider): Client {
+        $secret = $this->secrets->get('customer', $customer_id, $provider);
         return $this->make($provider, $secret['token'] ?? '');
     }
 

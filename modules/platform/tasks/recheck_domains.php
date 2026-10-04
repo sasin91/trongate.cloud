@@ -81,7 +81,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
     }
 
     /**
-     * Re-apply a app whose domain points here but is not routed yet.
+     * Re-apply an app whose domain points here but is not routed yet.
      * Returns false only when the re-apply itself failed. (A closure, not a
      * function: the worker includes this file once per task.)
      */
@@ -133,8 +133,9 @@ return function (Task_log $log) use ($payload, $runtime): int {
      * Whether the custom domain's Certificate (cert-manager creates it from the
      * domain's Gateway) is Ready, waiting up to $wait seconds. Logs why not.
      */
-    $certificate_ready = function (int $id, string $domain, int $wait) use ($runtime, $log, $project_id): bool {
-        $namespace = Manifests::namespace_name($project_id);
+    $certificate_ready = function (array $app, string $domain, int $wait) use ($runtime, $log): bool {
+        $id = (int) $app['id'];
+        $namespace = Manifests::namespace_name($app);
         $name = Manifests::domain_tls_secret(Manifests::domain_gateway_name($id, $domain));
         $deadline = time() + $wait;
 
@@ -206,7 +207,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
             Platform_task::execute($db, $sql, 'is', (int) $id, $domain);
             $log->info("{$domain}: {$check['detail']}");
 
-            $namespace = Manifests::namespace_name($project_id);
+            $namespace = Manifests::namespace_name($app);
             $app_name = Manifests::app_name((int) $id);
 
             // Step 1: routing
@@ -233,7 +234,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
             $app = Platform_task::app($db, $project_id, (int) $id);
 
             if (empty($app['domain_secured_at'])) {
-                if (!$certificate_ready((int) $id, $domain, $promoted ? $certificate_wait_seconds : 0)) {
+                if (!$certificate_ready($app, $domain, $promoted ? $certificate_wait_seconds : 0)) {
                     continue;
                 }
 

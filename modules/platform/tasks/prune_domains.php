@@ -3,7 +3,7 @@
 /**
  * Prune Domains Task
  *
- * Takes a app's custom domain off the cluster once it no longer routes it:
+ * Takes an app's custom domain off the cluster once it no longer routes it:
  * deletes its custom-domain Gateways (and certificates) for every domain
  * Manifests::custom_domains no longer lists.
  *
@@ -11,7 +11,7 @@
  *
  * Queued by App_records::update_app_settings when a verified domain is
  * changed or removed. Clearing verified_domain frees the UNIQUE claim at once,
- * so another app, of any project, may verify and route the domain next.
+ * so another app, in any project, may verify and route the domain next.
  * Waiting for this app's next deploy (Platform_task::apply prunes too)
  * would leave it a live HTTPS listener, and a certificate cert-manager keeps
  * renewing, for a domain it gave up, indefinitely if it never deploys again.
