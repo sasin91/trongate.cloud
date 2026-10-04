@@ -57,7 +57,7 @@ Done in code:
   - Dashboard: the team's projects with their live state from the cluster (running, asleep, starting, crashing, stuck).
   - Project page: live URLs, the current deployment, the app's live state (polled every 5s), deployment history, Deploy and Rollback (to the previous deployment or one you pick).
   - Project settings: custom domain with DNS verification, persistent paths, extra PHP extensions, always-on, and the GitHub webhook URL and secret.
-  - Delete project: a confirmation page (type the slug, CSRF-protected) soft-deletes the project and queues `destroy_project`. Refused while a deployment is running; queued deploys are cancelled.
+  - Delete project (team owners and admins only; deploys and rollbacks stay open to every member): a confirmation page (type the slug, CSRF-protected) soft-deletes the project and queues `destroy_project`. Refused while a deployment is running; queued deploys are cancelled.
   - Deployment page: logs polled with MX.
   - Team switcher: CSRF-protected.
 - **Custom domains**: platform hosts (`BASE_URL`, `PLATFORM_REGISTRY` and their subdomains) are rejected, and a domain is routed only once its TXT record verifies it. The admission policy also blocks platform hostnames on tenant HTTPRoutes.

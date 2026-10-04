@@ -27,6 +27,9 @@ class Projects extends Trongate {
     /** Top-level directories the platform mounts or owns; never persistent */
     const RESERVED_PATHS = ['config', 'engine'];
 
+    /** Team roles that may delete a project (db/003_teams.sql); deploys are open to every member */
+    const DELETE_ROLES = ['owner', 'admin'];
+
     /** The project submit_delete() checks the typed confirmation against */
     private ?object $project_to_delete = null;
 
@@ -205,6 +208,7 @@ class Projects extends Trongate {
             'domain_record' => !empty($project->domain) ? $this->model->domain_verification_record((int) $project->id, (string) $project->domain) : null,
             'webhook_url' => BASE_URL . 'webhooks/github/' . $project->id,
             'webhook_secret' => $this->model->ensure_webhook_secret($team_id, (int) $project->id),
+            'can_delete' => $this->_may_delete_projects(),
             'additional_includes_top' => ['projects_module/css/projects.css'],
         ];
         $this->module('templates');
@@ -260,6 +264,7 @@ class Projects extends Trongate {
         $this->_make_sure_allowed();
         $team_id = $this->_team_id_or_redirect();
         $project = $this->_find_or_redirect($team_id, segment(3, 'int'));
+        $this->_make_sure_may_delete($project);
 
         $data = [
             'view_module' => 'projects',
@@ -279,6 +284,7 @@ class Projects extends Trongate {
         $this->_make_sure_allowed();
         $team_id = $this->_team_id_or_redirect();
         $project = $this->_find_or_redirect($team_id, segment(3, 'int'));
+        $this->_make_sure_may_delete($project);
 
         if (REQUEST_TYPE !== 'POST') {
             http_response_code(405);
@@ -314,6 +320,24 @@ class Projects extends Trongate {
         }
 
         return $project;
+    }
+
+    /**
+     * Whether the current customer's role in the current team may delete
+     * projects. Deleting is the one irreversible project action, so unlike
+     * deploys and rollbacks it is not open to every member.
+     */
+    function _may_delete_projects(): bool {
+        $member = $this->model->get_current_team_member();
+
+        return $member !== false && in_array((string) $member->role, self::DELETE_ROLES, true);
+    }
+
+    function _make_sure_may_delete(object $project): void {
+        if (!$this->_may_delete_projects()) {
+            set_flashdata('Only team owners and admins can delete a project.');
+            redirect('projects/' . $project->id . '/settings');
+        }
     }
 
     /**
