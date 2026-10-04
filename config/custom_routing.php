@@ -3,7 +3,7 @@
 $routes = [
     // Auth (login module, user level 2 = customer)
     'tg-admin' => 'login/login/tg-admin',
-    'login' => 'login/login/customer',
+    'login' => 'login/login/login', // last segment = customer secret_login_word (config/login.php)
     'logout' => 'login/logout',
     'register' => 'customer/register',
     'register/submit' => 'customer/submit_register',
