@@ -1,6 +1,4 @@
 <?php
-session_start();
-
 // Config files
 require_once '../config/config.php';
 require_once '../config/custom_routing.php';
@@ -33,6 +31,10 @@ spl_autoload_register(function ($class_name) {
     
     return false;
 });
+
+// Sessions in the database, shared by every app replica (engine/Db_session_handler.php)
+session_set_save_handler(new Db_session_handler(), true);
+session_start();
 
 /**
  * Retrieves the URL segments after processing custom routes.
