@@ -14,8 +14,13 @@ require_once __DIR__ . '/../../worker/Worker_actions.php';
  * its deployments and queues a deploy (trigger 'reconcile') for a head that
  * nothing has built. It applies the gates the webhook path would have:
  *
- * - only projects that deploy on push: a webhook secret and at least one
- *   webhook (or reconcile) deployment, so manual-only projects stay manual;
+ * - only projects that deploy on push: Deploy on push on (project.auto_deploy,
+ *   the customer's switch) and a webhook deployment at some point, so
+ *   manual-only projects never cost a GitHub call;
+ * - before queueing, the project's webhook must still be on the repository
+ *   (GitHub hooks API; the classic `repo` scope onboarding asks for covers it).
+ *   A customer who deletes the webhook to stop push deploys gets none from
+ *   here either, and a token that may not read hooks deploys nothing;
  * - the project's own repository and branch, and a full 40-char head SHA;
  * - a SHA with ANY deployment row is never queued again, whatever its status:
  *   a failed build is for a human to retry, not for this job to loop on;
@@ -52,6 +57,8 @@ class Deploy_reconcile {
         'token-rejected', // GitHub refused the token (401/403)
         'rate-limited',   // GitHub rate limit; retried next run
         'branch-missing', // repository or branch not found (404)
+        'no-webhook',     // the webhook is gone from the repository: not a missed push
+        'webhook-unverifiable', // the token may not read the repository's hooks
         'queue-failed',
         'error',
     ];
@@ -123,8 +130,8 @@ class Deploy_reconcile {
     }
 
     /**
-     * Projects that deploy on push and have been deployed before; a brand-new
-     * project's first deploy is queued by onboarding, not here.
+     * Projects with Deploy on push on whose webhook has deployed before; a
+     * brand-new project's first deploy is queued by onboarding, not here.
      */
     function projects(): array {
         $sql = <<<SQL
@@ -132,12 +139,13 @@ class Deploy_reconcile {
             FROM project p
             WHERE p.source_provider = 'github'
               AND p.source_url <> ''
+              AND p.auto_deploy = 1
               AND p.webhook_secret IS NOT NULL
               AND p.webhook_secret <> ''
               AND EXISTS (
                   SELECT 1 FROM deployment d
                   WHERE d.project_id = p.id
-                    AND d.trigger_type IN ('webhook', 'reconcile')
+                    AND d.trigger_type = 'webhook'
               )
             ORDER BY (SELECT MAX(d.id) FROM deployment d WHERE d.project_id = p.id) DESC
             LIMIT ?
@@ -213,6 +221,20 @@ class Deploy_reconcile {
             return 'too-recent';
         }
 
+        // The customer may have removed the webhook to stop push deploys
+        try {
+            if (!$this->webhook_exists($github, $repo, $project_id)) {
+                return 'no-webhook';
+            }
+        } catch (Client_Error $e) {
+            if ($e->getCode() === 403 || $e->getCode() === 404) {
+                $this->log->warn("Project #{$project_id}: the team's GitHub token may not read {$repo}'s webhooks; not deploying " . substr($sha, 0, 7));
+                return 'webhook-unverifiable';
+            }
+
+            return $this->github_failure($team_id, $project_id, $e);
+        }
+
         try {
             $deployment_id = $this->actions->queue_deploy($team_id, $project_id, null, null, 'reconcile', $sha);
         } catch (\Throwable $e) {
@@ -256,6 +278,31 @@ class Deploy_reconcile {
         $committed_at = $date !== '' ? strtotime($date) : false;
 
         return ['sha' => $sha, 'committed_at' => $committed_at === false ? null : $committed_at];
+    }
+
+    /**
+     * Whether the repository still has an active webhook pointing at this
+     * project's endpoint (webhooks/github/{id}). Only asked for a head that is
+     * about to be deployed, so it costs a call per missed push, not per project.
+     *
+     * @throws Client_Error 403/404 when the token may not read hooks
+     */
+    function webhook_exists(Github $github, string $repo, int $project_id): bool {
+        usleep(self::GITHUB_DELAY_MS * 1000);
+
+        $this->github_calls++;
+        $hooks = $github->request('GET', "/repos/{$repo}/hooks?per_page=100");
+        $path = "/webhooks/github/{$project_id}";
+
+        foreach ($hooks as $hook) {
+            $url = rtrim((string) ($hook['config']['url'] ?? ''), '/');
+
+            if (!empty($hook['active']) && str_ends_with((string) parse_url($url, PHP_URL_PATH), $path)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

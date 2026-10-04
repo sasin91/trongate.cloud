@@ -42,6 +42,14 @@
             <p class="form-hint">By default your app sleeps when idle and wakes on the next request, which takes a few seconds. Keep it always on to skip the wake-up.</p>
         </div>
 
+        <div class="form-group">
+            <label class="checkbox-label">
+                <input type="checkbox" name="auto_deploy" value="1" <?= $auto_deploy ? 'checked' : '' ?>>
+                Deploy on push
+            </label>
+            <p class="form-hint">Pushes to <code><?= htmlspecialchars((string) $project->source_branch) ?></code> deploy automatically once the GitHub webhook below is set up. Turn this off to deploy only when you press Deploy.</p>
+        </div>
+
         <div class="form-actions">
             <button type="submit" class="btn-primary">Save settings</button>
             <a href="projects/<?= $project->id ?>" class="btn-secondary">Cancel</a>
@@ -84,6 +92,6 @@
             <dt>Events</dt>
             <dd>Just the <code>push</code> event</dd>
         </dl>
-        <p class="form-hint">Pushes to <code><?= htmlspecialchars((string) $project->source_branch) ?></code> then deploy automatically. Keep the secret private: anyone who has it can trigger deployments.</p>
+        <p class="form-hint">Pushes to <code><?= htmlspecialchars((string) $project->source_branch) ?></code> then deploy automatically. Keep the secret private: anyone who has it can trigger deployments. If a push notification from GitHub goes missing, we deploy the branch head within about 15 minutes, as long as the webhook is still there.</p>
     </div>
 </div>

@@ -199,6 +199,7 @@ class Projects extends Trongate {
             'persistent_paths' => $is_resubmit ? (string) post('persistent_paths') : implode("\n", $paths),
             'php_extensions' => $is_resubmit ? (string) post('php_extensions', true) : (string) $project->php_extensions,
             'always_on' => $is_resubmit ? (bool) post('always_on') : (bool) $project->always_on,
+            'auto_deploy' => $is_resubmit ? (bool) post('auto_deploy') : (bool) $project->auto_deploy,
             'domain_record' => !empty($project->domain) ? $this->model->domain_verification_record((int) $project->id, (string) $project->domain) : null,
             'webhook_url' => BASE_URL . 'webhooks/github/' . $project->id,
             'webhook_secret' => $this->model->ensure_webhook_secret($team_id, (int) $project->id),
@@ -227,6 +228,7 @@ class Projects extends Trongate {
             'persistent_paths' => $this->_parse_persistent_paths((string) post('persistent_paths')),
             'php_extensions' => implode(',', $this->_parse_php_extensions((string) post('php_extensions', true))),
             'always_on' => (bool) post('always_on'),
+            'auto_deploy' => (bool) post('auto_deploy'),
         ]);
 
         set_flashdata('Settings saved. They take effect on the next deployment.');

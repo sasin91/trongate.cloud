@@ -9,9 +9,16 @@
 -- tasks rows without a team. scheduled_jobs remembers when each was last
 -- queued (the claim that keeps several workers from queueing it twice) and the
 -- summary of its last run, which /metrics exposes.
+--
+-- project.auto_deploy is the customer's "Deploy on push" switch (project
+-- settings): the webhook and the reconcile job both honour it. On by default,
+-- as pushes deployed before it existed.
 
 ALTER TABLE deployment
   MODIFY trigger_type ENUM('manual', 'webhook', 'mcp', 'rollback', 'reconcile') NOT NULL DEFAULT 'manual';
+
+ALTER TABLE project
+  ADD COLUMN auto_deploy TINYINT(1) NOT NULL DEFAULT 1 AFTER always_on;
 
 ALTER TABLE tasks
   MODIFY team_id INT NULL COMMENT 'NULL for platform-wide periodic tasks';

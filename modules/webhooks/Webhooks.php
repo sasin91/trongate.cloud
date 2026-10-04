@@ -5,7 +5,8 @@
  *
  * Each project has its own secret (derived from the project.webhook_secret seed and
  * APP_KEY, shown in project settings); GitHub signs the raw body with it in
- * X-Hub-Signature-256. A signed push to the project's branch queues a deployment.
+ * X-Hub-Signature-256. A signed push to the project's branch queues a deployment,
+ * unless the customer turned Deploy on push off (project.auto_deploy).
  * The deploy task builds the branch head, so replaying an old push cannot roll back.
  *
  * @property-read Webhooks_model $model
@@ -63,6 +64,11 @@ class Webhooks extends Trongate {
      * Queue a deploy for a push to the project's branch; ignore other refs, tags and branch deletions.
      */
     function _handle_push(object $project, array $payload): void {
+        if (empty($project->auto_deploy)) {
+            $this->_respond(202, ['ok' => true, 'ignored' => 'auto_deploy_off']);
+            return;
+        }
+
         $ref = (string) ($payload['ref'] ?? '');
         $sha = strtolower((string) ($payload['after'] ?? ''));
         $branch = (string) ($project->source_branch ?: 'main');
