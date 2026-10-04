@@ -13,7 +13,7 @@ resources:
   - worker-admission-policy.yaml
 # Not listed on purpose: secrets.example.yaml (create a SOPS-encrypted copy, see ../README.md)
 
-# Built from ../../Dockerfile and ../../Dockerfile.worker by .github/workflows/images.yml
+# Built from ../../Dockerfile and ../../Dockerfile.worker by bin/push-images.sh
 # and pushed to the cluster's own registry; pin tags (or let Flux image automation do it)
 images:
   - name: trongate-cloud
