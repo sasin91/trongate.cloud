@@ -44,10 +44,13 @@ return function (Task_log $log) use ($payload, $runtime): int {
         ['v1', 'Secret', "p{$project_id}-database"],
     ];
 
-    // Custom-domain Gateways (Manifests::domain_gateway) carry the domain in a hash, so find them by label
+    // Custom-domain Gateways (Manifests::domain_gateway) carry the domain in a hash, so find them by label.
+    // cert-manager leaves their certificate Secrets (private key included) behind, so those go too.
     try {
         foreach ($kube->list('gateway.networking.k8s.io/v1', 'Gateway', $namespace, Manifests::domain_gateway_selector($project_id)) as $gateway) {
-            array_unshift($resources, ['gateway.networking.k8s.io/v1', 'Gateway', (string) $gateway['metadata']['name']]);
+            $gateway_name = (string) $gateway['metadata']['name'];
+            array_unshift($resources, ['gateway.networking.k8s.io/v1', 'Gateway', $gateway_name]);
+            $resources[] = ['v1', 'Secret', Manifests::domain_tls_secret($gateway_name)];
         }
     } catch (Throwable $e) {
         $log->error("Listing custom-domain Gateways failed: {$e->getMessage()}");

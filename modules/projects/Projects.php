@@ -202,6 +202,7 @@ class Projects extends Trongate {
             'always_on' => $is_resubmit ? (bool) post('always_on') : (bool) $project->always_on,
             'domain_record' => !empty($project->domain) ? $this->model->domain_verification_record((int) $project->id, (string) $project->domain) : null,
             'domain_routed' => Manifests::custom_domains((array) $project) !== [],
+            'domain_secured' => Manifests::secured_domains((array) $project) !== [],
             'ingress_addresses' => Domain_dns::ingress_addresses(),
             'webhook_url' => BASE_URL . 'webhooks/github/' . $project->id,
             'webhook_secret' => $this->model->ensure_webhook_secret($team_id, (int) $project->id),

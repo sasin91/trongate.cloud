@@ -53,8 +53,13 @@
     <h2>Custom domain</h2>
     <div class="card settings-card">
         <?php if ((string) $project->verified_domain === (string) $project->domain): ?>
-        <?php if ($domain_routed): ?>
-        <p><code><?= htmlspecialchars((string) $project->domain) ?></code> is verified and points here, so it is served (its HTTPS certificate is issued within minutes of going live).</p>
+        <?php if ($domain_secured): ?>
+        <p><code><?= htmlspecialchars((string) $project->domain) ?></code> is verified, points here and has its HTTPS certificate, so it is served and is the app's base URL.</p>
+        <?php elseif ($domain_routed): ?>
+        <p><code><?= htmlspecialchars((string) $project->domain) ?></code> is verified and points here. It becomes the app's base URL once its HTTPS certificate is issued, usually within minutes<?= !empty($project->domain_checked_at) ? ' (checked ' . htmlspecialchars((string) $project->domain_checked_at) . ')' : '' ?>. If that takes longer, check that no CAA record for the domain excludes Let's Encrypt.</p>
+        <?= form_open('projects/' . $project->id . '/verify-domain') ?>
+            <button type="submit" class="btn-secondary">Check again</button>
+        <?= form_close() ?>
         <?php else: ?>
         <p><code><?= htmlspecialchars((string) $project->domain) ?></code> is verified, but its DNS does not point here yet<?= !empty($project->domain_checked_at) ? ' (checked ' . htmlspecialchars((string) $project->domain_checked_at) . ')' : '' ?>. It goes live by itself once it does. Add one of these:</p>
         <dl class="webhook-details">

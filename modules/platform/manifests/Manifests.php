@@ -127,11 +127,43 @@ class Manifests {
     }
 
     /**
-     * Name of the Gateway serving one custom domain: "p{id}-domain-{hash}". A hash,
-     * because a domain can be longer than a resource name may be.
+     * The routed custom domains whose certificate has been issued
+     * (project.domain_secured_at, db/016, set by recheck_domains once the
+     * Certificate is Ready). Only these may become BASE_URL
+     * (Trongate_config::base_url): a domain whose certificate is pending, or
+     * never comes (CAA record, rate limit), answers with Traefik's default
+     * certificate, and must not drag the app's links, including those served on
+     * the {slug} host, along with it.
+     *
+     * @return list<string>
+     */
+    static function secured_domains(array $project): array {
+        return empty($project['domain_secured_at']) ? [] : self::custom_domains($project);
+    }
+
+    /**
+     * Short hash of a custom domain, for resource names and labels (a domain can
+     * be longer than either may be)
+     */
+    static function domain_hash(string $domain): string {
+        return substr(hash('sha256', strtolower($domain)), 0, 12);
+    }
+
+    /**
+     * Name of the Gateway serving one custom domain: "p{id}-domain-{hash}"
      */
     static function domain_gateway_name(int $project_id, string $domain): string {
-        return "p{$project_id}-domain-" . substr(hash('sha256', strtolower($domain)), 0, 12);
+        return "p{$project_id}-domain-" . self::domain_hash($domain);
+    }
+
+    /**
+     * The certificate Secret of a custom-domain Gateway. cert-manager names the
+     * Certificate after it too, and does not delete it with the Certificate
+     * (no --enable-certificate-owner-ref), so it is deleted with the Gateway
+     * (Platform_task::delete_domain_gateway).
+     */
+    static function domain_tls_secret(string $gateway_name): string {
+        return "{$gateway_name}-tls";
     }
 
     /**
@@ -139,6 +171,14 @@ class Manifests {
      */
     static function domain_gateway_selector(int $project_id): string {
         return 'app.kubernetes.io/component=' . self::DOMAIN_COMPONENT . ',' . self::LABEL_PREFIX . '/project-id=' . $project_id;
+    }
+
+    /**
+     * Label selector for every project's Gateways for one domain, in any
+     * namespace (to release the domain from a project that no longer owns it)
+     */
+    static function domain_hostname_selector(string $domain): string {
+        return 'app.kubernetes.io/component=' . self::DOMAIN_COMPONENT . ',' . self::LABEL_PREFIX . '/domain-hash=' . self::domain_hash($domain);
     }
 
     /**
@@ -351,7 +391,11 @@ class Manifests {
         $metadata = self::_metadata($name, self::namespace_name((int) $project['team_id']), self::_labels([
             'app.kubernetes.io/component' => self::DOMAIN_COMPONENT,
             self::LABEL_PREFIX . '/project-id' => (string) $project_id,
+            self::LABEL_PREFIX . '/domain-hash' => self::domain_hash($domain),
         ]));
+        // The only cert-manager annotation: worker-admission-policy.yaml refuses
+        // any other (common-name, subject, usages, ...), so the certificate names
+        // exactly the listener's hostname
         $metadata['annotations'] = ['cert-manager.io/cluster-issuer' => PLATFORM_DOMAIN_ISSUER];
 
         return [
@@ -367,7 +411,7 @@ class Manifests {
                     'hostname' => $domain,
                     'tls' => [
                         'mode' => 'Terminate',
-                        'certificateRefs' => [['group' => '', 'kind' => 'Secret', 'name' => "{$name}-tls"]],
+                        'certificateRefs' => [['group' => '', 'kind' => 'Secret', 'name' => self::domain_tls_secret($name)]],
                     ],
                     'allowedRoutes' => ['namespaces' => ['from' => 'Same']],
                 ]],
@@ -378,7 +422,7 @@ class Manifests {
     /**
      * Everything one project needs inside its tenant namespace, in apply order
      *
-     * @param array $project    project row (id, team_id, slug, label, type, verified_domain, domain_pointed_at, persistent_paths, always_on)
+     * @param array $project    project row (id, team_id, slug, label, type, verified_domain, domain_pointed_at, domain_secured_at, persistent_paths, always_on)
      * @param array $deployment deployment row (id, image)
      * @param array $database   database_server row (host, port, operator_name, operator_namespace); optional 'password'
      */
@@ -736,6 +780,8 @@ class Manifests {
                     'annotations' => [
                         self::LABEL_PREFIX . '/deployment-id' => (string) ($deployment['id'] ?? ''),
                         self::LABEL_PREFIX . '/config-hash' => $o['config_hash'],
+                        // Read by recheck_domains to see whether a secured custom domain is BASE_URL yet
+                        self::LABEL_PREFIX . '/base-url' => $o['base_url'],
                     ],
                 ],
                 'spec' => [

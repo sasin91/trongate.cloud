@@ -33,6 +33,7 @@ class Kubernetes extends Client {
         'gateway.networking.k8s.io/v1/HTTPRoute' => ['httproutes', true],
         'gateway.networking.k8s.io/v1/Gateway' => ['gateways', true],
         'traefik.io/v1alpha1/Middleware' => ['middlewares', true],
+        'cert-manager.io/v1/Certificate' => ['certificates', true],
         'k8s.mariadb.com/v1alpha1/MariaDB' => ['mariadbs', true],
         'k8s.mariadb.com/v1alpha1/Database' => ['databases', true],
         'k8s.mariadb.com/v1alpha1/User' => ['users', true],
@@ -151,7 +152,8 @@ class Kubernetes extends Client {
     }
 
     /**
-     * List objects of a kind, optionally filtered by label selector
+     * List objects of a kind, optionally filtered by label selector. A null
+     * $namespace lists a namespaced kind across all namespaces.
      */
     function list(string $api_version, string $kind, ?string $namespace, string $label_selector = ''): array {
         $path = $this->path($api_version, $kind, $namespace);
@@ -252,7 +254,8 @@ class Kubernetes extends Client {
     }
 
     /**
-     * API path for a kind; omit $name for the collection
+     * API path for a kind; omit $name for the collection (and $namespace too
+     * for the collection across all namespaces)
      */
     function path(string $api_version, string $kind, ?string $namespace, ?string $name = null): string {
         $key = $api_version . '/' . $kind;
@@ -264,7 +267,8 @@ class Kubernetes extends Client {
         [$plural, $namespaced] = self::RESOURCES[$key];
         $path = str_contains($api_version, '/') ? '/apis/' . $api_version : '/api/' . $api_version;
 
-        if ($namespaced) {
+        // A null namespace on a collection means every namespace (list())
+        if ($namespaced && !($namespace === null && $name === null)) {
             if ($namespace === null || $namespace === '') {
                 throw new InvalidArgumentException("{$kind} is namespaced; a namespace is required");
             }

@@ -5,11 +5,21 @@
  *
  * The DNS gate for custom domains (db/016, Manifests::custom_domains). Checks
  * whether verified domains point at the platform (Domain_dns), records it, and
- * promotes a pointing domain the app's live HTTPRoute does not list yet: the
- * app is re-applied, so the domain gets its Gateway, certificate, route and
- * BASE_URL without anyone pushing a commit. Comparing with the live route
- * rather than only "newly pointing" makes every run catch up on a promotion
- * that was skipped (a deploy in progress) or failed (a rollout timeout).
+ * promotes a pointing domain in two steps, each by re-applying the app, so
+ * nobody has to push a commit:
+ *
+ * 1. Routing: the app's live HTTPRoute does not list the domain yet. The
+ *    re-apply gives it its Gateway, certificate request and route.
+ * 2. BASE_URL: once its Certificate is Ready (waiting up to
+ *    $certificate_wait_seconds right after step 1), domain_secured_at is set
+ *    and the app is re-applied again with the domain as BASE_URL
+ *    (Manifests::secured_domains). A certificate that never comes (CAA record,
+ *    rate limit) leaves the app's links on the {slug} host.
+ *
+ * Comparing with the live objects (route hostnames, the Deployment's base-url
+ * annotation) rather than only "newly pointing" makes every run catch up on a
+ * promotion that was skipped (a deploy in progress) or failed (a rollout
+ * timeout).
  *
  * Payload: {team_id, project_id?}. With project_id: that project. Without:
  * every project of the team with a verified domain.
@@ -38,8 +48,9 @@
  *   deployment. It never builds or deploys: a DNS edit at a registrar must not
  *   be able to ship new code.
  * - Promotion only ever adds a domain. Demotion, after $demote_after_failures
- *   failed checks in a row, only clears domain_pointed_at; the cluster is left
- *   alone and the next deploy stops routing the domain. A few flaky lookups
+ *   failed checks in a row, only clears domain_pointed_at and
+ *   domain_secured_at; the cluster is left alone and the next deploy stops
+ *   routing the domain. A few flaky lookups
  *   must never take a live domain off the internet.
  * - Projects are checked and promoted one by one, and a failure is logged and
  *   skipped, so one broken domain never holds up another project's.
@@ -50,6 +61,8 @@ require_once __DIR__ . '/lib/Platform_task.php';
 return function (Task_log $log) use ($payload, $runtime): int {
     // Consecutive failed checks before a routed domain counts as gone (CRM: 3)
     $demote_after_failures = 3;
+    // How long to wait for a freshly routed domain's certificate (HTTP-01 usually takes well under a minute)
+    $certificate_wait_seconds = 180;
 
     $db = $runtime->db();
     $team_id = (int) ($payload['team_id'] ?? 0);
@@ -119,9 +132,42 @@ return function (Task_log $log) use ($payload, $runtime): int {
             return false;
         }
 
-        $log->info('Live at ' . Trongate_config::base_url($project) . ' once its certificate is issued (usually within minutes)');
+        $log->info('Applied; the app\'s base URL is ' . Trongate_config::base_url($project));
 
         return true;
+    };
+
+    /**
+     * Whether the custom domain's Certificate (cert-manager creates it from the
+     * domain's Gateway) is Ready, waiting up to $wait seconds. Logs why not.
+     */
+    $certificate_ready = function (int $id, string $domain, int $wait) use ($runtime, $log, $team_id): bool {
+        $namespace = Manifests::namespace_name($team_id);
+        $name = Manifests::domain_tls_secret(Manifests::domain_gateway_name($id, $domain));
+        $deadline = time() + $wait;
+
+        while (true) {
+            $certificate = $runtime->kube()->get('cert-manager.io/v1', 'Certificate', $namespace, $name);
+            $ready = [];
+
+            foreach ($certificate['status']['conditions'] ?? [] as $condition) {
+                if (($condition['type'] ?? '') === 'Ready') {
+                    $ready = $condition;
+                }
+            }
+
+            if (($ready['status'] ?? '') === 'True') {
+                return true;
+            }
+
+            if (time() >= $deadline) {
+                $why = $certificate === null ? 'no Certificate yet' : (string) ($ready['message'] ?? 'not ready');
+                $log->info("{$domain}: HTTPS certificate not issued yet ({$why}). It stays off BASE_URL until it is.");
+                return false;
+            }
+
+            sleep(10);
+        }
     };
 
     $failed = 0;
@@ -141,6 +187,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
                     UPDATE project
                     SET domain_dns_failures = LEAST(domain_dns_failures + 1, 255),
                         domain_pointed_at = IF(domain_dns_failures >= ?, NULL, domain_pointed_at),
+                        domain_secured_at = IF(domain_pointed_at IS NULL, NULL, domain_secured_at),
                         domain_checked_at = NOW()
                     WHERE id = ? AND verified_domain = ?
                     SQL;
@@ -167,13 +214,52 @@ return function (Task_log $log) use ($payload, $runtime): int {
             Platform_task::execute($db, $sql, 'is', (int) $id, $domain);
             $log->info("{$domain}: {$check['detail']}");
 
-            $route = $runtime->kube()->get('gateway.networking.k8s.io/v1', 'HTTPRoute', Manifests::namespace_name($team_id), Manifests::app_name((int) $id));
+            $namespace = Manifests::namespace_name($team_id);
+            $app = Manifests::app_name((int) $id);
 
-            if ($route !== null && in_array($domain, $route['spec']['hostnames'] ?? [], true)) {
-                continue;
+            // Step 1: routing
+            $route = $runtime->kube()->get('gateway.networking.k8s.io/v1', 'HTTPRoute', $namespace, $app);
+            $promoted = false;
+
+            if ($route === null || !in_array($domain, $route['spec']['hostnames'] ?? [], true)) {
+                if (!$promote((int) $id, $domain)) {
+                    $failed++;
+                    continue;
+                }
+
+                // Left to a deploy (in progress, or the first one): nothing to wait for yet
+                $route = $runtime->kube()->get('gateway.networking.k8s.io/v1', 'HTTPRoute', $namespace, $app);
+
+                if ($route === null || !in_array($domain, $route['spec']['hostnames'] ?? [], true)) {
+                    continue;
+                }
+
+                $promoted = true;
             }
 
-            if (!$promote((int) $id, $domain)) {
+            // Step 2: BASE_URL, once the certificate is issued
+            $project = Platform_task::project($db, $team_id, (int) $id);
+
+            if (empty($project['domain_secured_at'])) {
+                if (!$certificate_ready((int) $id, $domain, $promoted ? $certificate_wait_seconds : 0)) {
+                    continue;
+                }
+
+                $sql = <<<SQL
+                    UPDATE project
+                    SET domain_secured_at = NOW()
+                    WHERE id = ? AND verified_domain = ? AND domain_pointed_at IS NOT NULL AND domain_secured_at IS NULL
+                    SQL;
+                Platform_task::execute($db, $sql, 'is', (int) $id, $domain);
+                $log->info("{$domain}: HTTPS certificate issued");
+                $project = Platform_task::project($db, $team_id, (int) $id);
+            }
+
+            // No Deployment yet: the first deploy applies the right BASE_URL
+            $deployment = $runtime->kube()->get('apps/v1', 'Deployment', $namespace, $app);
+            $live_base_url = (string) ($deployment['spec']['template']['metadata']['annotations'][Manifests::LABEL_PREFIX . '/base-url'] ?? '');
+
+            if ($deployment !== null && $live_base_url !== Trongate_config::base_url($project) && !$promote((int) $id, $domain)) {
                 $failed++;
             }
         } catch (Throwable $e) {

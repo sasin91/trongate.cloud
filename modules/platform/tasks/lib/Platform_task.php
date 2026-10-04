@@ -2,7 +2,7 @@
 
 /**
  * Helpers shared by the platform task scripts (deploy, rollback, destroy_project,
- * recheck_domains).
+ * recheck_domains, prune_domains).
  *
  * Lives in tasks/lib/ so the Runtime can never run it as a task
  * (it only includes tasks/{script}.php). Framework-free.
@@ -172,7 +172,7 @@ class Platform_task {
 
         $gate = self::row(
             $runtime->db(),
-            'SELECT verified_domain, domain_pointed_at FROM project WHERE id = ?',
+            'SELECT verified_domain, domain_pointed_at, domain_secured_at FROM project WHERE id = ?',
             'i',
             (int) $project['id']
         );
@@ -180,6 +180,8 @@ class Platform_task {
 
         $log->info('Applying tenant namespace ' . Manifests::namespace_name($team_id));
         $kube->apply_all(Manifests::tenant($team_id));
+
+        self::release_domains($runtime, $log, $project);
 
         $manifests = Manifests::app($project, $deployment, $database);
 
@@ -194,11 +196,12 @@ class Platform_task {
 
     /**
      * Delete the project's custom-domain Gateways for domains it no longer routes
-     * (changed, removed, or demoted by recheck_domains). cert-manager's
-     * Certificate goes with its Gateway. Never throws: a leftover Gateway serves
-     * a hostname the app's HTTPRoute no longer lists, so it routes nothing.
+     * (changed, removed, or demoted by recheck_domains). Also run on its own by
+     * the prune_domains task, queued when a verified domain is changed or
+     * removed, so a project that does not deploy again still lets go of it.
+     * Never throws: logs instead.
      */
-    static function prune_domain_gateways(Runtime $runtime, Task_log $log, array $project): void {
+    static function prune_domain_gateways(Runtime $runtime, Task_log $log, array $project): bool {
         $project_id = (int) $project['id'];
         $namespace = Manifests::namespace_name((int) $project['team_id']);
         $keep = array_map(
@@ -213,13 +216,57 @@ class Platform_task {
                 $name = (string) ($gateway['metadata']['name'] ?? '');
 
                 if ($name !== '' && !in_array($name, $keep, true)) {
-                    $runtime->kube()->delete('gateway.networking.k8s.io/v1', 'Gateway', $namespace, $name);
-                    $log->info("Deleted Gateway {$name} (custom domain no longer routed)");
+                    self::delete_domain_gateway($runtime, $namespace, $name);
+                    $log->info("Deleted Gateway {$name} and its certificate (custom domain no longer routed)");
                 }
             }
         } catch (Throwable $e) {
             $log->warn("Could not prune custom-domain Gateways: {$e->getMessage()}");
+            return false;
         }
+
+        return true;
+    }
+
+    /**
+     * Delete other projects' Gateways for the domains this project routes, in
+     * any tenant namespace. project.verified_domain is UNIQUE, so this project
+     * owns them now; a Gateway left behind by the previous owner (its
+     * prune_domains task failed, or has not run yet) would be a second HTTPS
+     * listener for the hostname, with Traefik choosing between two apps. Never
+     * throws: logs instead.
+     */
+    static function release_domains(Runtime $runtime, Task_log $log, array $project): void {
+        foreach (Manifests::custom_domains($project) as $domain) {
+            try {
+                $gateways = $runtime->kube()->list('gateway.networking.k8s.io/v1', 'Gateway', null, Manifests::domain_hostname_selector($domain));
+
+                foreach ($gateways as $gateway) {
+                    $namespace = (string) ($gateway['metadata']['namespace'] ?? '');
+                    $name = (string) ($gateway['metadata']['name'] ?? '');
+                    $owner = (string) ($gateway['metadata']['labels'][Manifests::LABEL_PREFIX . '/project-id'] ?? '');
+
+                    if ($owner === (string) $project['id'] || !str_starts_with($namespace, 'tc-team-') || $name === '') {
+                        continue;
+                    }
+
+                    self::delete_domain_gateway($runtime, $namespace, $name);
+                    $log->warn("Deleted Gateway {$namespace}/{$name}: project #{$owner} no longer owns {$domain}");
+                }
+            } catch (Throwable $e) {
+                $log->warn("Could not check other projects' Gateways for {$domain}: {$e->getMessage()}");
+            }
+        }
+    }
+
+    /**
+     * Delete a custom-domain Gateway and its certificate Secret. cert-manager
+     * garbage-collects the Certificate (owned by the Gateway) but leaves the
+     * Secret, private key included.
+     */
+    static function delete_domain_gateway(Runtime $runtime, string $namespace, string $name): void {
+        $runtime->kube()->delete('gateway.networking.k8s.io/v1', 'Gateway', $namespace, $name);
+        $runtime->kube()->delete('v1', 'Secret', $namespace, Manifests::domain_tls_secret($name));
     }
 
     /**

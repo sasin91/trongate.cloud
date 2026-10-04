@@ -32,6 +32,9 @@ trait Project_records {
      * @param array{domain: ?string, persistent_paths: list<string>, php_extensions: string, always_on: bool} $settings
      */
     function update_project_settings(int $team_id, int $project_id, array $settings): void {
+        $old = $this->find_team_project($team_id, $project_id);
+        $old_domain = $old !== false ? (string) ($old->verified_domain ?? '') : '';
+
         $sql = <<<SQL
             UPDATE project
             SET domain = :domain,
@@ -41,6 +44,7 @@ trait Project_records {
                 domain_pointed_at = IF(verified_domain <=> :same_domain_1, domain_pointed_at, NULL),
                 domain_dns_failures = IF(verified_domain <=> :same_domain_2, domain_dns_failures, 0),
                 domain_checked_at = IF(verified_domain <=> :same_domain_3, domain_checked_at, NULL),
+                domain_secured_at = IF(verified_domain <=> :same_domain_4, domain_secured_at, NULL),
                 verified_domain = IF(verified_domain <=> :same_domain, verified_domain, NULL),
                 persistent_paths = :persistent_paths,
                 php_extensions = :php_extensions,
@@ -53,12 +57,23 @@ trait Project_records {
             'same_domain_1' => $settings['domain'],
             'same_domain_2' => $settings['domain'],
             'same_domain_3' => $settings['domain'],
+            'same_domain_4' => $settings['domain'],
             'persistent_paths' => json_encode($settings['persistent_paths']),
             'php_extensions' => $settings['php_extensions'],
             'always_on' => $settings['always_on'] ? 1 : 0,
             'project_id' => $project_id,
             'team_id' => $team_id,
         ]);
+
+        // Giving up a verified domain frees it for any other project at once, so
+        // its Gateway and certificate leave the cluster now, not on this
+        // project's next deploy (tasks/prune_domains.php)
+        if ($old_domain !== '' && $old_domain !== (string) $settings['domain']) {
+            $this->_queue_task($team_id, $project_id, null, 'prune_domains', [
+                'team_id' => $team_id,
+                'project_id' => $project_id,
+            ]);
+        }
     }
 
     /**

@@ -27,15 +27,33 @@ kept its ACME order failing for 23 hours.
   not that the domain reaches us. `Manifests::custom_domains` routes it only
   once `project.domain_pointed_at` (db/016) is set: the domain's A/AAAA records
   all point at `PLATFORM_INGRESS_IPV4`/`IPV6`, or it is a CNAME into
-  `PLATFORM_APPS_DOMAIN` (`Domain_dns`). `BASE_URL` follows the same gate. The
-  gate reads the stored fact, never DNS during a deploy, so a resolver hiccup
-  cannot drop a live domain. The `{slug}` host is never gated.
+  `PLATFORM_APPS_DOMAIN` (`Domain_dns`). The gate reads the stored fact, never
+  DNS during a deploy, so a resolver hiccup cannot drop a live domain. The
+  `{slug}` host is never gated.
+- **BASE_URL waits for the certificate.** `Trongate_config::base_url` uses
+  `Manifests::secured_domains`: routed *and* `project.domain_secured_at` set,
+  which recheck_domains does once the domain's cert-manager Certificate is
+  Ready. A certificate that is pending or never comes (CAA record, rate limit)
+  leaves every generated link on the `{slug}` host instead of a host answering
+  with Traefik's default certificate.
 - **Promotion.** `tasks/recheck_domains.php` checks the domains, records the
   result, and re-applies the app (current deployment's image, no build) when a
-  domain points here but the live HTTPRoute does not list it yet. Verifying a
-  domain queues it. Demotion needs 3 failed checks in a row and only clears
-  `domain_pointed_at`; the next deploy stops routing the domain, nothing is
-  removed from the cluster on the spot.
+  domain points here but the live HTTPRoute does not list it yet, and again
+  once its certificate is Ready and the live Deployment's `base-url`
+  annotation is not the domain yet. Verifying a domain queues it. Demotion
+  needs 3 failed checks in a row and only clears `domain_pointed_at` and
+  `domain_secured_at`; the next deploy stops routing the domain, nothing is
+  removed from the cluster on the spot (the project still owns the domain).
+- **Giving a domain up.** Changing or removing a verified domain frees its
+  UNIQUE claim at once, so the old project must not keep serving it until it
+  happens to deploy again: `update_project_settings` queues
+  `tasks/prune_domains.php`, which deletes the project's Gateways for domains
+  it no longer routes. And whichever project routes a domain deletes other
+  projects' Gateways for it on every apply (`Platform_task::release_domains`,
+  found across namespaces by a `domain-hash` label), in case that task failed
+  or has not run. Pruning deletes the certificate Secret too: cert-manager
+  removes the Certificate with its Gateway but not the Secret (no
+  `--enable-certificate-owner-ref` on this cluster).
 - **TLS and routing.** Each routed domain gets `Manifests::domain_gateway`: a
   Gateway in the tenant namespace with one HTTPS listener for exactly that
   hostname, annotated for the `letsencrypt-tenants` ClusterIssuer (infra repo,
@@ -52,10 +70,14 @@ kept its ACME order failing for 23 hours.
   stays confined to its own Gateway and Certificate, so one domain can never
   hold up another hostname of the app (CRM's lesson).
 - **Safety.** `worker-admission-policy.yaml` checks tenant Gateways like routes:
-  only the `traefik` class and the tenant issuer, one exact non-wildcard
-  hostname per HTTPS listener that is never a platform host or under the apps
-  domain, routes and certificate Secrets from the Gateway's own namespace, and
-  no worker HTTPRoute on `acme-http01`. Which tenant may use which custom domain
+  only the `traefik` class and the tenant issuer (and no other `cert-manager.io/*`
+  annotation, such as `common-name`, which would add names to the certificate),
+  one exact non-wildcard hostname per HTTPS listener that is never a platform
+  host or under the apps domain, routes and certificate Secrets from the
+  Gateway's own namespace, no `allowedListeners` or `spec.tls`, and no worker
+  HTTPRoute on `acme-http01`. HTTP-01 alone does not keep platform hosts out of
+  tenant certificates (trongate.cloud and every `{slug}.trongate.dev` resolve to
+  the same load balancer), so that listener-hostname check is what does. Which tenant may use which custom domain
   is the app's check (`verified_domain` is UNIQUE and proven by TXT); the worker
   writes every tenant, so admission cannot add to it.
 
@@ -83,13 +105,14 @@ Done in code:
 - **Schema**:
   - `db/014_k3s_platform.sql`: BYO-server tables dropped; generic `tasks`/`task_logs`; project `slug`, `persistent_paths`, `php_extensions`, `webhook_secret` (a seed, see webhooks), `always_on`, `database_server_id`, `current_deployment_id`; image-based deployment statuses (`pending → building → deploying → success | failed | rolled_back`) with `commit_sha`, `image`, `trigger_type`; `database_server` with the `shared-1` seed.
   - `db/015_domain_verification.sql`: `project.verified_domain` (UNIQUE).
-  - `db/016_custom_domain_dns_gate.sql`: `domain_pointed_at`, `domain_dns_failures`, `domain_checked_at` (the DNS gate).
+  - `db/016_custom_domain_dns_gate.sql`: `domain_pointed_at`, `domain_secured_at`, `domain_dns_failures`, `domain_checked_at` (the DNS gate and certificate state).
 - **Worker** (`modules/platform/worker`): polls `tasks`, runs `modules/platform/tasks/{script}.php`, logs to `task_logs`, closes the task's deployment. Shell steps get a minimal environment (no `APP_KEY`/`DB_PASSWORD`/tokens) and are killed after 30 minutes (`Runtime::SHELL_TIMEOUT_SECONDS`).
 - **Task scripts** (`modules/platform/tasks`):
   - `deploy`: resolves the commit (webhook deploys always build the branch head), downloads the tarball, rejects symlinks that leave the tree, writes `railpack.json` (and an empty `composer.json` so `RAILPACK_PHP_EXTENSIONS` applies), builds with `railpack prepare` + `buildctl` on a BuildKit daemon Pod started for this build only, pushes to `PLATFORM_REGISTRY`, places the database, applies `Manifests::tenant` + `Manifests::app` and waits for the rollout.
   - `rollback`: re-applies a previous image.
   - `destroy_project`: removes a project's resources (keeps the namespace, the database and the files).
   - `recheck_domains`: the custom-domain DNS gate and promotion (see "Custom domains").
+  - `prune_domains`: takes a project's given-up custom domain off the cluster.
 - **Library**:
   - Kubernetes client with server-side apply (`modules/services/clients/Kubernetes.php`).
   - Manifest builders (`modules/platform/manifests`): tenant namespaces, apps (with ephemeral-storage limits and Sablier `sablier.enable`/`sablier.group` labels) and per-build buildkitd Pods.
@@ -133,7 +156,8 @@ Still open:
   - JuiceFS metadata still shares `shared-1` with tenant databases.
 - **Custom domains:**
   - `www.` twins: CRM redirects `www.{domain}` to the apex; here a customer adds the `www` host as its own project domain (one domain per project today).
-  - `BASE_URL` moves to the custom domain when it is routed, a few minutes before its certificate is issued.
+  - Defence in depth outside the cluster: CAA records on trongate.cloud and trongate.dev with `accounturi` limited to the platform issuers' ACME accounts, so Let's Encrypt refuses those names to the `letsencrypt-tenants` account even if the admission policy were bypassed. A DNS change, not made yet.
+  - A renewal that fails later does not move `BASE_URL` back; Let's Encrypt's expiry mails and cert-manager metrics are the signal.
   - A domain pointed through a proxy/CDN (other addresses, no CNAME into the apps domain) never passes the gate.
 - **Needs a live cluster:**
   - Several Gateways on Traefik's entrypoints at once, and the `acme-http01` challenge route winning over the platform Gateway's `http-to-https` route.

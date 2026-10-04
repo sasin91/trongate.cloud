@@ -152,7 +152,7 @@ trait Platform_actions {
         $sql = <<<SQL
             SELECT
                 p.id, p.team_id, p.label, p.slug, p.type, p.domain, p.verified_domain,
-                p.domain_pointed_at, p.domain_checked_at,
+                p.domain_pointed_at, p.domain_secured_at, p.domain_checked_at,
                 p.source_provider, p.source_url, p.source_branch,
                 p.persistent_paths, p.php_extensions, p.always_on,
                 p.database_server_id, p.current_deployment_id, p.created_at,
@@ -342,6 +342,7 @@ trait Platform_actions {
                 'domain_pointed_at' => null,
                 'domain_dns_failures' => 0,
                 'domain_checked_at' => null,
+                'domain_secured_at' => null,
             ], 'project');
         } catch (PDOException $e) {
             // unique_verified_domain: another project already serves it
