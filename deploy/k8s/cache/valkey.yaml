@@ -1,6 +1,6 @@
 # Shared Valkey for sessions/cache (sessions here survive scale-to-zero).
 # ACL-enabled: the default user is off; every client authenticates as an ACL user.
-# TODO: per-tenant ACL users with a key prefix (~tc-team-{id}:*) managed by the worker.
+# TODO: per-tenant ACL users with a key prefix (~{namespace}:*, per project) managed by the worker.
 apiVersion: v1
 kind: ConfigMap
 metadata:

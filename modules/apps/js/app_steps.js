@@ -1,4 +1,4 @@
-// New-project form shown one question at a time (views/_project_steps.php).
+// New-app form shown one question at a time (views/_app_steps.php).
 // Without JS every question stays visible and the form submits as one page.
 document.addEventListener('DOMContentLoaded', function () {
     const form = document.querySelector('form[data-steps]');

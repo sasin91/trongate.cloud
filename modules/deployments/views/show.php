@@ -1,6 +1,6 @@
 <div class="content">
     <div style="margin-bottom: 1.5rem;">
-        <a href="projects/<?= $deployment->project_id ?>" style="color: var(--accent); text-decoration: none;">&larr; Back to <?= htmlspecialchars($deployment->project_label) ?></a>
+        <a href="apps/<?= $deployment->app_id ?>" style="color: var(--accent); text-decoration: none;">&larr; Back to <?= htmlspecialchars($deployment->app_label) ?></a>
     </div>
 
     <div class="card" style="margin-bottom: 1.5rem;">
@@ -53,7 +53,7 @@
         <div class="card" style="margin-top: 1.5rem; background: #f0f9ff; border: 1px solid #0284c7;">
             <h4 style="margin-top: 0; color: #0284c7;">Deploy on every push</h4>
             <p>Add a GitHub webhook and pushes to your branch deploy automatically.</p>
-            <a href="projects/<?= $deployment->project_id ?>/settings" class="btn-create">Set up webhook</a>
+            <a href="apps/<?= $deployment->app_id ?>/settings" class="btn-create">Set up webhook</a>
         </div>
     <?php endif; ?>
 </div>

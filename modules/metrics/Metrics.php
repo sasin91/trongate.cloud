@@ -56,11 +56,11 @@ class Metrics extends Trongate {
             $output .= "app_deployments{status=\"{$status}\"} {$count}\n";
         }
 
-        $live = $this->model->live_project_count();
+        $live = $this->model->live_app_count();
 
-        $output .= "\n# HELP app_live_projects Projects with a live deployment\n";
-        $output .= "# TYPE app_live_projects gauge\n";
-        $output .= "app_live_projects {$live}\n";
+        $output .= "\n# HELP app_live_apps Apps with a live deployment\n";
+        $output .= "# TYPE app_live_apps gauge\n";
+        $output .= "app_live_apps {$live}\n";
 
         $jobs = $this->model->scheduled_jobs();
 

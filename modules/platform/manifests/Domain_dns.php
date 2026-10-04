@@ -4,7 +4,7 @@ require_once __DIR__ . '/../../../config/platform.php';
 
 /**
  * Whether a custom domain's DNS reaches the cluster: the gate in front of
- * routing it (Manifests::custom_domains, db/019).
+ * routing it (Manifests::custom_domains).
  *
  * A domain points here when it is a CNAME into PLATFORM_APPS_DOMAIN (the apex
  * or a {slug} host), or when it has A/AAAA records and every one of them is a

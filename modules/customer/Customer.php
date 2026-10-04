@@ -18,15 +18,22 @@ class Customer extends Trongate {
 
     const CUSTOMER_USER_LEVEL = 2;
 
+    /**
+     * Dashboard: every project the customer is a member of, with its apps.
+     */
     function index(): void {
         $this->_make_sure_allowed();
+        $customer = $this->_customer_or_redirect();
 
-        $team_id = $this->_team_id_or_redirect();
-        $projects = $this->model->team_projects($team_id);
-        $live_states = $this->_live_app_states($team_id);
+        $projects = $this->model->member_projects((int) $customer->id);
 
         foreach ($projects as $project) {
-            $project->live_state = $this->_live_state_of($live_states, $project);
+            $project->apps = $this->model->project_apps((int) $project->id);
+            $live_states = empty($project->apps) ? null : $this->_live_app_states($project);
+
+            foreach ($project->apps as $app) {
+                $app->live_state = $this->_live_state_of($live_states, $app);
+            }
         }
 
         $data = [
@@ -35,6 +42,7 @@ class Customer extends Trongate {
             'projects' => $projects,
             'additional_includes_top' => [
                 'deployments_module/css/deployments.css',
+                'apps_module/css/apps.css',
                 'projects_module/css/projects.css',
             ],
         ];
@@ -71,27 +79,5 @@ class Customer extends Trongate {
             return 'This email is already registered.';
         }
         return true;
-    }
-
-    function switch_team(): void {
-        $this->_make_sure_allowed();
-
-        if (REQUEST_TYPE !== 'POST') {
-            http_response_code(405);
-            die('Method not allowed');
-        }
-
-        // No rules: run() only enforces the CSRF token from form_close()
-        $this->validation->run();
-
-        $team_id = (int) post('team_id');
-
-        if ($team_id > 0) {
-            $this->model->set_current_team($team_id);
-        }
-
-        // Redirect back to referrer (same site only) or dashboard
-        $referrer = $_SERVER['HTTP_REFERER'] ?? '';
-        redirect(str_starts_with($referrer, BASE_URL) ? $referrer : BASE_URL . 'dashboard');
     }
 }

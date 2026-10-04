@@ -1,48 +1,36 @@
 <?php
 
 require_once APPPATH . 'modules/customer/traits/Customer_guard.php';
-require_once APPPATH . 'modules/services/traits/Provider_clients.php';
-require_once __DIR__ . '/traits/Project_form.php';
-require_once APPPATH . 'modules/platform/manifests/Manifests.php';
-require_once APPPATH . 'modules/platform/manifests/Domain_dns.php';
 require_once APPPATH . 'modules/platform/traits/Live_app_state.php';
 
 /**
- * Customer projects: create, overview, deploy/rollback, platform settings and delete.
+ * Projects: a group of apps sharing one namespace, and the people who work on them.
+ * Every member sees and deploys all of a project's apps; the owner also renames
+ * and deletes the project and manages its members.
  *
  * @property-read Projects_model $model
  * @property-read Trongate_tokens $trongate_tokens
  * @property-read Templates $templates
  * @property-read Validation $validation
- * @property-read Services $services
- * @property-read Secrets $secrets
  */
 class Projects extends Trongate {
     use Customer_guard;
-    use Provider_clients;
-    use Project_form;
     use Live_app_state;
 
-    const MAX_PERSISTENT_PATHS = 20;
+    const NAME_RULES = 'required|min_length[3]|max_length[50]';
 
-    /** Top-level directories the platform mounts or owns; never persistent */
-    const RESERVED_PATHS = ['config', 'engine'];
-
-    /** Team roles that may delete a project (db/003_teams.sql); deploys are open to every member */
-    const DELETE_ROLES = ['owner', 'admin'];
-
-    /** The project submit_delete() checks the typed confirmation against */
-    private ?object $project_to_delete = null;
+    function index(): void {
+        redirect('dashboard');
+    }
 
     function create(): void {
         $this->_make_sure_allowed();
-        $team_id = $this->_team_id_or_redirect();
 
         $data = [
             'view_module' => 'projects',
             'view_file' => 'create',
-            'form' => $this->_project_form_data($team_id),
-            'additional_includes_top' => ['projects_module/css/wizard.css'],
+            'name' => (string) post('name', true),
+            'additional_includes_top' => ['apps_module/css/apps.css'],
         ];
         $this->module('templates');
         $this->templates->customer($data);
@@ -50,69 +38,57 @@ class Projects extends Trongate {
 
     function submit(): void {
         $this->_make_sure_allowed();
-        $team_id = $this->_team_id_or_redirect();
+        $this->_require_post();
 
-        $this->_set_project_rules();
+        $this->validation->set_rules('name', 'Project name', self::NAME_RULES);
 
         if ($this->validation->run() !== true) {
             $this->create();
             return;
         }
 
-        $project_id = $this->_create_project_from_post($team_id);
+        $customer = $this->_customer_or_redirect();
 
-        if ($project_id === false) {
-            set_flashdata('The project could not be created, please try again.');
+        try {
+            $project_id = $this->model->create_project((int) $customer->id, post('name', true));
+        } catch (InvalidArgumentException $e) {
+            set_flashdata(htmlspecialchars($e->getMessage()));
             redirect('projects/new');
         }
 
-        $deployment_id = $this->_queue_first_deploy($team_id, $project_id);
-
-        redirect($deployment_id === false ? 'projects/' . $project_id : 'deployments/' . $deployment_id);
+        set_flashdata('Project created. Deploy its first app when you are ready.');
+        redirect('projects/' . $project_id);
     }
 
     /**
-     * Connect GitHub for a team that has none yet (teams created after onboarding).
+     * Project page: its apps with their live state, and its members.
      */
-    function submit_source(): void {
-        $this->_make_sure_allowed();
-        $team_id = $this->_team_id_or_redirect();
-
-        $this->validation->set_rules('provider', 'Source Control Provider', 'required|callback__validate_source_provider');
-        $this->validation->set_rules('token', 'Personal Access Token', 'required|min_length[10]|callback__validate_github_token');
-
-        if ($this->validation->run() !== true) {
-            $this->create();
-            return;
-        }
-
-        $this->secrets->save('team', $team_id, post('provider', true), ['token' => post('token', true)]);
-
-        redirect('projects/new');
-    }
-
     function show(): void {
         $this->_make_sure_allowed();
-        $team_id = $this->_team_id_or_redirect();
-        $project = $this->_find_or_redirect($team_id, segment(3, 'int'));
+        $project = $this->_member_project_or_redirect(segment(3, 'int'));
 
-        $deployments = $this->model->project_deployments($team_id, (int) $project->id);
-        $current = empty($project->current_deployment_id)
-            ? false
-            : $this->model->find_team_deployment($team_id, (int) $project->current_deployment_id);
+        $apps = $this->model->project_apps((int) $project->id);
+        $live_states = empty($apps) ? null : $this->_live_app_states($project);
+
+        foreach ($apps as $app) {
+            $app->live_state = $this->_live_state_of($live_states, $app);
+        }
+
+        $customer = $this->_customer_or_redirect();
 
         $data = [
             'view_module' => 'projects',
             'view_file' => 'show',
             'project' => $project,
-            'urls' => $this->_project_urls($project),
-            'current' => $current,
-            'deployments' => $deployments,
-            'can_rollback' => $this->model->rollback_target($project) !== false,
-            'live_state' => $this->_live_app_state($project),
-            'database_name' => Manifests::database_name((int) $project->id),
+            'apps' => $apps,
+            'members' => $this->model->project_members((int) $project->id),
+            'is_owner' => $this->_is_owner($project),
+            'customer_id' => (int) $customer->id,
+            'email' => REQUEST_TYPE === 'POST' ? (string) post('email', true) : '',
+            'crumbs' => [['projects/' . $project->id, $project->name]],
             'additional_includes_top' => [
                 'deployments_module/css/deployments.css',
+                'apps_module/css/apps.css',
                 'projects_module/css/projects.css',
             ],
         ];
@@ -121,103 +97,21 @@ class Projects extends Trongate {
     }
 
     /**
-     * MX partial polled by the project page: the app's live state in the cluster.
+     * Owner only: rename, and delete once the project holds no apps.
      */
-    function live_state(): void {
-        $this->_make_sure_allowed();
-        $team_id = $this->_team_id_or_redirect();
-        $project = $this->model->find_team_project($team_id, segment(3, 'int'));
-
-        if ($project === false) {
-            http_response_code(404);
-            return;
-        }
-
-        $this->view('_live_state', ['live_state' => $this->_live_app_state($project)]);
-    }
-
-    function deploy(): void {
-        $this->_make_sure_allowed();
-        $team_id = $this->_team_id_or_redirect();
-        $project = $this->_find_or_redirect($team_id, segment(3, 'int'));
-
-        $this->_require_post_with_csrf();
-
-        $customer = $this->model->_get_current_customer();
-        $member = $this->model->get_current_team_member();
-
-        try {
-            $deployment_id = $this->model->queue_deploy(
-                $team_id,
-                (int) $project->id,
-                $member === false ? null : (int) $member->id,
-                $customer === false ? null : (int) $customer->id,
-                'manual'
-            );
-        } catch (RuntimeException $e) {
-            set_flashdata('Could not queue a deployment: ' . $e->getMessage());
-            redirect('projects/' . $project->id);
-        }
-
-        redirect('deployments/' . $deployment_id);
-    }
-
-    /**
-     * Roll back to a given deployment (POST deployment_id) or, without one, the previous successful one.
-     */
-    function rollback(): void {
-        $this->_make_sure_allowed();
-        $team_id = $this->_team_id_or_redirect();
-        $project = $this->_find_or_redirect($team_id, segment(3, 'int'));
-
-        $this->_require_post_with_csrf();
-
-        $target_id = (int) post('deployment_id', true);
-        $customer = $this->model->_get_current_customer();
-
-        try {
-            $deployment_id = $this->model->queue_rollback(
-                $team_id,
-                (int) $project->id,
-                $customer === false ? null : (int) $customer->id,
-                $target_id > 0 ? $target_id : null
-            );
-        } catch (RuntimeException $e) {
-            set_flashdata('Could not roll back: ' . $e->getMessage());
-            redirect('projects/' . $project->id);
-        }
-
-        redirect('deployments/' . $deployment_id);
-    }
-
     function settings(): void {
         $this->_make_sure_allowed();
-        $team_id = $this->_team_id_or_redirect();
-        $project = $this->_find_or_redirect($team_id, segment(3, 'int'));
-
-        $is_resubmit = REQUEST_TYPE === 'POST';
-        $paths = Manifests::persistent_paths((array) $project);
+        $project = $this->_member_project_or_redirect(segment(3, 'int'));
+        $this->_make_sure_owner($project, 'Only the project owner can change its settings.', 'projects/' . $project->id);
 
         $data = [
             'view_module' => 'projects',
             'view_file' => 'settings',
             'project' => $project,
-            'urls' => $this->_project_urls($project),
-            'domain' => $is_resubmit ? (string) post('domain', true) : (string) ($project->domain ?? ''),
-            'persistent_paths' => $is_resubmit ? (string) post('persistent_paths') : implode("\n", $paths),
-            'php_extensions' => $is_resubmit ? (string) post('php_extensions', true) : (string) $project->php_extensions,
-            'always_on' => $is_resubmit ? (bool) post('always_on') : (bool) $project->always_on,
-            'resource_tier' => $is_resubmit ? (string) post('resource_tier', true) : (string) $project->resource_tier,
-            'resource_tiers' => Resource_tiers::options(),
-            'auto_deploy' => $is_resubmit ? (bool) post('auto_deploy') : (bool) $project->auto_deploy,
-            'domain_record' => !empty($project->domain) ? $this->model->domain_verification_record((int) $project->id, (string) $project->domain) : null,
-            'domain_routed' => Manifests::custom_domains((array) $project) !== [],
-            'domain_secured' => Manifests::secured_domains((array) $project) !== [],
-            'ingress_addresses' => Domain_dns::ingress_addresses(),
-            'webhook_url' => BASE_URL . 'webhooks/github/' . $project->id,
-            'webhook_secret' => $this->model->ensure_webhook_secret($team_id, (int) $project->id),
-            'can_delete' => $this->_may_delete_projects(),
-            'additional_includes_top' => ['projects_module/css/projects.css'],
+            'name' => REQUEST_TYPE === 'POST' ? (string) post('name', true) : (string) $project->name,
+            'app_count' => count($this->model->project_apps((int) $project->id)),
+            'crumbs' => [['projects/' . $project->id, $project->name]],
+            'additional_includes_top' => ['apps_module/css/apps.css'],
         ];
         $this->module('templates');
         $this->templates->customer($data);
@@ -225,256 +119,100 @@ class Projects extends Trongate {
 
     function submit_settings(): void {
         $this->_make_sure_allowed();
-        $team_id = $this->_team_id_or_redirect();
-        $project = $this->_find_or_redirect($team_id, segment(3, 'int'));
+        $project = $this->_member_project_or_redirect(segment(3, 'int'));
+        $this->_make_sure_owner($project, 'Only the project owner can rename it.', 'projects/' . $project->id);
+        $this->_require_post();
 
-        $this->validation->set_rules('domain', 'Custom Domain', 'max_length[253]|callback__validate_domain');
-        $this->validation->set_rules('persistent_paths', 'Persistent Paths', 'max_length[4000]|callback__validate_persistent_paths');
-        $this->validation->set_rules('php_extensions', 'PHP Extensions', 'max_length[255]|callback__validate_php_extensions');
-        $this->validation->set_rules('resource_tier', 'Resources', 'required|callback__validate_resource_tier');
+        $this->validation->set_rules('name', 'Project name', self::NAME_RULES);
 
         if ($this->validation->run() !== true) {
             $this->settings();
             return;
         }
 
-        $this->model->update_project_settings($team_id, (int) $project->id, [
-            'domain' => $this->_normalise_domain((string) post('domain', true)),
-            'persistent_paths' => $this->_parse_persistent_paths((string) post('persistent_paths')),
-            'php_extensions' => implode(',', $this->_parse_php_extensions((string) post('php_extensions', true))),
-            'always_on' => (bool) post('always_on'),
-            'resource_tier' => (string) post('resource_tier', true),
-            'auto_deploy' => (bool) post('auto_deploy'),
-        ]);
+        $result = $this->model->rename_project((int) $project->id, post('name', true));
 
-        set_flashdata('Settings saved. They take effect on the next deployment.');
+        if ($result !== true) {
+            set_flashdata(htmlspecialchars((string) $result));
+            redirect('projects/' . $project->id . '/settings');
+        }
+
+        set_flashdata('Project renamed.');
         redirect('projects/' . $project->id);
     }
 
     /**
-     * POST projects/{id}/verify-domain: check the domain's TXT record, then (in
-     * the worker) whether its DNS points here yet.
-     */
-    function verify_domain(): void {
-        $this->_make_sure_allowed();
-        $team_id = $this->_team_id_or_redirect();
-        $project = $this->_find_or_redirect($team_id, segment(3, 'int'));
-        $this->_require_post_with_csrf();
-
-        $result = $this->model->verify_project_domain($team_id, (int) $project->id);
-
-        set_flashdata($result === true
-            ? 'Domain verified. It goes live by itself once its DNS points here; checking now.'
-            : 'Could not verify the domain: ' . $result);
-        redirect('projects/' . $project->id . '/settings');
-    }
-
-    /**
-     * Confirmation page for deleting a project.
-     */
-    function delete(): void {
-        $this->_make_sure_allowed();
-        $team_id = $this->_team_id_or_redirect();
-        $project = $this->_find_or_redirect($team_id, segment(3, 'int'));
-        $this->_make_sure_may_delete($project);
-
-        $data = [
-            'view_module' => 'projects',
-            'view_file' => 'delete',
-            'project' => $project,
-            'urls' => $this->_project_urls($project),
-            'additional_includes_top' => ['projects_module/css/projects.css'],
-        ];
-        $this->module('templates');
-        $this->templates->customer($data);
-    }
-
-    /**
-     * POST projects/{id}/delete/submit: the customer typed the project's slug to confirm.
+     * POST projects/{id}/delete: owner only, and only while the project holds no apps.
      */
     function submit_delete(): void {
         $this->_make_sure_allowed();
-        $team_id = $this->_team_id_or_redirect();
-        $project = $this->_find_or_redirect($team_id, segment(3, 'int'));
-        $this->_make_sure_may_delete($project);
+        $project = $this->_member_project_or_redirect(segment(3, 'int'));
+        $this->_make_sure_owner($project, 'Only the project owner can delete it.', 'projects/' . $project->id);
+        $this->_require_post_with_csrf();
 
-        if (REQUEST_TYPE !== 'POST') {
-            http_response_code(405);
-            die('Method not allowed');
-        }
-
-        $this->project_to_delete = $project;
-        $this->validation->set_rules('confirm_slug', 'Project name', 'required|callback__validate_delete_confirmation');
-
-        if ($this->validation->run() !== true) {
-            $this->delete();
-            return;
+        if (count($this->model->project_apps((int) $project->id)) > 0) {
+            set_flashdata('Delete the apps in this project first.');
+            redirect('projects/' . $project->id . '/settings');
         }
 
         try {
-            $this->model->queue_project_delete($team_id, (int) $project->id);
+            $this->model->queue_project_delete((int) $project->id);
         } catch (RuntimeException $e) {
             set_flashdata('Could not delete the project: ' . $e->getMessage());
-            redirect('projects/' . $project->id);
+            redirect('projects/' . $project->id . '/settings');
         }
 
-        set_flashdata(htmlspecialchars($project->label) . ' was deleted. Its app is being removed now.');
+        set_flashdata(htmlspecialchars($project->name) . ' was deleted.');
         redirect('dashboard');
     }
 
-    // --- Helpers ---
+    /**
+     * POST projects/{id}/members/add: owner adds an existing account by email.
+     */
+    function add_member(): void {
+        $this->_make_sure_allowed();
+        $project = $this->_member_project_or_redirect(segment(3, 'int'));
+        $this->_make_sure_owner($project, 'Only the project owner can add members.', 'projects/' . $project->id);
+        $this->_require_post();
 
-    function _find_or_redirect(int $team_id, int $project_id): object {
-        $project = $this->model->find_team_project($team_id, $project_id);
+        $this->validation->set_rules('email', 'email', 'required|valid_email|max_length[255]');
 
-        if ($project === false) {
-            redirect('dashboard');
+        if ($this->validation->run() !== true) {
+            $this->show();
+            return;
         }
 
-        return $project;
+        $email = strtolower(trim((string) post('email', true)));
+        $result = $this->model->add_project_member((int) $project->id, $email);
+
+        set_flashdata($result === true
+            ? htmlspecialchars($email) . ' can now see and deploy this project\'s apps.'
+            : htmlspecialchars($result));
+        redirect('projects/' . $project->id);
     }
 
     /**
-     * Whether the current customer's role in the current team may delete
-     * projects. Deleting is the one irreversible project action, so unlike
-     * deploys and rollbacks it is not open to every member.
+     * POST projects/{id}/members/{customer id}/remove: owner removes a member (never the owner).
      */
-    function _may_delete_projects(): bool {
-        $member = $this->model->get_current_team_member();
+    function remove_member(): void {
+        $this->_make_sure_allowed();
+        $project = $this->_member_project_or_redirect(segment(3, 'int'));
+        $this->_make_sure_owner($project, 'Only the project owner can remove members.', 'projects/' . $project->id);
+        $this->_require_post_with_csrf();
 
-        return $member !== false && in_array((string) $member->role, self::DELETE_ROLES, true);
-    }
+        $result = $this->model->remove_project_member((int) $project->id, segment(4, 'int'));
 
-    function _make_sure_may_delete(object $project): void {
-        if (!$this->_may_delete_projects()) {
-            set_flashdata('Only team owners and admins can delete a project.');
-            redirect('projects/' . $project->id . '/settings');
-        }
+        set_flashdata($result === true ? 'Member removed.' : htmlspecialchars($result));
+        redirect('projects/' . $project->id);
     }
 
     /**
-     * Public URLs of a project: the platform subdomain first, then the custom domain.
-     *
-     * @return list<string>
+     * Form posts only; the CSRF token is checked by the validation run that follows.
      */
-    function _project_urls(object $project): array {
-        return array_map(fn(string $host) => 'https://' . $host, Manifests::hostnames((array) $project));
-    }
-
-    /**
-     * Only accept POSTs carrying a valid CSRF token (Validation::run() blocks the request otherwise).
-     */
-    function _require_post_with_csrf(): void {
+    function _require_post(): void {
         if (REQUEST_TYPE !== 'POST') {
             http_response_code(405);
             die('Method not allowed');
         }
-
-        $this->validation->run();
-    }
-
-    /**
-     * @return list<string> Normalised paths (no leading "./", no trailing "/", unique)
-     */
-    function _parse_persistent_paths(string $value): array {
-        $paths = [];
-
-        foreach (preg_split('/\s+/', trim($value)) ?: [] as $path) {
-            $path = rtrim(preg_replace('#^(\./)+#', '', $path) ?? '', '/');
-
-            if ($path !== '') {
-                $paths[$path] = $path;
-            }
-        }
-
-        return array_values($paths);
-    }
-
-    /**
-     * @return list<string> Lowercase extension names
-     */
-    function _parse_php_extensions(string $value): array {
-        $names = preg_split('/[\s,]+/', strtolower(trim($value))) ?: [];
-
-        return array_values(array_unique(array_filter($names, fn(string $name) => $name !== '')));
-    }
-
-    // --- Validation callbacks ---
-
-    /**
-     * One relative path per line (the validator sees newlines collapsed to spaces).
-     */
-    function _validate_persistent_paths(string $value): bool|string {
-        $paths = $this->_parse_persistent_paths($value);
-
-        if (count($paths) > self::MAX_PERSISTENT_PATHS) {
-            return 'At most ' . self::MAX_PERSISTENT_PATHS . ' persistent paths are allowed.';
-        }
-
-        foreach ($paths as $path) {
-            if (!preg_match('#^[A-Za-z0-9._/-]+$#', $path) || strlen($path) > 200) {
-                return "\"{$path}\" may only contain letters, numbers, dots, dashes, underscores and slashes.";
-            }
-
-            if (str_starts_with($path, '/')) {
-                return "\"{$path}\" must be relative to your app's root, e.g. modules/blog/uploads.";
-            }
-
-            $segments = explode('/', $path);
-            if (in_array('..', $segments, true) || in_array('.', $segments, true) || in_array('', $segments, true)) {
-                return "\"{$path}\" may not contain \"..\", \".\" or empty segments.";
-            }
-
-            if (in_array($segments[0], self::RESERVED_PATHS, true)) {
-                return "\"{$path}\" is managed by the platform and cannot be persistent.";
-            }
-        }
-
-        return true;
-    }
-
-    function _validate_delete_confirmation(string $value): bool|string {
-        if ($this->project_to_delete === null || trim($value) !== (string) $this->project_to_delete->slug) {
-            return 'Type the project name exactly as shown to confirm.';
-        }
-
-        return true;
-    }
-
-    function _validate_php_extensions(string $value): bool|string {
-        foreach ($this->_parse_php_extensions($value) as $name) {
-            if (!preg_match('/^[a-z][a-z0-9_]{0,39}$/', $name)) {
-                return "\"{$name}\" is not a valid PHP extension name.";
-            }
-        }
-
-        return true;
-    }
-
-    /**
-     * The tier must be on the ladder, and the team's apps must still fit its
-     * quota with it (Manifests::quota_shortfall); otherwise every later rollout
-     * in the team would hang on "exceeded quota". Moving down is always allowed.
-     */
-    function _validate_resource_tier(string $tier): bool|string {
-        if (!Resource_tiers::exists($tier)) {
-            return 'Please choose one of the listed resource sizes.';
-        }
-
-        $team_id = $this->_team_id_or_redirect();
-        $project = $this->_find_or_redirect($team_id, segment(3, 'int'));
-
-        if (Resource_tiers::rank($tier) <= Resource_tiers::rank((string) $project->resource_tier)) {
-            return true;
-        }
-
-        $tiers = $this->model->team_resource_tiers($team_id, (int) $project->id);
-        $tiers[] = $tier;
-
-        if (Manifests::quota_shortfall($tiers) !== null) {
-            return "Your team's apps would not fit in its resources with this size. Choose a smaller size, or make another app smaller first.";
-        }
-
-        return true;
     }
 }

@@ -2,11 +2,13 @@
 require_once APPPATH . 'modules/customer/traits/Customer_guard.php';
 
 /**
- * Deployment detail page with live build/rollout logs.
+ * Deployment detail page with live build/rollout logs. Any member of
+ * the deployment's project may read it.
  *
  * @property-read Deployments_model $model
  * @property-read Templates $templates
  * @property-read Trongate_tokens $trongate_tokens
+ * @property-read Validation $validation
  */
 class Deployments extends Trongate {
     use Customer_guard;
@@ -15,10 +17,10 @@ class Deployments extends Trongate {
 
     function show(): void {
         $this->_make_sure_allowed();
-        $team_id = $this->_team_id_or_redirect();
+        $customer = $this->_customer_or_redirect();
 
-        $deployment = $this->_find_or_redirect($team_id, segment(3, 'int'));
-        $logs = $this->model->deployment_logs($team_id, (int) $deployment->id, 0, 1000);
+        $deployment = $this->_find_or_redirect((int) $customer->id, segment(3, 'int'));
+        $logs = $this->model->deployment_logs((int) $deployment->project_id, (int) $deployment->id, 0, 1000);
 
         $data = [
             'view_module' => 'deployments',
@@ -39,9 +41,9 @@ class Deployments extends Trongate {
      */
     function logs_partial(): void {
         $this->_make_sure_allowed();
-        $team_id = $this->_team_id_or_redirect();
+        $customer = $this->_customer_or_redirect();
 
-        $deployment = $this->model->find_team_deployment($team_id, segment(3, 'int'));
+        $deployment = $this->model->find_member_deployment((int) $customer->id, segment(3, 'int'));
 
         if ($deployment === false) {
             http_response_code(404);
@@ -49,7 +51,7 @@ class Deployments extends Trongate {
         }
 
         $last_log_id = max(0, (int) ($_GET['last_log_id'] ?? 0));
-        $logs = $this->model->deployment_logs($team_id, (int) $deployment->id, $last_log_id);
+        $logs = $this->model->deployment_logs((int) $deployment->project_id, (int) $deployment->id, $last_log_id);
 
         $this->view('_logs_partial', [
             'deployment' => $deployment,
@@ -60,10 +62,10 @@ class Deployments extends Trongate {
     }
 
     /**
-     * Find a deployment belonging to the team, or redirect to the dashboard
+     * Find a deployment of one of the customer's projects, or redirect to the dashboard
      */
-    function _find_or_redirect(int $team_id, int $deployment_id): object {
-        $deployment = $this->model->find_team_deployment($team_id, $deployment_id);
+    function _find_or_redirect(int $customer_id, int $deployment_id): object {
+        $deployment = $this->model->find_member_deployment($customer_id, $deployment_id);
 
         if ($deployment === false) {
             redirect('dashboard');

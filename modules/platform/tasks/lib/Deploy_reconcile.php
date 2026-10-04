@@ -10,22 +10,22 @@ require_once __DIR__ . '/../../worker/Worker_actions.php';
  * retry a delivery that failed to connect, so a push can be missed silently
  * and the app stays on the old commit until someone deploys by hand.
  *
- * Each run compares every auto-deploying project's branch head on GitHub with
+ * Each run compares every auto-deploying app's branch head on GitHub with
  * its deployments and queues a deploy (trigger 'reconcile') for a head that
  * nothing has built. It applies the gates the webhook path would have:
  *
- * - only projects that deploy on push: Deploy on push on (project.auto_deploy,
+ * - only apps that deploy on push: Deploy on push on (app.auto_deploy,
  *   the customer's switch) and a webhook deployment at some point, so
- *   manual-only projects never cost a GitHub call;
- * - before queueing, the project's webhook must still be on the repository
+ *   manual-only apps never cost a GitHub call;
+ * - before queueing, the app's webhook must still be on the repository
  *   (GitHub hooks API; the classic `repo` scope onboarding asks for covers it).
  *   A customer who deletes the webhook to stop push deploys gets none from
  *   here either, and a token that may not read hooks deploys nothing;
- * - the project's own repository and branch, and a full 40-char head SHA;
+ * - the app's own repository and branch, and a full 40-char head SHA;
  * - a SHA with ANY deployment row is never queued again, whatever its status:
  *   a failed build is for a human to retry, not for this job to loop on;
  * - heads younger than MIN_HEAD_AGE_SECONDS are left to the webhook in flight;
- * - nothing is queued while the project has a deployment pending or running,
+ * - nothing is queued while the app has a deployment pending or running,
  *   so the one-queued-deploy rule never replaces someone's commit; the next
  *   run picks the head up.
  *
@@ -34,14 +34,15 @@ require_once __DIR__ . '/../../worker/Worker_actions.php';
  * that never finishes) is counted as stuck: app_deploy_reconcile_stuck_heads.
  *
  * Deploys go through Platform_actions::queue_deploy like the UI, webhooks and
- * MCP. GitHub calls use the team's stored token (as deploy.php does), one per
- * repository branch, spaced by GITHUB_DELAY_MS; a rate-limited or rejected
- * token skips the team's remaining projects until the next run.
+ * MCP. GitHub calls use the token of the customer who added the app (as
+ * deploy.php does), one per repository branch, spaced by GITHUB_DELAY_MS; a
+ * rate-limited or rejected token skips the remaining apps using it until the
+ * next run.
  *
  * The worker runs one task at a time, so a run must not hold up customer
- * deploys: it stops as soon as a team task is waiting, and when GitHub itself
+ * deploys: it stops as soon as a project task is waiting, and when GitHub itself
  * fails (5xx or no connection, after the client's retries). The rotation in
- * projects() resumes with the unchecked projects next run.
+ * apps() resumes with the unchecked apps next run.
  *
  * Framework-free; lives in tasks/lib/ so the Runtime never runs it as a task.
  */
@@ -60,8 +61,8 @@ class Deploy_reconcile {
      */
     const STUCK_OUTCOMES = ['deploy-active', 'queue-failed', 'webhook-unverifiable'];
 
-    /** Most projects checked per run, longest unchecked first (project.reconciled_at) */
-    const MAX_PROJECTS_PER_RUN = 200;
+    /** Most apps checked per run, longest unchecked first (app.reconciled_at) */
+    const MAX_APPS_PER_RUN = 200;
 
     /** Pause between GitHub API calls */
     const GITHUB_DELAY_MS = 250;
@@ -72,7 +73,7 @@ class Deploy_reconcile {
         'recovered',      // a missed push: deploy queued
         'too-recent',     // its webhook may still be on the way
         'deploy-active',  // a deployment is pending or running
-        'no-token',       // the team has no GitHub token
+        'no-token',       // whoever added the app has no GitHub token
         'token-rejected', // GitHub refused the token (401/403)
         'rate-limited',   // GitHub rate limit; retried next run
         'github-unavailable', // GitHub 5xx or unreachable; the run stops
@@ -91,10 +92,10 @@ class Deploy_reconcile {
 
     private Worker_actions $actions;
 
-    /** @var array<int, Github|string> Team id => client, or why the team is skipped */
+    /** @var array<int, Github|string> Owner (customer) id => client, or why their apps are skipped */
     private array $clients = [];
 
-    /** @var array<string, array{sha: string, committed_at: ?int}> "team|repo|branch" => head */
+    /** @var array<string, array{sha: string, committed_at: ?int}> "owner|repo|branch" => head */
     private array $heads = [];
 
     private int $github_calls = 0;
@@ -110,45 +111,45 @@ class Deploy_reconcile {
     }
 
     /**
-     * Check every auto-deploying project once.
+     * Check every auto-deploying app once.
      *
      * @return array{scanned: int, github_calls: int, stuck: int, stopped: ?string, outcomes: array<string, int>}
      */
     function run(): array {
-        $projects = $this->projects();
+        $apps = $this->apps();
         $outcomes = array_fill_keys(self::OUTCOMES, 0);
         $scanned = 0;
         $stuck = 0;
         $stopped = null;
 
-        if (count($projects) > self::MAX_PROJECTS_PER_RUN) {
-            $this->log->warn(sprintf('More than %d auto-deploying projects; checking those checked longest ago', self::MAX_PROJECTS_PER_RUN));
-            $projects = array_slice($projects, 0, self::MAX_PROJECTS_PER_RUN);
+        if (count($apps) > self::MAX_APPS_PER_RUN) {
+            $this->log->warn(sprintf('More than %d auto-deploying apps; checking those checked longest ago', self::MAX_APPS_PER_RUN));
+            $apps = array_slice($apps, 0, self::MAX_APPS_PER_RUN);
         }
 
-        foreach ($projects as $project) {
+        foreach ($apps as $app) {
             // Customer deploys go first; the rotation picks up from here next run
-            if ($this->team_task_waiting()) {
-                $stopped = 'team-task-waiting';
+            if ($this->project_task_waiting()) {
+                $stopped = 'project-task-waiting';
                 $this->log->info('A customer task is waiting; stopping until the next run');
                 break;
             }
 
             try {
-                $outcome = $this->reconcile($project);
+                $outcome = $this->reconcile($app);
             } catch (\Throwable $e) {
-                // One project's failure must not stop the others being checked
-                $this->log->error("Project #{$project['id']}: {$e->getMessage()}");
+                // One app's failure must not stop the others being checked
+                $this->log->error("App #{$app['id']}: {$e->getMessage()}");
                 $outcome = 'error';
             }
 
-            $this->mark_checked((int) $project['id']);
+            $this->mark_checked((int) $app['id']);
             $outcomes[$outcome]++;
             $scanned++;
 
             if (in_array($outcome, self::STUCK_OUTCOMES, true) && $this->head_age !== null && $this->head_age > self::STUCK_HEAD_AGE_SECONDS) {
                 $stuck++;
-                $this->log->warn(sprintf('Project #%d: branch head undeployed for %d min (%s)', $project['id'], intdiv($this->head_age, 60), $outcome));
+                $this->log->warn(sprintf('App #%d: branch head undeployed for %d min (%s)', $app['id'], intdiv($this->head_age, 60), $outcome));
             }
 
             // Every further call would wait out the same timeouts and retries
@@ -168,7 +169,7 @@ class Deploy_reconcile {
 
         $counts = array_filter($outcomes);
         $this->log->info(sprintf(
-            'Checked %d project(s) with %d GitHub call(s)%s',
+            'Checked %d app(s) with %d GitHub call(s)%s',
             $summary['scanned'],
             $this->github_calls,
             $counts === [] ? '' : ': ' . implode(', ', array_map(fn($outcome, $count) => "{$outcome}={$count}", array_keys($counts), $counts))
@@ -178,33 +179,35 @@ class Deploy_reconcile {
     }
 
     /**
-     * Projects with Deploy on push on whose webhook has deployed before; a
-     * brand-new project's first deploy is queued by onboarding, not here.
+     * Apps with Deploy on push on whose webhook has deployed before; a
+     * brand-new app's first deploy is queued by onboarding, not here.
      *
-     * Longest unchecked first, so past MAX_PROJECTS_PER_RUN the cap rotates.
-     * Ordering by recent deployments would cut exactly the projects that lost
+     * Longest unchecked first, so past MAX_APPS_PER_RUN the cap rotates.
+     * Ordering by recent deployments would cut exactly the apps that lost
      * a push, since a lost push leaves no deployment behind.
      */
-    function projects(): array {
+    function apps(): array {
         $sql = <<<SQL
-            SELECT p.id, p.team_id, p.source_url, p.source_branch
-            FROM project p
-            WHERE p.source_provider = 'github'
+            SELECT a.id, a.project_id, COALESCE(a.source_customer_id, p.owner_id) AS owner_id, a.source_url, a.source_branch
+            FROM app a
+            JOIN project p ON p.id = a.project_id
+            WHERE a.source_provider = 'github'
+              AND a.deleted_at IS NULL
               AND p.deleted_at IS NULL
-              AND p.source_url <> ''
-              AND p.auto_deploy = 1
-              AND p.webhook_secret IS NOT NULL
-              AND p.webhook_secret <> ''
+              AND a.source_url <> ''
+              AND a.auto_deploy = 1
+              AND a.webhook_secret IS NOT NULL
+              AND a.webhook_secret <> ''
               AND EXISTS (
                   SELECT 1 FROM deployment d
-                  WHERE d.project_id = p.id
+                  WHERE d.app_id = a.id
                     AND d.trigger_type = 'webhook'
               )
-            ORDER BY p.reconciled_at IS NOT NULL, p.reconciled_at, p.id
+            ORDER BY a.reconciled_at IS NOT NULL, a.reconciled_at, a.id
             LIMIT ?
             SQL;
 
-        $limit = self::MAX_PROJECTS_PER_RUN + 1;
+        $limit = self::MAX_APPS_PER_RUN + 1;
         $stmt = $this->db->prepare($sql);
         $stmt->bind_param('i', $limit);
         $stmt->execute();
@@ -215,13 +218,13 @@ class Deploy_reconcile {
     }
 
     /**
-     * Whether a team (customer) task is queued and waiting for the worker.
+     * Whether a project (customer) task is queued and waiting for the worker.
      */
-    function team_task_waiting(): bool {
+    function project_task_waiting(): bool {
         $row = Platform_task::row(
             $this->db,
             'SELECT id FROM tasks
-             WHERE team_id IS NOT NULL
+             WHERE project_id IS NOT NULL
                AND started_at IS NULL
                AND completed_at IS NULL
                AND failed_at IS NULL
@@ -232,11 +235,11 @@ class Deploy_reconcile {
     }
 
     /**
-     * Remember that the project was checked, for the rotation in projects().
+     * Remember that the app was checked, for the rotation in apps().
      */
-    function mark_checked(int $project_id): void {
-        $stmt = $this->db->prepare('UPDATE project SET reconciled_at = NOW() WHERE id = ?');
-        $stmt->bind_param('i', $project_id);
+    function mark_checked(int $app_id): void {
+        $stmt = $this->db->prepare('UPDATE app SET reconciled_at = NOW() WHERE id = ?');
+        $stmt->bind_param('i', $app_id);
         $stmt->execute();
         $stmt->close();
     }
@@ -244,38 +247,39 @@ class Deploy_reconcile {
     /**
      * @return string One of OUTCOMES
      */
-    function reconcile(array $project): string {
-        $project_id = (int) $project['id'];
-        $team_id = (int) $project['team_id'];
-        $branch = (string) ($project['source_branch'] ?: 'main');
+    function reconcile(array $app): string {
+        $app_id = (int) $app['id'];
+        $project_id = (int) $app['project_id'];
+        $owner_id = (int) $app['owner_id'];
+        $branch = (string) ($app['source_branch'] ?: 'main');
         $this->head_age = null;
 
-        if (!preg_match('#^https://github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(\.git)?/?$#', (string) $project['source_url'], $match)) {
+        if (!preg_match('#^https://github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(\.git)?/?$#', (string) $app['source_url'], $match)) {
             throw new RuntimeException('No valid GitHub repository URL');
         }
 
         $repo = $match[1];
-        $github = $this->client($team_id);
+        $github = $this->client($owner_id);
 
         if (is_string($github)) {
             return $github;
         }
 
-        $key = strtolower("{$team_id}|{$repo}|{$branch}");
+        $key = strtolower("{$owner_id}|{$repo}|{$branch}");
 
         try {
             $head = $this->heads[$key] ??= $this->branch_head($github, $repo, $branch);
         } catch (Client_Error $e) {
-            return $this->github_failure($team_id, $project_id, $e);
+            return $this->github_failure($owner_id, $app_id, $e);
         }
 
         $sha = $head['sha'];
 
         $built = Platform_task::row(
             $this->db,
-            'SELECT id, status FROM deployment WHERE project_id = ? AND commit_sha = ? ORDER BY id DESC LIMIT 1',
+            'SELECT id, status FROM deployment WHERE app_id = ? AND commit_sha = ? ORDER BY id DESC LIMIT 1',
             'is',
-            $project_id,
+            $app_id,
             $sha
         );
 
@@ -294,9 +298,9 @@ class Deploy_reconcile {
         // that never finishes shows up as a stuck head instead of hiding it
         $active = Platform_task::row(
             $this->db,
-            "SELECT id FROM deployment WHERE project_id = ? AND status IN ('pending', 'building', 'deploying') LIMIT 1",
+            "SELECT id FROM deployment WHERE app_id = ? AND status IN ('pending', 'building', 'deploying') LIMIT 1",
             'i',
-            $project_id
+            $app_id
         );
 
         if ($active !== null) {
@@ -305,30 +309,30 @@ class Deploy_reconcile {
 
         // The customer may have removed the webhook to stop push deploys
         try {
-            if (!$this->webhook_exists($github, $repo, $project_id)) {
+            if (!$this->webhook_exists($github, $repo, $app_id)) {
                 return 'no-webhook';
             }
         } catch (Client_Error $e) {
             $rate_limited = stripos($e->getMessage(), 'rate limit') !== false;
 
             if ($e->getCode() === 404 || ($e->getCode() === 403 && !$rate_limited)) {
-                $this->log->warn("Project #{$project_id}: the team's GitHub token may not read {$repo}'s webhooks; not deploying " . substr($sha, 0, 7));
+                $this->log->warn("App #{$app_id}: the GitHub token that added it may not read {$repo}'s webhooks; not deploying " . substr($sha, 0, 7));
                 return 'webhook-unverifiable';
             }
 
-            return $this->github_failure($team_id, $project_id, $e);
+            return $this->github_failure($owner_id, $app_id, $e);
         }
 
         try {
-            $deployment_id = $this->actions->queue_deploy($team_id, $project_id, null, null, 'reconcile', $sha);
+            $deployment_id = $this->actions->queue_deploy($project_id, $app_id, null, 'reconcile', $sha);
         } catch (\Throwable $e) {
-            $this->log->error("Project #{$project_id}: queueing a deploy of " . substr($sha, 0, 7) . " failed: {$e->getMessage()}");
+            $this->log->error("App #{$app_id}: queueing a deploy of " . substr($sha, 0, 7) . " failed: {$e->getMessage()}");
             return 'queue-failed';
         }
 
         $this->log->warn(sprintf(
-            'Project #%d: %s@%s (%s) was never deployed, %d min after it was committed; queued deployment #%d',
-            $project_id,
+            'App #%d: %s@%s (%s) was never deployed, %d min after it was committed; queued deployment #%d',
+            $app_id,
             $repo,
             substr($sha, 0, 7),
             $branch,
@@ -366,17 +370,17 @@ class Deploy_reconcile {
 
     /**
      * Whether the repository still has an active webhook pointing at this
-     * project's endpoint (webhooks/github/{id}). Only asked for a head that is
-     * about to be deployed, so it costs a call per missed push, not per project.
+     * app's endpoint (webhooks/github/{id}). Only asked for a head that is
+     * about to be deployed, so it costs a call per missed push, not per app.
      *
      * @throws Client_Error 403/404 when the token may not read hooks
      */
-    function webhook_exists(Github $github, string $repo, int $project_id): bool {
+    function webhook_exists(Github $github, string $repo, int $app_id): bool {
         usleep(self::GITHUB_DELAY_MS * 1000);
 
         $this->github_calls++;
         $hooks = $github->request('GET', "/repos/{$repo}/hooks?per_page=100");
-        $path = "/webhooks/github/{$project_id}";
+        $path = "/webhooks/github/{$app_id}";
 
         foreach ($hooks as $hook) {
             $url = rtrim((string) ($hook['config']['url'] ?? ''), '/');
@@ -390,24 +394,24 @@ class Deploy_reconcile {
     }
 
     /**
-     * The team's GitHub client, or the outcome that skips its projects.
+     * A GitHub client with the customer's token, or the outcome that skips
+     * the apps using it.
      */
-    function client(int $team_id): Github|string {
-        if (!isset($this->clients[$team_id])) {
-            $secret = $this->runtime->resolve_reference("secrets:team,{$team_id},github");
-            $token = is_array($secret) ? (string) ($secret['token'] ?? '') : '';
+    function client(int $owner_id): Github|string {
+        if (!isset($this->clients[$owner_id])) {
+            $token = Platform_task::github_token($this->runtime, $owner_id);
 
-            $this->clients[$team_id] = $token !== '' ? new Github($token) : 'no-token';
+            $this->clients[$owner_id] = $token !== '' ? new Github($token) : 'no-token';
         }
 
-        return $this->clients[$team_id];
+        return $this->clients[$owner_id];
     }
 
     /**
      * Map a GitHub error to an outcome. A refused or rate-limited token skips
-     * the team's remaining projects this run instead of spending more calls.
+     * the owner's remaining apps this run instead of spending more calls.
      */
-    function github_failure(int $team_id, int $project_id, Client_Error $e): string {
+    function github_failure(int $owner_id, int $app_id, Client_Error $e): string {
         $code = $e->getCode();
 
         $outcome = match (true) {
@@ -419,10 +423,10 @@ class Deploy_reconcile {
         };
 
         if ($outcome === 'token-rejected' || $outcome === 'rate-limited') {
-            $this->clients[$team_id] = $outcome;
-            $this->log->warn("Team #{$team_id}: GitHub answered {$code}; skipping its projects until the next run");
+            $this->clients[$owner_id] = $outcome;
+            $this->log->warn("Customer #{$owner_id}'s GitHub token: GitHub answered {$code}; skipping the apps using it until the next run");
         } else {
-            $this->log->warn("Project #{$project_id}: {$e->getMessage()}");
+            $this->log->warn("App #{$app_id}: {$e->getMessage()}");
         }
 
         return $outcome;

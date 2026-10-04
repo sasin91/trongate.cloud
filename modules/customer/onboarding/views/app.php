@@ -6,17 +6,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Your first app - trongate.cloud</title>
-    <link rel="stylesheet" href="<?= BASE_URL ?>projects_module/css/wizard.css">
+    <link rel="stylesheet" href="<?= BASE_URL ?>apps_module/css/wizard.css">
 </head>
 
 <body class="wz-body">
-    <?php $q_current = 3; $q_total = 6; require APPPATH . 'modules/projects/views/_wizard_top.php'; ?>
+    <?php $q_current = 2; $q_total = 5; require APPPATH . 'modules/apps/views/_wizard_top.php'; ?>
 
     <?php
-    $form_action = 'onboarding/submit_project';
+    $form_action = 'onboarding/submit_app';
     $branches_url = 'onboarding/branches';
-    $q_offset = 2;
-    require APPPATH . 'modules/projects/views/_project_steps.php';
+    $q_offset = 1;
+    require APPPATH . 'modules/apps/views/_app_steps.php';
     ?>
 </body>
 

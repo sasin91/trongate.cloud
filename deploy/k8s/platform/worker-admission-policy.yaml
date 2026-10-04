@@ -1,19 +1,26 @@
 # The worker parses untrusted repositories, so its API access is limited beyond
-# RBAC (which cannot scope a ClusterRole to "namespaces matching tc-team-*").
+# RBAC (which cannot scope a ClusterRole to "namespaces matching a pattern").
 # Requires Kubernetes >= 1.30.
 #
-# 1. Where: only inside tc-team-* namespaces (or the tenant Namespace objects
+# Tenant namespaces: one per project, "project-{id}" (Manifests::NAMESPACE_PATTERN;
+# the same pattern is the tenant_namespace variable of each policy below).
+#
+# 1. Where: only inside tenant namespaces (or the tenant Namespace objects
 #    themselves), plus per-build buildkitd-d* Pods in the buildkit namespace.
 # 2. What: the content checks in trongate-worker-objects, so a compromised worker
 #    cannot loosen a tenant namespace, expose a Service, mount a token, claim a
 #    platform hostname, or point MariaDB CRs at anything but a tenant's own
 #    tc_p{id} database on the shared servers.
 # 3. Deletes: trongate-worker-owned-deletes, so the worker only deletes objects
-#    it labelled itself (destroy_project, build daemon Pods). A backstop: the
-#    worker checks labels itself first (for Secrets, which it cannot read, via a
-#    label-filtered deletecollection). Neither can check the team: CEL does not
-#    know which tc-team-* namespace a project belongs to, so that rests on
-#    destroy_project matching the payload's team against the project row.
+#    it labelled itself (destroy_app, build daemon Pods), and a tenant Namespace
+#    only when it carries the tenant labels Manifests::tenant() gives it
+#    (destroy_project, for a deleted, empty project). A backstop: the worker
+#    checks labels itself first (for Secrets, which it cannot read, via a
+#    label-filtered deletecollection), and destroy_project deletes a namespace
+#    only when the cluster shows no app objects left in it. Neither can check
+#    the project: CEL does not know which namespace an app belongs to, so that
+#    rests on destroy_app and destroy_project reading the namespace from the
+#    project row (project.namespace) and checking the payload against it.
 #
 # Custom domains (Manifests::domain_gateway) put Gateways in tenant namespaces,
 # so a tenant Gateway is checked as strictly as a route. Traefik merges every
@@ -41,7 +48,7 @@
 #
 # Not enforced here: which tenant may use which custom domain. The worker
 # writes every tenant, so a compromised worker could already route any domain
-# to any app; project.verified_domain (UNIQUE, proven by a TXT record) is that
+# to any app; app.verified_domain (UNIQUE, proven by a TXT record) is that
 # check, in the app.
 #
 # Keep the hostnames in trongate-worker-objects in sync with BASE_URL,
@@ -64,12 +71,16 @@ spec:
   matchConditions:
     - name: is-worker
       expression: request.userInfo.username == 'system:serviceaccount:trongate-cloud:trongate-worker'
+  variables:
+    - name: tenant_namespace
+      expression: "'^project-[1-9][0-9]{0,9}$'"
   validations:
+    # Namespace DELETEs are checked further by trongate-worker-owned-deletes
     - expression: >-
-        request.namespace.startsWith('tc-team-') ||
-        (request.kind.kind == 'Namespace' && request.name.startsWith('tc-team-') && request.operation != 'DELETE') ||
+        request.namespace.matches(variables.tenant_namespace) ||
+        (request.kind.kind == 'Namespace' && request.name.matches(variables.tenant_namespace)) ||
         (request.namespace == 'buildkit' && request.kind.kind == 'Pod' && request.name.startsWith('buildkitd-d'))
-      message: The trongate-cloud worker may only write inside tc-team-* namespaces (and build Pods in buildkit)
+      message: The trongate-cloud worker may only write inside tenant (project-*) namespaces (and build Pods in buildkit)
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding
@@ -249,9 +260,16 @@ spec:
   policyName: trongate-worker-objects
   validationActions: ["Deny"]
 ---
-# The worker only deletes objects carrying its managed-by label. Per-project
-# objects (p{id}-...) must also carry the matching project-id and name labels,
-# so a wrong name in destroy_project can never remove another project's objects.
+# The worker only deletes objects carrying its managed-by label. Per-app
+# objects (p{id}-...) must also carry the matching app id and name labels, so a
+# wrong name in destroy_app can never remove another app's objects. (The app id
+# label is still called platform.example.com/project-id: apps were called
+# projects when it was introduced, and live objects carry it.)
+# A tenant Namespace may be deleted (destroy_project) when it carries the
+# labels Manifests::tenant() gives it: managed-by, managed=tenant and a tenant
+# label equal to its own name. Deleting it removes everything inside, so
+# destroy_project first checks that its project is deleted and that no app
+# object is left in it.
 # Uses oldObject.metadata.name, not request.name: for the items of a
 # deletecollection (how the worker deletes Secrets) request.name is empty.
 apiVersion: admissionregistration.k8s.io/v1
@@ -270,6 +288,8 @@ spec:
     - name: is-worker
       expression: request.userInfo.username == 'system:serviceaccount:trongate-cloud:trongate-worker'
   variables:
+    - name: tenant_namespace
+      expression: "'^project-[1-9][0-9]{0,9}$'"
     - name: labelled
       expression: oldObject != null && has(oldObject.metadata.labels)
     # A custom-domain Gateway's certificate Secret: cert-manager creates it, so
@@ -278,10 +298,20 @@ spec:
     - name: domain_tls
       expression: >-
         variables.labelled && request.kind.kind == 'Secret' &&
-        request.namespace.startsWith('tc-team-') &&
+        request.namespace.matches(variables.tenant_namespace) &&
         oldObject.metadata.name.matches('^p[0-9]+-domain-[0-9a-f]{12}-tls$') &&
         'controller.cert-manager.io/fao' in oldObject.metadata.labels &&
         oldObject.metadata.labels['controller.cert-manager.io/fao'] == 'true'
+    # A tenant Namespace as Manifests::tenant() labels it
+    - name: tenant_namespace_object
+      expression: >-
+        variables.labelled && request.kind.kind == 'Namespace' &&
+        request.kind.group == '' &&
+        oldObject.metadata.name.matches(variables.tenant_namespace) &&
+        'platform.example.com/managed' in oldObject.metadata.labels &&
+        oldObject.metadata.labels['platform.example.com/managed'] == 'tenant' &&
+        'platform.example.com/tenant' in oldObject.metadata.labels &&
+        oldObject.metadata.labels['platform.example.com/tenant'] == oldObject.metadata.name
   validations:
     - expression: >-
         variables.domain_tls ||
@@ -291,15 +321,18 @@ spec:
       message: The trongate-cloud worker may only delete objects labelled app.kubernetes.io/managed-by=trongate-cloud
     - expression: >-
         variables.domain_tls ||
+        variables.tenant_namespace_object ||
         (request.namespace == 'buildkit' && request.kind.kind == 'Pod' && oldObject.metadata.name.startsWith('buildkitd-d')) ||
         (variables.labelled &&
-         request.namespace.startsWith('tc-team-') &&
+         request.namespace.matches(variables.tenant_namespace) &&
          'platform.example.com/project-id' in oldObject.metadata.labels &&
          'app.kubernetes.io/name' in oldObject.metadata.labels &&
          oldObject.metadata.labels['platform.example.com/project-id'].matches('^[0-9]+$') &&
          oldObject.metadata.labels['app.kubernetes.io/name'] == 'p' + oldObject.metadata.labels['platform.example.com/project-id'] + '-app' &&
          oldObject.metadata.name.startsWith('p' + oldObject.metadata.labels['platform.example.com/project-id'] + '-'))
-      message: The trongate-cloud worker may only delete a project's objects (p{id}-* in a tc-team-* namespace) when they carry that project's id and name labels
+      message: >-
+        The trongate-cloud worker may only delete an app's objects (p{id}-* in a tenant namespace) when they
+        carry that app's id and name labels, or a tenant Namespace that carries the platform's tenant labels
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding

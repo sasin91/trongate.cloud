@@ -1,9 +1,9 @@
 <?php
 /**
- * New-project questions, one at a time: repository, branch, name, Trongate version.
- * Shared by onboarding/project and projects/new.
+ * New-app questions, one at a time: repository, branch, name, Trongate version.
+ * Shared by onboarding/app and projects/{id}/apps/new.
  *
- * Expects: $provider, $repositories, $project_types, $branches_url (returns <option>s),
+ * Expects: $provider, $repositories, $app_types, $branches_url (returns <option>s),
  * $form_action, $q_offset (questions answered before this page), $q_total,
  * $back_href (optional link for the first question's Back).
  */
@@ -105,7 +105,7 @@ $errors = validation_errors('<p>', '</p>');
                     <legend>Which Trongate is it built on?</legend>
                 </div>
                 <div class="wz-choices row">
-                    <?php foreach ($project_types as $value => $type_label): ?>
+                    <?php foreach ($app_types as $value => $type_label): ?>
                         <label class="wz-choice">
                             <input type="radio" name="type" value="<?= $e($value) ?>" required <?= $value === $selected_type ? 'checked' : '' ?>>
                             <span class="wz-big-num"><?= $e(preg_replace('/^Trongate\s+/i', '', $type_label)) ?></span>
@@ -141,4 +141,4 @@ $errors = validation_errors('<p>', '</p>');
         </div>
     </aside>
 </div>
-<script src="<?= BASE_URL ?>projects_module/js/project_steps.js"></script>
+<script src="<?= BASE_URL ?>apps_module/js/app_steps.js"></script>

@@ -7,7 +7,7 @@
     <meta name="robots" content="noindex">
     <link rel="stylesheet" href="<?= BASE_URL ?>templates_module/css/customer.css">
     <link rel="stylesheet" href="<?= BASE_URL ?>deployments_module/css/deployments.css">
-    <link rel="stylesheet" href="<?= BASE_URL ?>projects_module/css/projects.css">
+    <link rel="stylesheet" href="<?= BASE_URL ?>apps_module/css/apps.css">
     <title>App overview - trongate.cloud</title>
 </head>
 <body>
@@ -27,7 +27,7 @@
     </header>
 
     <main>
-        <?php require APPPATH . 'modules/projects/views/_overview.php'; ?>
+        <?php require APPPATH . 'modules/apps/views/_overview.php'; ?>
     </main>
 </body>
 </html>

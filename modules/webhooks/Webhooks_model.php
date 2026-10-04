@@ -9,16 +9,16 @@ class Webhooks_model extends Model {
     use Platform_actions;
 
     /**
-     * The fields a webhook needs, by project id alone (the signature proves access).
+     * The fields a webhook needs, by app id alone (the signature proves access).
      */
-    function find_webhook_project(int $project_id): object|false {
+    function find_webhook_app(int $app_id): object|false {
         $sql = <<<SQL
-            SELECT id, team_id, source_url, source_branch, webhook_secret, auto_deploy
-            FROM project
-            WHERE id = :project_id AND deleted_at IS NULL
+            SELECT id, project_id, source_url, source_branch, webhook_secret, auto_deploy
+            FROM app
+            WHERE id = :app_id AND deleted_at IS NULL
             LIMIT 1
         SQL;
-        $rows = $this->db->query_bind($sql, ['project_id' => $project_id], 'object');
+        $rows = $this->db->query_bind($sql, ['app_id' => $app_id], 'object');
 
         return $rows[0] ?? false;
     }

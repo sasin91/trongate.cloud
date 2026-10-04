@@ -48,4 +48,5 @@ spec:
         kind: HelmRepository
         name: mariadb-operator
   # Defaults: the operator watches all namespaces, which the tenant Database/User/Grant
-  # CRs (in tc-team-*) referencing the MariaDB in "databases" rely on.
+  # CRs (in the project-* namespaces) referencing the MariaDB in
+  # "databases" rely on.

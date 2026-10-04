@@ -17,7 +17,7 @@ class Secrets extends Trongate {
 
     /**
      * Get decrypted secrets for a module
-     * @param string $module e.g. 'server', 'project', 'team'
+     * @param string $module e.g. 'customer', 'server'
      * @param int $module_id
      * @param string|null $service e.g. 'hetzner', 'github' (optional)
      * @return array Key-value pairs

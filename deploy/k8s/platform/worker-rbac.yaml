@@ -1,7 +1,7 @@
 # The worker creates tenants through the Kubernetes API. Permissions cover exactly
 # the kinds Manifests emits (plus read access to pods/events for rollout diagnostics).
-# worker-admission-policy.yaml further limits writes to tc-team-* namespaces and
-# checks what the objects contain. Secrets are write-only: Kubernetes::apply is a
+# worker-admission-policy.yaml further limits writes to tenant namespaces
+# (project-*) and checks what the objects contain. Secrets are write-only: Kubernetes::apply is a
 # server-side-apply PATCH, so the worker never reads a Secret (and must not be
 # able to read the platform's, the operators' or Flux's). It deletes Secrets only
 # as a collection filtered by its own labels (Platform_task::delete_owned), never
@@ -18,10 +18,13 @@ kind: ClusterRole
 metadata:
   name: trongate-worker
 rules:
-  # Tenant namespaces are created, never deleted, by the worker
+  # Tenant namespaces: created by the first deploy of a project's app, deleted
+  # by destroy_project once the project is deleted and empty. The admission
+  # policy only lets the worker delete a Namespace with a tenant name and the
+  # tenant labels Manifests::tenant() gives it.
   - apiGroups: [""]
     resources: ["namespaces"]
-    verbs: ["get", "list", "watch", "create", "patch", "update"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
   - apiGroups: [""]
     resources: ["resourcequotas", "limitranges", "services", "persistentvolumeclaims"]
     verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]

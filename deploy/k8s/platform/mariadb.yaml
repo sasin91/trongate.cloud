@@ -1,4 +1,4 @@
-# The control plane's own MariaDB ("tcloud": customer accounts, team GitHub
+# The control plane's own MariaDB ("tcloud": customer accounts, customers' GitHub
 # tokens, webhook seeds, tasks). Deliberately NOT on shared-1: tenant pods may
 # reach port 3306 in the databases namespace, and a MariaDB auth or privilege
 # bug there must not expose the platform's data. Tenant NetworkPolicies have no

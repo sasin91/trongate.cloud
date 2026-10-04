@@ -2,10 +2,11 @@
 
 require_once __DIR__ . '/../traits/Customer_guard.php';
 require_once APPPATH . 'modules/services/traits/Provider_clients.php';
-require_once APPPATH . 'modules/projects/traits/Project_form.php';
+require_once APPPATH . 'modules/apps/traits/App_form.php';
 
 /**
- * Onboarding: team -> GitHub token -> first project (which queues its first deploy).
+ * Onboarding: GitHub token -> first app (which queues its first deploy).
+ * The first project is created with the app and named after it; it can be renamed later.
  *
  * @property-read Trongate_tokens $trongate_tokens
  * @property-read Onboarding_model $model
@@ -16,7 +17,7 @@ require_once APPPATH . 'modules/projects/traits/Project_form.php';
 class Onboarding extends Trongate {
     use Customer_guard;
     use Provider_clients;
-    use Project_form;
+    use App_form;
 
     function __construct(string $module_name = '') {
         parent::__construct($module_name);
@@ -24,49 +25,18 @@ class Onboarding extends Trongate {
     }
 
     function index(): void {
-        $team_id = $this->_team_id_or_redirect();
-
-        if ($this->_team_provider($team_id, 'source') === false) {
-            redirect('onboarding/source');
-        }
-
-        redirect('onboarding/project');
-    }
-
-    // --- Team ---
-
-    function team(): void {
-        // Coming back to this question (browser Back) shows the team they already named
-        $team_id = $this->model->_get_current_team_id();
-        $teams = $team_id === false ? [] : array_column($this->model->get_customer_teams(), 'name', 'id');
-
-        $this->view('team', ['team_name' => $teams[$team_id] ?? '']);
-    }
-
-    function submit_team(): void {
-        $this->validation->set_rules('name', 'Team name', 'required|min_length[3]|max_length[50]');
-
-        if ($this->validation->run() === false) {
-            $this->team();
-            return;
-        }
-
         $customer = $this->_customer_or_redirect();
-        $name = post('name', true);
 
-        // Answering again renames the team instead of creating a second one
-        $team_id = $this->model->_get_current_team_id();
+        // Added to someone's project before onboarding: their apps are waiting, nothing to set up
+        if ($this->model->member_projects((int) $customer->id) !== [] && $this->model->mark_onboarded((int) $customer->id)) {
+            redirect('dashboard');
+        }
 
-        if ($team_id !== false) {
-            $this->model->rename_team($team_id, $name);
+        if ($this->_customer_provider((int) $customer->id, 'source') === false) {
             redirect('onboarding/source');
         }
 
-        $team_id = $this->model->create_team($customer->id, $name);
-        $this->model->add_team_member($team_id, $customer->id, 'owner');
-        $this->model->set_current_team($team_id);
-
-        redirect('onboarding/source');
+        redirect('onboarding/app');
     }
 
     // --- Source Control (GitHub) ---
@@ -76,7 +46,7 @@ class Onboarding extends Trongate {
     }
 
     function submit_source(): void {
-        $team_id = $this->_team_id_or_redirect();
+        $customer = $this->_customer_or_redirect();
 
         $this->validation->set_rules('provider', 'Source Control Provider', 'required|callback__validate_source_provider');
         $this->validation->set_rules('token', 'Personal Access Token', 'required|min_length[10]|callback__validate_github_token');
@@ -86,54 +56,65 @@ class Onboarding extends Trongate {
             return;
         }
 
-        $this->secrets->save('team', $team_id, post('provider', true), ['token' => post('token', true)]);
+        $this->secrets->save('customer', (int) $customer->id, post('provider', true), ['token' => post('token', true)]);
 
-        redirect('onboarding/project');
+        redirect('onboarding/app');
     }
 
-    // --- Project ---
+    // --- App ---
 
-    function project(): void {
-        $team_id = $this->_team_id_or_redirect();
-        $form = $this->_project_form_data($team_id);
+    function app(): void {
+        $customer = $this->_customer_or_redirect();
+        $form = $this->_app_form_data((int) $customer->id);
 
         if ($form === false) {
             redirect('onboarding/source');
         }
 
-        $this->view('project', $form);
+        $this->view('app', $form);
     }
 
-    function submit_project(): void {
-        $team_id = $this->_team_id_or_redirect();
+    function submit_app(): void {
+        $customer = $this->_customer_or_redirect();
+        $project_id = $this->_onboarding_project_id((int) $customer->id);
 
-        $this->_set_project_rules();
+        $this->_set_app_rules();
 
         if ($this->validation->run() === false) {
-            $this->project();
+            $this->app();
             return;
         }
 
-        $customer = $this->_customer_or_redirect();
+        // The first project is named after the first app (create_project opens its own transaction)
+        $project_id ??= $this->model->create_project((int) $customer->id, post('label', true));
 
-        $project_id = $this->model->db->transaction(function () use ($team_id, $customer) {
-            $project_id = $this->_create_project_from_post($team_id);
+        $app_id = $this->model->db->transaction(function () use ($project_id, $customer) {
+            $app_id = $this->_create_app_from_post($project_id, (int) $customer->id);
 
-            if ($project_id === false || !$this->model->mark_onboarded((int) $customer->id)) {
+            if ($app_id === false || !$this->model->mark_onboarded((int) $customer->id)) {
                 return false;
             }
 
-            return $project_id;
+            return $app_id;
         });
 
-        if ($project_id === false) {
-            redirect('onboarding/project');
+        if ($app_id === false) {
+            redirect('onboarding/app');
         }
 
         // Queued after the transaction commits (queue_deploy opens its own)
-        $deployment_id = $this->_queue_first_deploy($team_id, (int) $project_id);
+        $deployment_id = $this->_queue_first_deploy((int) $customer->id, (int) $app_id);
 
-        redirect($deployment_id === false ? 'projects/' . $project_id : 'deployments/' . $deployment_id);
+        redirect($deployment_id === false ? 'apps/' . $app_id : 'deployments/' . $deployment_id);
+    }
+
+    /**
+     * The project an earlier, failed attempt already created, or null when there is none yet
+     */
+    function _onboarding_project_id(int $customer_id): ?int {
+        $projects = $this->model->member_projects($customer_id);
+
+        return $projects === [] ? null : (int) $projects[0]->id;
     }
 
     /**

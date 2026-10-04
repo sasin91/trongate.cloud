@@ -1,8 +1,9 @@
 # deploy/k8s
 
 Flux-managed manifests for the Trongate Cloud platform on the k3s cluster from
-`hcloud-k3s-platform-kit`. Tenants (`tc-team-{id}` namespaces and per-project
-resources) are **not** here: the worker creates them through the Kubernetes API
+`hcloud-k3s-platform-kit`. Tenants (a namespace per project, `project-{id}`,
+and per-app resources) are
+**not** here: the worker creates them through the Kubernetes API
 (`modules/platform/manifests/Manifests.php`). See `docs/platform-architecture.md`
 for the decisions behind this layout.
 
@@ -153,15 +154,15 @@ local `.env`; copy those values into the encrypted `trongate-cloud-env` and
    Do not enable `postBuild` substitution for `files/storageclass.yaml` (its
    `pathPattern` uses `${...}`; the file opts out with an annotation).
 4. **Schema.** Once MariaDB `platform` (namespace `trongate-cloud`) and the
-   `tcloud` Database/User/Grant are ready, apply `db/001_*.sql` onwards in order
-   to the `tcloud` database, e.g. through a port-forward to `platform` (the same
-   loop the CI `sql` job runs).
-   Skip `db/000_create_db.sql`: it drops and recreates the database (the
-   operator already created it), so `bin/import-db.sh` is for local dev only.
-   `db/014_k3s_platform.sql` seeds the `shared-1` row in `database_server`, which
-   deploys place tenant databases on.
+   `tcloud` Database/User/Grant are ready, apply `db/schema.sql` to it once,
+   e.g. through a port-forward to `platform` (as the CI `sql` job does). Its
+   `CREATE DATABASE IF NOT EXISTS` leaves the operator's database alone; the
+   tables are created without `IF NOT EXISTS`, so applying it twice fails
+   instead of mixing schemas. `bin/import-db.sh` drops the database first and
+   is for local dev only. The schema seeds the `shared-1` row in
+   `database_server`, which deploys place app databases on.
 5. **Check.** The app answers on `https://trongate.cloud/`; the worker logs
-   `Poll loop started`. A first project deploy then exercises a per-build
+   `Poll loop started`. A first app deploy then exercises a per-build
    buildkitd Pod, the registry, the tenant namespace, the admission policies,
    mariadb-operator CRs, JuiceFS and Sablier.
 

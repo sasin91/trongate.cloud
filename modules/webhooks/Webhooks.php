@@ -1,12 +1,12 @@
 <?php
 
 /**
- * Public GitHub webhook endpoint: POST webhooks/github/{project_id}.
+ * Public GitHub webhook endpoint: POST webhooks/github/{app_id}.
  *
- * Each project has its own secret (derived from the project.webhook_secret seed and
- * APP_KEY, shown in project settings); GitHub signs the raw body with it in
- * X-Hub-Signature-256. A signed push to the project's branch queues a deployment,
- * unless the customer turned Deploy on push off (project.auto_deploy).
+ * Each app has its own secret (derived from the app.webhook_secret seed and
+ * APP_KEY, shown in app settings); GitHub signs the raw body with it in
+ * X-Hub-Signature-256. A signed push to the app's branch queues a deployment,
+ * unless the customer turned Deploy on push off (app.auto_deploy).
  * The deploy task builds the branch head, so replaying an old push cannot roll back.
  *
  * @property-read Webhooks_model $model
@@ -22,9 +22,9 @@ class Webhooks extends Trongate {
             return;
         }
 
-        $project = $this->model->find_webhook_project(segment(3, 'int'));
+        $app = $this->model->find_webhook_app(segment(3, 'int'));
 
-        if ($project === false || empty($project->webhook_secret)) {
+        if ($app === false || empty($app->webhook_secret)) {
             $this->_respond(404, ['error' => 'not_found']);
             return;
         }
@@ -36,7 +36,7 @@ class Webhooks extends Trongate {
             return;
         }
 
-        $secret = $this->model->webhook_signing_secret((int) $project->id, (string) $project->webhook_secret);
+        $secret = $this->model->webhook_signing_secret((int) $app->id, (string) $app->webhook_secret);
 
         if (!$this->_valid_signature($body, (string) ($_SERVER['HTTP_X_HUB_SIGNATURE_256'] ?? ''), $secret)) {
             $this->_respond(401, ['error' => 'invalid_signature']);
@@ -54,24 +54,24 @@ class Webhooks extends Trongate {
         if ($event === 'ping') {
             $this->_respond(200, ['ok' => true, 'message' => 'pong']);
         } elseif ($event === 'push') {
-            $this->_handle_push($project, $payload);
+            $this->_handle_push($app, $payload);
         } else {
             $this->_respond(202, ['ok' => true, 'ignored' => 'event']);
         }
     }
 
     /**
-     * Queue a deploy for a push to the project's branch; ignore other refs, tags and branch deletions.
+     * Queue a deploy for a push to the app's branch; ignore other refs, tags and branch deletions.
      */
-    function _handle_push(object $project, array $payload): void {
-        if (empty($project->auto_deploy)) {
+    function _handle_push(object $app, array $payload): void {
+        if (empty($app->auto_deploy)) {
             $this->_respond(202, ['ok' => true, 'ignored' => 'auto_deploy_off']);
             return;
         }
 
         $ref = (string) ($payload['ref'] ?? '');
         $sha = strtolower((string) ($payload['after'] ?? ''));
-        $branch = (string) ($project->source_branch ?: 'main');
+        $branch = (string) ($app->source_branch ?: 'main');
 
         if ($ref !== 'refs/heads/' . $branch) {
             $this->_respond(202, ['ok' => true, 'ignored' => 'ref', 'ref' => $ref]);
@@ -83,13 +83,13 @@ class Webhooks extends Trongate {
             return;
         }
 
-        if (!$this->_same_repository($project, $payload)) {
+        if (!$this->_same_repository($app, $payload)) {
             $this->_respond(202, ['ok' => true, 'ignored' => 'repository']);
             return;
         }
 
         try {
-            $deployment_id = $this->model->queue_deploy((int) $project->team_id, (int) $project->id, null, null, 'webhook', $sha);
+            $deployment_id = $this->model->queue_deploy((int) $app->project_id, (int) $app->id, null, 'webhook', $sha);
         } catch (RuntimeException $e) {
             $this->_respond(422, ['error' => 'not_deployable', 'message' => $e->getMessage()]);
             return;
@@ -126,10 +126,10 @@ class Webhooks extends Trongate {
     }
 
     /**
-     * The push must come from the project's repository (guards against a secret reused across repos).
+     * The push must come from the app's repository (guards against a secret reused across repos).
      */
-    function _same_repository(object $project, array $payload): bool {
-        $expected = $this->_repository_path((string) $project->source_url);
+    function _same_repository(object $app, array $payload): bool {
+        $expected = $this->_repository_path((string) $app->source_url);
         $actual = $this->_repository_path((string) ($payload['repository']['html_url'] ?? ''));
 
         return $expected !== '' && $expected === $actual;

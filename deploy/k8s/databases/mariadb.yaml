@@ -1,6 +1,6 @@
 # Shared MariaDB for tenant databases and JuiceFS metadata. Tenant pods can reach
 # it, so the platform database lives elsewhere (../platform/mariadb.yaml).
-# Reached as shared-1.databases.svc.cluster.local:3306 (seed row in db/014_k3s_platform.sql).
+# Reached as shared-1.databases.svc.cluster.local:3306 (seed row in db/schema.sql).
 apiVersion: k8s.mariadb.com/v1alpha1
 kind: MariaDB
 metadata:

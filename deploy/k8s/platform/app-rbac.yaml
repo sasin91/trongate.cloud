@@ -1,8 +1,9 @@
 # The web app reads its customers' apps (Deployments and Pods) to show their live
-# state (modules/platform/live/App_state.php), and lists the other per-project
+# state (modules/platform/live/App_state.php), and lists the other per-app
 # kinds for the admin MCP's read-only orphan audit (App_resource_audit.php).
 # Read-only, and no Secrets: writes stay with the worker (worker-rbac.yaml).
-# Cluster-wide because tenant namespaces (tc-team-*) are created on the fly.
+# Cluster-wide because tenant namespaces (one per project: project-*) are
+# created on the fly.
 apiVersion: v1
 kind: ServiceAccount
 metadata:

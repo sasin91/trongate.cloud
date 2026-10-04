@@ -1,41 +1,21 @@
 #!/bin/bash
-# Import db/*.sql in order. Extra arguments go to the mysql/mariadb client.
+# Local dev: drop and recreate the tcloud database from db/schema.sql.
+# Extra arguments go to the mysql/mariadb client (e.g. -uroot -proot).
 set -euo pipefail
 
-DB_DIR="$(dirname "$0")/../db"
+SCHEMA="$(dirname "$0")/../db/schema.sql"
 
-# Check for SQL files
-if [ ! -d "$DB_DIR" ]; then
-    echo "Error: DB directory not found at $DB_DIR"
-    exit 1
-fi
-
-shopt -s nullglob
-files=("$DB_DIR"/*.sql)
-count=${#files[@]}
-
-if [ "$count" -eq 0 ]; then
-    echo "Warning: No SQL files found in $DB_DIR"
-    exit 0
-fi
-
-mapfile -t files < <(printf '%s\n' "${files[@]}" | sort -V)
-
-# Determine MySQL/MariaDB executable
 MYSQL_BIN="mysql"
 if ! command -v "$MYSQL_BIN" &> /dev/null; then
     if command -v mariadb &> /dev/null; then
         MYSQL_BIN="mariadb"
     else
-        echo "Error: mysql/mariadb client not found in PATH or standard locations."
+        echo "Error: mysql/mariadb client not found in PATH."
         exit 1
     fi
 fi
 
-echo "Using $MYSQL_BIN"
-echo "Importing $count SQL files..."
-
-# Batch all files into one stream
-cat "${files[@]}" | "$MYSQL_BIN" "$@"
-
-echo "All imports completed successfully."
+echo "Using $MYSQL_BIN; recreating tcloud from $SCHEMA"
+"$MYSQL_BIN" "$@" -e "DROP DATABASE IF EXISTS tcloud"
+"$MYSQL_BIN" "$@" < "$SCHEMA"
+echo "Done."

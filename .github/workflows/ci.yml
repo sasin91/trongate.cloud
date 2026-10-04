@@ -78,11 +78,5 @@ jobs:
           --health-interval=5s --health-timeout=5s --health-retries=10
     steps:
       - uses: actions/checkout@v4
-      - name: Apply db/*.sql in order
-        run: |
-          mysql -h127.0.0.1 -uroot -proot < db/000_create_db.sql
-          for f in $(ls db/*.sql | sort | tail -n +2); do
-            echo "::group::$f"
-            mysql -h127.0.0.1 -uroot -proot tcloud < "$f"
-            echo "::endgroup::"
-          done
+      - name: Apply db/schema.sql
+        run: mysql -h127.0.0.1 -uroot -proot < db/schema.sql

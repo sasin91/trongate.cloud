@@ -5,7 +5,7 @@ require_once __DIR__ . '/Worker_db.php';
 
 /**
  * Platform_actions for the worker, so a task that queues a deploy follows the
- * same rules as the UI, webhooks and MCP (one queued deploy per project,
+ * same rules as the UI, webhooks and MCP (one queued deploy per app,
  * trigger and commit checks). Only the queueing and read methods make sense
  * here; the domain and webhook-secret helpers need APP_KEY from config.php.
  *
