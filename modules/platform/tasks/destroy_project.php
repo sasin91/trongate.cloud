@@ -13,7 +13,9 @@
  *
  * Only objects carrying the project's ownership labels are deleted
  * (Platform_task::delete_owned); anything else under an expected name is
- * reported and left in place. Safe to re-run after a partial failure.
+ * reported and left in place, and the task fails. It is safe to re-run after a
+ * partial failure; nothing retries it automatically, the admin MCP does
+ * (retry_project_cleanup, Platform_actions::requeue_project_destroy).
  *
  * Removed: HTTPRoute, Middleware, Service and Deployment (the app stops
  * serving), the MariaDB Grant and User CRs (cleanupPolicy Delete, so access is

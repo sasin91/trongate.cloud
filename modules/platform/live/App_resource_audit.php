@@ -9,7 +9,8 @@ require_once __DIR__ . '/../../services/clients/Kubernetes.php';
  * Lists objects that carry trongate.cloud's ownership labels (managed-by +
  * project id) but no longer belong to a live project in that namespace, e.g.
  * after a destroy_project task failed. It never deletes or repairs anything:
- * deleting the project again (or by hand, after a look) is a separate decision.
+ * re-running the cleanup (the admin MCP's retry_project_cleanup) or removing
+ * an object by hand, after a look, is a separate decision.
  *
  * Objects without both labels are not ours to classify and are ignored, as are
  * tenant-wide objects (quota, limits, network policies). Secrets are not

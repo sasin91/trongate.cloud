@@ -152,6 +152,10 @@ trait Platform_actions {
      * Deploys that have not started yet are cancelled. While one is running the
      * delete is refused, so a rollout can never recreate the app after cleanup.
      *
+     * The row is hidden before the app is gone. If destroy_project fails, the
+     * admin MCP lists it (audit_app_resources) and re-queues it
+     * (retry_project_cleanup, requeue_project_destroy()).
+     *
      * @return int The destroy_project task id
      * @throws RuntimeException when the project is not the team's or a deployment is running
      */
@@ -194,6 +198,39 @@ trait Platform_actions {
                 'UPDATE project SET deleted_at = NOW() WHERE id = :project_id AND team_id = :team_id AND deleted_at IS NULL',
                 ['project_id' => $project_id, 'team_id' => $team_id]
             );
+
+            return $this->_queue_task($team_id, $project_id, null, 'destroy_project', [
+                'project_id' => $project_id,
+                'team_id' => $team_id,
+            ]);
+        });
+    }
+
+    /**
+     * Queue destroy_project again for a project that is already deleted, after
+     * the first run failed (an API outage, an object that was not ours, ...).
+     * A deleted project is hidden everywhere else, so this is the only way to
+     * finish its cleanup; until then its app may still serve traffic and its
+     * verified domain stays held. The worker never retries on its own.
+     *
+     * @return int The destroy_project task id
+     * @throws RuntimeException when the project is not a deleted project of the team, or its cleanup is still queued or running
+     */
+    function requeue_project_destroy(int $team_id, int $project_id): int {
+        return $this->db->transaction(function () use ($team_id, $project_id) {
+            $deleted = $this->db->query_bind(
+                'SELECT id FROM project WHERE id = :project_id AND team_id = :team_id AND deleted_at IS NOT NULL FOR UPDATE',
+                ['project_id' => $project_id, 'team_id' => $team_id],
+                'column'
+            );
+
+            if ($deleted === false) {
+                throw new RuntimeException('No deleted project with that id');
+            }
+
+            if ($this->_open_project_tasks($project_id) !== []) {
+                throw new RuntimeException('Its cleanup is already queued or running');
+            }
 
             return $this->_queue_task($team_id, $project_id, null, 'destroy_project', [
                 'project_id' => $project_id,

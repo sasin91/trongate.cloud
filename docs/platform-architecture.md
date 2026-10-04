@@ -45,7 +45,7 @@ Done in code:
 - **Task scripts** (`modules/platform/tasks`):
   - `deploy`: resolves the commit (webhook deploys always build the branch head), downloads the tarball, rejects symlinks that leave the tree, writes `railpack.json` (and an empty `composer.json` so `RAILPACK_PHP_EXTENSIONS` applies), builds with `railpack prepare` + `buildctl` on a BuildKit daemon Pod started for this build only, pushes to `PLATFORM_REGISTRY`, places the database, applies `Manifests::tenant` + `Manifests::app` and waits for the rollout.
   - `rollback`: re-applies a previous image.
-  - `destroy_project`: removes a deleted project's app (HTTPRoute, Middleware, Service, Deployment, MariaDB Grant/User/Database CRs, files PVC, database Secret), then releases its verified domain. Each object is read first and deleted only if it sits in the team's namespace and carries the project's ownership labels (`managed-by=trongate-cloud`, `project-id`, `app.kubernetes.io/name`), pinned to the checked uid. Keeps the namespace, the database (Database CR `cleanupPolicy: Skip`), the files (`reclaimPolicy: Retain`), the images and the soft-deleted row (slug and history).
+  - `destroy_project`: removes a deleted project's app (HTTPRoute, Middleware, Service, Deployment, MariaDB Grant/User/Database CRs, files PVC, database Secret), then releases its verified domain. Each object is read first and deleted only if it sits in the team's namespace and carries the project's ownership labels (`managed-by=trongate-cloud`, `project-id`, `app.kubernetes.io/name`), pinned to the checked uid. If it fails, nothing retries it automatically: the project stays soft-deleted (hidden everywhere, its verified domain still held) and its app may keep serving until an admin re-queues it with the MCP tool `retry_project_cleanup`. Keeps the namespace, the database (Database CR `cleanupPolicy: Skip`), the files (`reclaimPolicy: Retain`), the images and the soft-deleted row (slug and history).
 - **Library**:
   - Kubernetes client with server-side apply (`modules/services/clients/Kubernetes.php`).
   - Manifest builders (`modules/platform/manifests`): tenant namespaces, apps (with ephemeral-storage limits and Sablier `sablier.enable`/`sablier.group` labels) and per-build buildkitd Pods.
@@ -66,7 +66,7 @@ Done in code:
   - Answers `ping`.
   - Queues a deploy when a push hits the project's branch. A replayed push cannot roll an app back, because deploys always build the branch head.
 - **Metrics**: `app_tasks`, `app_deployments`, `app_live_projects`.
-- **Admin MCP** (`POST /mcp`, `modules/mcp`): one `MCP_SECRET` bearer secret (in the app-only `trongate-cloud-mcp` Secret), tools across all teams, including `audit_app_resources`: a read-only list of labelled per-project objects that no longer match a live project (it never repairs). See `docs/mcp.md`.
+- **Admin MCP** (`POST /mcp`, `modules/mcp`): one `MCP_SECRET` bearer secret (in the app-only `trongate-cloud-mcp` Secret), tools across all teams, including `audit_app_resources`: a read-only list of labelled per-project objects that no longer match a live project, and of deleted projects whose cleanup failed or is pending (it never repairs), and `retry_project_cleanup` to re-queue such a cleanup. See `docs/mcp.md`.
 - **Cluster manifests** (`deploy/k8s`, see its README):
   - Operators; the shared MariaDB, Valkey and JuiceFS.
   - BuildKit: a namespace, quota and NetworkPolicy; daemons are created per build.
@@ -78,6 +78,7 @@ Done in code:
 Still open:
 
 - **Not wired yet:**
+  - A failed `destroy_project` is not retried automatically and nobody is alerted; it shows up in the MCP's `audit_app_resources` and is re-queued by hand (`retry_project_cleanup`).
   - Released files PVs and kept `tc_p{id}` databases of deleted projects pile up until removed by hand; there is no purge step yet.
   - No CI workflow builds or pushes the platform images.
   - Valkey session/cache wiring for tenants (per-tenant ACL users).

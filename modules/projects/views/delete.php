@@ -9,7 +9,7 @@
     <?= validation_errors() ?>
 
     <div class="card settings-card danger-card">
-        <p>Deleting the project takes it offline right away and removes it from your dashboard. This cannot be undone here.</p>
+        <p>Deleting the project removes it from your dashboard right away, and its app is taken offline within a few moments. This cannot be undone here.</p>
 
         <h3>Removed</h3>
         <ul class="delete-list">
