@@ -6,8 +6,8 @@ name: Images
 #   registry.trongate.cloud/platform/trongate-cloud         from Dockerfile
 #   registry.trongate.cloud/platform/trongate-cloud-worker  from Dockerfile.worker
 # Tags: `main` (what the cluster's kustomization points at) and `sha-<short>`.
-# Multi-arch: the cluster node is arm64 (Hetzner CAX), amd64 keeps local
-# development and x86 nodes working. arm64 is built under QEMU.
+# linux/amd64 only: the cluster, customer builds and dev machines are all x86
+# (one architecture, decided 2026-10-04).
 #
 # Needs secret REGISTRY_PASSWORD (the registry's `push` user) and runs only once
 # repository variable PLATFORM_REGISTRY_READY is "true": the registry lives in
@@ -41,10 +41,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
-
       - uses: docker/setup-buildx-action@v3
 
       - uses: docker/login-action@v3
@@ -65,7 +61,7 @@ jobs:
         with:
           context: .
           file: ${{ matrix.dockerfile }}
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

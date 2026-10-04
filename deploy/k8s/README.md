@@ -58,7 +58,7 @@ From the platform kit (or installed separately):
 - The platform images `registry.trongate.cloud/platform/trongate-cloud` and
   `registry.trongate.cloud/platform/trongate-cloud-worker` (from `Dockerfile`
   and `Dockerfile.worker`; tags in `platform/kustomization.yaml`), pushed to
-  the same registry by `.github/workflows/images.yml` (amd64 + arm64). The
+  the same registry by `.github/workflows/images.yml` (linux/amd64). The
   workflow needs the secret `REGISTRY_PASSWORD` and the repository variable
   `PLATFORM_REGISTRY_READY=true`, set once the registry is up.
 
