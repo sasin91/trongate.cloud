@@ -24,11 +24,11 @@ class Manifests {
     const RUN_AS_USER = 1000;
 
     // ephemeral-storage caps the writable layer so one tenant cannot fill a node's disk.
-    // A 500m CPU limit halved throughput and CFS throttling added ~55 ms at p99 even for
-    // plain PHP; limits reserve nothing, so 1 CPU costs no capacity.
+    // No CPU limit for now: a 500m limit halved throughput and CFS throttling added ~55 ms
+    // at p99 even for plain PHP. Watch what real apps use before setting one.
     const APP_RESOURCES = [
         'requests' => ['cpu' => '50m', 'memory' => '96Mi', 'ephemeral-storage' => '256Mi'],
-        'limits' => ['cpu' => '1', 'memory' => '256Mi', 'ephemeral-storage' => '1Gi'],
+        'limits' => ['memory' => '256Mi', 'ephemeral-storage' => '1Gi'],
     ];
 
     const INIT_RESOURCES = [
@@ -39,7 +39,6 @@ class Manifests {
     const TENANT_QUOTA = [
         'requests.cpu' => '2',
         'requests.memory' => '4Gi',
-        'limits.cpu' => '8',
         'limits.memory' => '8Gi',
         'requests.ephemeral-storage' => '8Gi',
         'limits.ephemeral-storage' => '30Gi',
@@ -174,7 +173,7 @@ class Manifests {
                     'type' => 'Container',
                     'default' => self::APP_RESOURCES['limits'],
                     'defaultRequest' => self::APP_RESOURCES['requests'],
-                    'max' => ['cpu' => '2', 'memory' => '2Gi', 'ephemeral-storage' => '4Gi'],
+                    'max' => ['memory' => '2Gi', 'ephemeral-storage' => '4Gi'],
                 ]],
             ],
         ];
