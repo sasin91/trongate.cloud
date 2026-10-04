@@ -5,8 +5,8 @@
  * deployments and logs.
  *
  * Every method takes an explicit team id instead of reading the session, so the
- * same code serves the customer UI, GitHub webhooks and the admin MCP. Anything
- * fetched by id is checked against that team.
+ * same code serves the customer UI, GitHub webhooks, the admin MCP and the
+ * worker (Worker_actions). Anything fetched by id is checked against that team.
  *
  * @property-read Db $db
  */
@@ -26,7 +26,7 @@ trait Platform_actions {
      * @throws RuntimeException when the project is not the team's or has no source
      */
     function queue_deploy(int $team_id, int $project_id, ?int $team_member_id, ?int $customer_id, string $trigger = 'manual', ?string $commit_sha = null): int {
-        if (!in_array($trigger, ['manual', 'webhook', 'mcp', 'rollback'], true)) {
+        if (!in_array($trigger, ['manual', 'webhook', 'mcp', 'rollback', 'reconcile'], true)) {
             throw new InvalidArgumentException("Unknown deploy trigger: {$trigger}");
         }
 

@@ -26,6 +26,19 @@ require_once __DIR__ . '/Task_log.php';
  * logged) or a Closure(Task_log $log): int whose return value is the exit code
  * (0 = success). Any exception fails the task with its message.
  *
+ * ## Periodic tasks
+ *
+ * PERIODIC_TASKS are platform-wide tasks (no team) that the poll loop queues
+ * on an interval, e.g. reconcile_deploys. They run like any other task, so
+ * they share its logging, failure handling and stale recovery. Adding one is
+ * a line in PERIODIC_TASKS plus its script. The Runtime records when each
+ * last finished and last failed (scheduled_jobs, exposed by /metrics); a
+ * script may add a summary with record_periodic_summary().
+ *
+ * Each is claimed in scheduled_jobs with one conditional UPDATE, so with more
+ * than one worker replica it is still queued once per interval, and never
+ * while its previous run is unfinished; whichever worker is free runs it.
+ *
  * ## Why mysqli over PDO
  *
  * This worker is MariaDB-only and framework-free. mysqli is the native driver —
@@ -45,6 +58,20 @@ class Runtime {
     const STALE_THRESHOLD_SECONDS = 300;
 
     const POLL_INTERVAL_SECONDS = 2;
+
+    /**
+     * Platform-wide tasks queued every N seconds (0 = off), as script => interval.
+     * Add a job here and in modules/platform/tasks/{script}.php.
+     */
+    const PERIODIC_TASKS = [
+        'reconcile_deploys' => DEPLOY_RECONCILE_INTERVAL,
+    ];
+
+    /** How often the poll loop looks for due periodic tasks */
+    const SCHEDULE_CHECK_SECONDS = 30;
+
+    /** Finished periodic task runs (and their logs) are kept this long */
+    const PERIODIC_RETENTION_DAYS = 7;
 
     /** A shell step (e.g. a customer build) is killed after this long */
     const SHELL_TIMEOUT_SECONDS = 1800;
@@ -70,6 +97,8 @@ class Runtime {
     private Module_reference $module_ref;
 
     private ?Kubernetes $kube = null;
+
+    private int $next_schedule_check = 0;
 
     function __construct(mysqli $db) {
         $this->db = $db;
@@ -287,6 +316,20 @@ class Runtime {
         }
     }
 
+    /**
+     * Save a periodic task's run summary (exposed by /metrics). Optional: the
+     * Runtime records when the task finished either way.
+     */
+    function record_periodic_summary(string $script, array $summary): void {
+        $stmt = $this->db->prepare(
+            'UPDATE scheduled_jobs SET last_summary = ? WHERE script = ?'
+        );
+        $json = json_encode($summary, JSON_UNESCAPED_SLASHES);
+        $stmt->bind_param('ss', $json, $script);
+        $stmt->execute();
+        $stmt->close();
+    }
+
     // -------------------------------------------------------------------------
     // Poll loop
     // -------------------------------------------------------------------------
@@ -331,6 +374,8 @@ class Runtime {
         $this->log('Poll loop started, waiting for tasks...');
 
         while ($this->running) {
+            $this->queue_due_periodic_tasks();
+
             $task = $this->pick_task();
 
             if ($task === null) {
@@ -338,7 +383,7 @@ class Runtime {
                 continue;
             }
 
-            $this->log(sprintf('Picked task #%d (team_id=%d, script=%s)', $task['id'], $task['team_id'], $task['script']));
+            $this->log(sprintf('Picked task #%d (team_id=%s, script=%s)', $task['id'], $task['team_id'] ?? '-', $task['script']));
             $this->execute($task);
         }
 
@@ -431,11 +476,98 @@ class Runtime {
         }
 
         $task['id'] = (int) $task['id'];
-        $task['team_id'] = (int) $task['team_id'];
+        $task['team_id'] = $task['team_id'] === null ? null : (int) $task['team_id'];
         $task['project_id'] = $task['project_id'] === null ? null : (int) $task['project_id'];
         $task['deployment_id'] = $task['deployment_id'] === null ? null : (int) $task['deployment_id'];
 
         return $task;
+    }
+
+    /**
+     * Queue each periodic task whose interval has passed since it was last
+     * queued. Checked every SCHEDULE_CHECK_SECONDS, between tasks.
+     */
+    private function queue_due_periodic_tasks(): void {
+        if (time() < $this->next_schedule_check) {
+            return;
+        }
+
+        $this->next_schedule_check = time() + self::SCHEDULE_CHECK_SECONDS;
+
+        foreach (self::PERIODIC_TASKS as $script => $interval) {
+            if ($interval <= 0) {
+                continue;
+            }
+
+            try {
+                if ($this->claim_periodic_task($script, $interval)) {
+                    $this->log("Queued periodic task {$script}");
+                }
+            } catch (\mysqli_sql_exception $e) {
+                // A dead connection is picked up by pick_task's reconnect
+                $this->log("Scheduling {$script} failed: {$e->getMessage()}");
+                try {
+                    $this->db->rollback();
+                } catch (\Throwable) {
+                }
+            }
+        }
+    }
+
+    /**
+     * Queue the periodic task if it is due and no earlier run is unfinished.
+     * The conditional UPDATE is the claim: of several workers, one wins.
+     */
+    private function claim_periodic_task(string $script, int $interval): bool {
+        $stmt = $this->db->prepare('INSERT IGNORE INTO scheduled_jobs (script) VALUES (?)');
+        $stmt->bind_param('s', $script);
+        $stmt->execute();
+        $stmt->close();
+
+        $this->db->begin_transaction();
+
+        $stmt = $this->db->prepare(
+            'UPDATE scheduled_jobs s
+             SET s.last_queued_at = NOW()
+             WHERE s.script = ?
+               AND (s.last_queued_at IS NULL OR s.last_queued_at <= NOW() - INTERVAL ? SECOND)
+               AND NOT EXISTS (
+                   SELECT 1 FROM tasks t
+                   WHERE t.script = s.script
+                     AND t.completed_at IS NULL
+                     AND t.failed_at IS NULL
+               )'
+        );
+        $stmt->bind_param('si', $script, $interval);
+        $stmt->execute();
+        $claimed = $stmt->affected_rows === 1;
+        $stmt->close();
+
+        if (!$claimed) {
+            $this->db->rollback();
+            return false;
+        }
+
+        $stmt = $this->db->prepare("INSERT INTO tasks (team_id, script, payload) VALUES (NULL, ?, '{}')");
+        $stmt->bind_param('s', $script);
+        $stmt->execute();
+        $stmt->close();
+
+        // Failed runs too: scheduled_jobs.last_failed_at keeps the signal
+        $stmt = $this->db->prepare(
+            'DELETE FROM tasks
+             WHERE script = ?
+               AND team_id IS NULL
+               AND COALESCE(completed_at, failed_at) < NOW() - INTERVAL ? DAY'
+        );
+        $retention = self::PERIODIC_RETENTION_DAYS;
+        $stmt->bind_param('si', $script, $retention);
+        $stmt->execute();
+        $stmt->close();
+
+        $this->db->commit();
+
+        return true;
     }
 
     /**
@@ -504,6 +636,8 @@ class Runtime {
             $stmt->execute();
             $stmt->close();
 
+            $this->record_periodic_run($task, 'last_finished_at');
+
             // Scripts normally set the final status; a still-open deployment succeeded
             if ($task['deployment_id'] !== null && !$this->deployment_is_terminal($task['deployment_id'])) {
                 $this->set_deployment_status($task['deployment_id'], 'success');
@@ -520,10 +654,28 @@ class Runtime {
             $stmt->execute();
             $stmt->close();
 
+            $this->record_periodic_run($task, 'last_failed_at');
+
             if ($task['deployment_id'] !== null && !$this->deployment_is_terminal($task['deployment_id'])) {
                 $this->set_deployment_status($task['deployment_id'], 'failed');
             }
         });
+    }
+
+    /**
+     * Stamp a periodic (team-less) task's finish or failure in scheduled_jobs.
+     *
+     * @param 'last_finished_at'|'last_failed_at' $column
+     */
+    private function record_periodic_run(array $task, string $column): void {
+        if ($task['team_id'] !== null || !isset(self::PERIODIC_TASKS[$task['script']])) {
+            return;
+        }
+
+        $stmt = $this->db->prepare("UPDATE scheduled_jobs SET {$column} = NOW() WHERE script = ?");
+        $stmt->bind_param('s', $task['script']);
+        $stmt->execute();
+        $stmt->close();
     }
 
     private function deployment_is_terminal(int $deployment_id): bool {

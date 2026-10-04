@@ -43,11 +43,15 @@ Done in code:
   - `db/014_k3s_platform.sql`: BYO-server tables dropped; generic `tasks`/`task_logs`; project `slug`, `persistent_paths`, `php_extensions`, `webhook_secret` (a seed, see webhooks), `always_on`, `database_server_id`, `current_deployment_id`; image-based deployment statuses (`pending → building → deploying → success | failed | rolled_back`) with `commit_sha`, `image`, `trigger_type`; `database_server` with the `shared-1` seed.
   - `db/015_domain_verification.sql`: `project.verified_domain` (UNIQUE).
   - `db/016_resource_tiers.sql`: `project.resource_tier` (default `small`, today's limits).
+  - `db/017_deploy_reconcile.sql`: `reconcile` deploy trigger, `project.auto_deploy` and `reconciled_at`, `tasks.team_id` nullable for platform-wide tasks, `scheduled_jobs`.
 - **Worker** (`modules/platform/worker`): polls `tasks`, runs `modules/platform/tasks/{script}.php`, logs to `task_logs`, closes the task's deployment. Shell steps get a minimal environment (no `APP_KEY`/`DB_PASSWORD`/tokens) and are killed after 30 minutes (`Runtime::SHELL_TIMEOUT_SECONDS`).
+  - Periodic tasks (`Runtime::PERIODIC_TASKS`, script => interval): the poll loop queues each as a team-less task when due. `scheduled_jobs` holds the claim (one conditional UPDATE, so extra replicas never queue a job twice or while its last run is unfinished), when each job last finished and last failed (recorded by the Runtime) and the last run's summary (optional, from the script). Finished and failed runs are pruned after 7 days.
+  - Queues deploys through `Platform_actions` (`Worker_actions` over a mysqli `Worker_db`), so it follows the same rules as the UI.
 - **Task scripts** (`modules/platform/tasks`):
   - `deploy`: resolves the commit (webhook deploys always build the branch head), downloads the tarball, rejects symlinks that leave the tree, writes `railpack.json` (and an empty `composer.json` so `RAILPACK_PHP_EXTENSIONS` applies), builds with `railpack prepare` + `buildctl` on a BuildKit daemon Pod started for this build only, pushes to `PLATFORM_REGISTRY`, places the database, applies `Manifests::tenant` + `Manifests::app` and waits for the rollout.
   - `rollback`: re-applies a previous image.
   - `destroy_project`: removes a project's resources (keeps the namespace, the database and the files).
+  - `reconcile_deploys` (periodic, `DEPLOY_RECONCILE_INTERVAL`, default 600s): the backstop for missed GitHub push webhooks, which GitHub does not retry. For projects with Deploy on push on (`project.auto_deploy`) whose webhook has deployed before, compares the branch head with the deployments and queues a `reconcile` deploy for a head nothing has built, after confirming through the GitHub hooks API that the project's webhook is still on the repository (no webhook, or a token that may not read hooks: no deploy). Never re-queues a SHA that has any deployment (a failed head waits for a human), leaves heads under 5 minutes old to their webhook, does not queue while a deploy is pending or running, counts heads undeployed over 15 minutes that nothing will deploy as stuck, and makes one GitHub call per repository branch with the team's token. At most 200 projects per run, longest unchecked first (`project.reconciled_at`), so the cap rotates. The worker runs one task at a time, so a run stops as soon as a customer task is waiting, or when GitHub answers 5xx or cannot be reached; customer deploys wait at most for the GitHub call in flight (normally well under a second, about 90 s at worst with the client's timeout and retries).
 - **Library**:
   - Kubernetes client with server-side apply (`modules/services/clients/Kubernetes.php`).
   - Manifest builders (`modules/platform/manifests`): tenant namespaces, apps (with ephemeral-storage limits and Sablier `sablier.enable`/`sablier.group` labels) and per-build buildkitd Pods.
@@ -65,8 +69,8 @@ Done in code:
 - **GitHub webhooks** (`POST /webhooks/github/{project_id}`):
   - The `X-Hub-Signature-256` HMAC is checked against a secret derived from the stored seed and `APP_KEY`, so a database leak alone does not reveal it.
   - Answers `ping`.
-  - Queues a deploy when a push hits the project's branch. A replayed push cannot roll an app back, because deploys always build the branch head.
-- **Metrics**: `app_tasks`, `app_deployments`, `app_live_projects`.
+  - Queues a deploy when a push hits the project's branch, unless the customer turned Deploy on push off in project settings. A replayed push cannot roll an app back, because deploys always build the branch head.
+- **Metrics**: `app_tasks` (customer tasks only), `app_deployments`, `app_live_projects`, `app_periodic_task_last_run_timestamp_seconds{task}`, `app_periodic_task_last_failure_timestamp_seconds{task}`, `app_deploy_reconcile_heads{outcome}` (last run; `recovered` > 0 means a push webhook was missed), `app_deploy_reconcile_stuck_heads` (last run; > 0 means a head is not getting deployed, worth an alert).
 - **Admin MCP** (`POST /mcp`, `modules/mcp`): one `MCP_SECRET` bearer secret (in the app-only `trongate-cloud-mcp` Secret), tools across all teams. See `docs/mcp.md`.
 - **Cluster manifests** (`deploy/k8s`, see its README):
   - Operators; the shared MariaDB, Valkey and JuiceFS.

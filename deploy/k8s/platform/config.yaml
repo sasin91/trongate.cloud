@@ -19,3 +19,5 @@ data:
   PLATFORM_GATEWAY_NAMESPACE: traefik
   SABLIER_URL: http://sablier.sablier.svc.cluster.local:10000
   FILES_STORAGE_CLASS: tenant-files
+  # Seconds between missed-webhook checks (worker reconcile_deploys task); 0 = off
+  DEPLOY_RECONCILE_INTERVAL: "600"

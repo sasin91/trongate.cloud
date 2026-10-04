@@ -29,7 +29,7 @@ trait Project_records {
     /**
      * Update a team project's platform settings.
      *
-     * @param array{domain: ?string, persistent_paths: list<string>, php_extensions: string, always_on: bool, resource_tier: string} $settings
+     * @param array{domain: ?string, persistent_paths: list<string>, php_extensions: string, always_on: bool, resource_tier: string, auto_deploy: bool} $settings
      */
     function update_project_settings(int $team_id, int $project_id, array $settings): void {
         $sql = <<<SQL
@@ -39,7 +39,8 @@ trait Project_records {
                 persistent_paths = :persistent_paths,
                 php_extensions = :php_extensions,
                 always_on = :always_on,
-                resource_tier = :resource_tier
+                resource_tier = :resource_tier,
+                auto_deploy = :auto_deploy
             WHERE id = :project_id AND team_id = :team_id
         SQL;
         $this->db->query_bind($sql, [
@@ -49,6 +50,7 @@ trait Project_records {
             'php_extensions' => $settings['php_extensions'],
             'always_on' => $settings['always_on'] ? 1 : 0,
             'resource_tier' => $settings['resource_tier'],
+            'auto_deploy' => $settings['auto_deploy'] ? 1 : 0,
             'project_id' => $project_id,
             'team_id' => $team_id,
         ]);

@@ -6,7 +6,9 @@
 class Metrics_model extends Model {
 
     /**
-     * Worker task counts keyed by state (pending, running, failed)
+     * Customer (team) worker task counts keyed by state (pending, running, failed).
+     * Periodic tasks have their own gauges, so a recurring failure there does
+     * not pile up here.
      */
     function task_counts(): array {
         $sql = <<<SQL
@@ -15,6 +17,7 @@ class Metrics_model extends Model {
                 SUM(started_at IS NOT NULL AND completed_at IS NULL AND failed_at IS NULL) AS running,
                 SUM(failed_at IS NOT NULL) AS failed
             FROM tasks
+            WHERE team_id IS NOT NULL
         SQL;
         return $this->db->query($sql, 'array')[0] ?? [];
     }
@@ -39,5 +42,26 @@ class Metrics_model extends Model {
             SELECT COUNT(*) FROM project WHERE current_deployment_id IS NOT NULL
         SQL;
         return (int) $this->db->query($sql, 'column');
+    }
+
+    /**
+     * Periodic worker tasks (Runtime::PERIODIC_TASKS): when each last finished
+     * and last failed (unix time) and its last run's summary.
+     *
+     * Empty until db/016 is applied: migrations run by hand, and a missing
+     * table must not take the other gauges down with it.
+     */
+    function scheduled_jobs(): array {
+        $sql = <<<SQL
+            SELECT script, UNIX_TIMESTAMP(last_finished_at) AS last_finished, UNIX_TIMESTAMP(last_failed_at) AS last_failed, last_summary
+            FROM scheduled_jobs
+            ORDER BY script
+        SQL;
+
+        try {
+            return $this->db->query($sql, 'array');
+        } catch (PDOException) {
+            return [];
+        }
     }
 }

@@ -22,3 +22,6 @@ defined('KUBE_TOKEN') || define('KUBE_TOKEN', getenv('KUBE_TOKEN') ?: '');
 defined('KUBE_CA_FILE') || define('KUBE_CA_FILE', getenv('KUBE_CA_FILE') ?: '');
 // RWX StorageClass (JuiceFS) for per-project persistent paths
 defined('FILES_STORAGE_CLASS') || define('FILES_STORAGE_CLASS', getenv('FILES_STORAGE_CLASS') ?: 'tenant-files');
+// Seconds between reconcile_deploys runs: the worker queues a deploy for a branch
+// head that a missed GitHub push webhook never built. 0 turns it off.
+defined('DEPLOY_RECONCILE_INTERVAL') || define('DEPLOY_RECONCILE_INTERVAL', getenv('DEPLOY_RECONCILE_INTERVAL') !== false ? (int) getenv('DEPLOY_RECONCILE_INTERVAL') : 600);

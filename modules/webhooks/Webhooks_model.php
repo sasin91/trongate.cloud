@@ -13,7 +13,7 @@ class Webhooks_model extends Model {
      */
     function find_webhook_project(int $project_id): object|false {
         $sql = <<<SQL
-            SELECT id, team_id, source_url, source_branch, webhook_secret
+            SELECT id, team_id, source_url, source_branch, webhook_secret, auto_deploy
             FROM project
             WHERE id = :project_id
             LIMIT 1
