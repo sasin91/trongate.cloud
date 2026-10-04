@@ -33,7 +33,10 @@ class Customer extends Trongate {
             'view_module' => 'customer',
             'view_file' => 'index',
             'projects' => $projects,
-            'additional_includes_top' => ['deployments_module/css/deployments.css'],
+            'additional_includes_top' => [
+                'deployments_module/css/deployments.css',
+                'projects_module/css/projects.css',
+            ],
         ];
         $this->module('templates');
         $this->templates->customer($data);

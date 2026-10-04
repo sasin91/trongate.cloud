@@ -86,4 +86,12 @@
         </dl>
         <p class="form-hint">Pushes to <code><?= htmlspecialchars((string) $project->source_branch) ?></code> then deploy automatically. Keep the secret private: anyone who has it can trigger deployments.</p>
     </div>
+
+    <h2>Delete project</h2>
+    <div class="card settings-card danger-card">
+        <p>Take the app offline and remove it from your dashboard. Its database and files are kept.</p>
+        <div class="form-actions">
+            <a href="projects/<?= $project->id ?>/delete" class="btn-danger">Delete project&hellip;</a>
+        </div>
+    </div>
 </div>

@@ -39,6 +39,7 @@ Start Claude Code on your machine with the server configured, then enable **Remo
 | `platform_status` | `team_id?` | Projects and deployments by status, deployments in progress, recent failures |
 | `deploy_project` | `project_id`, `commit_sha?` | Queues a deployment (`trigger_type = mcp`, no team member) and returns its id |
 | `rollback_project` | `project_id`, `deployment_id?` | Redeploys an earlier successful image. Without `deployment_id`, it rolls back to the one before the current deployment |
+| `audit_app_resources` | | Read-only: per-project objects in tenant namespaces (HTTPRoute, Middleware, Service, Deployment, MariaDB CRs, PVC) that carry trongate.cloud's labels but match no live project, e.g. after a failed `destroy_project`. Never repairs; Secrets are not checked |
 
 - **Annotations:** read tools are marked `readOnlyHint`; `deploy_project` and `rollback_project` are marked `destructiveHint`, so clients ask before running them.
 - **Results:** pretty-printed JSON text. Under `2025-06-18` the same data is also sent as `structuredContent`.

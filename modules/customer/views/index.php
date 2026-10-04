@@ -1,4 +1,6 @@
 <div class="content">
+    <?= flashdata('<p class="flash">', '</p>') ?>
+
     <div class="section-header">
         <h2>My Projects</h2>
         <?php if (count($projects) > 0): ?>

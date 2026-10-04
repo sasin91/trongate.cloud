@@ -164,10 +164,19 @@ class Kubernetes extends Client {
 
     /**
      * Delete an object (background propagation); false when it did not exist
+     *
+     * With $uid, the API server only deletes the object with that uid (409
+     * otherwise), so an object replaced since it was checked survives.
      */
-    function delete(string $api_version, string $kind, ?string $namespace, string $name): bool {
+    function delete(string $api_version, string $kind, ?string $namespace, string $name, ?string $uid = null): bool {
+        $options = $uid === null ? [] : [
+            'apiVersion' => 'v1',
+            'kind' => 'DeleteOptions',
+            'preconditions' => ['uid' => $uid],
+        ];
+
         try {
-            $this->request('DELETE', $this->path($api_version, $kind, $namespace, $name) . '?propagationPolicy=Background');
+            $this->request('DELETE', $this->path($api_version, $kind, $namespace, $name) . '?propagationPolicy=Background', $options);
             return true;
         } catch (Client_Error $e) {
             if ($e->getCode() === 404) {
@@ -251,7 +260,8 @@ class Kubernetes extends Client {
     }
 
     /**
-     * API path for a kind; omit $name for the collection
+     * API path for a kind; omit $name for the collection, and also $namespace
+     * for a namespaced kind's collection across all namespaces
      */
     function path(string $api_version, string $kind, ?string $namespace, ?string $name = null): string {
         $key = $api_version . '/' . $kind;
@@ -264,11 +274,11 @@ class Kubernetes extends Client {
         $path = str_contains($api_version, '/') ? '/apis/' . $api_version : '/api/' . $api_version;
 
         if ($namespaced) {
-            if ($namespace === null || $namespace === '') {
+            if ($namespace !== null && $namespace !== '') {
+                $path .= '/namespaces/' . rawurlencode($namespace);
+            } elseif ($name !== null) {
                 throw new InvalidArgumentException("{$kind} is namespaced; a namespace is required");
             }
-
-            $path .= '/namespaces/' . rawurlencode($namespace);
         }
 
         $path .= '/' . $plural;

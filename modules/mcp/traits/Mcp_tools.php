@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../../platform/manifests/Manifests.php';
+require_once __DIR__ . '/../../platform/live/App_resource_audit.php';
 
 /**
  * MCP tools for controllers: definitions (tools/list) and handlers (tools/call).
@@ -24,6 +25,7 @@ trait Mcp_tools {
         'platform_status',
         'deploy_project',
         'rollback_project',
+        'audit_app_resources',
     ];
 
     /** Deployment statuses after which nothing changes */
@@ -120,6 +122,13 @@ trait Mcp_tools {
                     'additionalProperties' => false,
                 ],
                 'annotations' => ['readOnlyHint' => false, 'destructiveHint' => true, 'idempotentHint' => false, 'openWorldHint' => false],
+            ],
+            [
+                'name' => 'audit_app_resources',
+                'title' => 'Audit app resources',
+                'description' => 'List cluster objects labelled as a trongate.cloud project that no longer match a live project in their namespace (e.g. after a failed cleanup). Read-only: reports, never repairs.',
+                'inputSchema' => ['type' => 'object', 'properties' => (object) [], 'additionalProperties' => false],
+                'annotations' => $read_only,
             ],
         ];
     }
@@ -275,6 +284,20 @@ trait Mcp_tools {
             'status' => 'pending',
             'project' => ['id' => (int) $project->id, 'label' => $project->label],
             'next' => 'Follow progress with get_deployment_logs {"deployment_id": ' . $deployment_id . '}',
+        ];
+    }
+
+    function _tool_audit_app_resources(array $args): array {
+        try {
+            $orphans = App_resource_audit::orphans(Kubernetes::from_env(), $this->model->live_project_refs());
+        } catch (Client_Error $e) {
+            throw new RuntimeException('Could not read the cluster: ' . $e->getMessage());
+        }
+
+        return [
+            'orphans' => $orphans,
+            'checked_kinds' => array_column(App_resource_audit::KINDS, 1),
+            'note' => 'Read-only: nothing was changed. Secrets are not checked (the app cannot read them).',
         ];
     }
 

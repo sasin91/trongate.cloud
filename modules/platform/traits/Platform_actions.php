@@ -1,8 +1,8 @@
 <?php
 
 /**
- * Platform actions for models: queue deployments/rollbacks and read projects,
- * deployments and logs.
+ * Platform actions for models: queue deployments/rollbacks, delete projects and
+ * read projects, deployments and logs.
  *
  * Every method takes an explicit team id instead of reading the session, so the
  * same code serves the customer UI, GitHub webhooks and the admin MCP. Anything
@@ -145,6 +145,64 @@ trait Platform_actions {
     }
 
     /**
+     * Delete a project: soft-delete its row (it disappears everywhere) and queue
+     * destroy_project, which removes its app from the cluster but keeps its
+     * database and files (see that task for exactly what is kept).
+     *
+     * Deploys that have not started yet are cancelled. While one is running the
+     * delete is refused, so a rollout can never recreate the app after cleanup.
+     *
+     * @return int The destroy_project task id
+     * @throws RuntimeException when the project is not the team's or a deployment is running
+     */
+    function queue_project_delete(int $team_id, int $project_id): int {
+        $project = $this->_project_or_fail($team_id, $project_id);
+
+        return $this->db->transaction(function () use ($team_id, $project) {
+            $project_id = (int) $project->id;
+
+            // Row lock: a second, concurrent delete waits here, then finds it gone
+            $live = $this->db->query_bind(
+                'SELECT id FROM project WHERE id = :project_id AND team_id = :team_id AND deleted_at IS NULL FOR UPDATE',
+                ['project_id' => $project_id, 'team_id' => $team_id],
+                'column'
+            );
+
+            if ($live === false) {
+                throw new RuntimeException('Project not found');
+            }
+
+            foreach ($this->_open_project_tasks($project_id) as $task) {
+                if ($task->started_at !== null) {
+                    throw new RuntimeException('A deployment is running. Wait for it to finish, then delete the project.');
+                }
+
+                $this->db->query_bind(
+                    "UPDATE tasks SET failed_at = NOW(), error_message = 'Project deleted' WHERE id = :id",
+                    ['id' => (int) $task->id]
+                );
+
+                if ($task->deployment_id !== null) {
+                    $this->db->query_bind(
+                        "UPDATE deployment SET status = 'failed', completed_at = NOW() WHERE id = :id AND status = 'pending'",
+                        ['id' => (int) $task->deployment_id]
+                    );
+                }
+            }
+
+            $this->db->query_bind(
+                'UPDATE project SET deleted_at = NOW() WHERE id = :project_id AND team_id = :team_id AND deleted_at IS NULL',
+                ['project_id' => $project_id, 'team_id' => $team_id]
+            );
+
+            return $this->_queue_task($team_id, $project_id, null, 'destroy_project', [
+                'project_id' => $project_id,
+                'team_id' => $team_id,
+            ]);
+        });
+    }
+
+    /**
      * The team's projects with their current deployment's state.
      * Leaves out webhook_secret so the rows are safe to return to API clients.
      */
@@ -161,20 +219,21 @@ trait Platform_actions {
                 cd.completed_at AS current_deployed_at
             FROM project p
             LEFT JOIN deployment cd ON cd.id = p.current_deployment_id
-            WHERE p.team_id = :team_id
+            WHERE p.team_id = :team_id AND p.deleted_at IS NULL
             ORDER BY p.label ASC
         SQL;
         return $this->db->query_bind($sql, ['team_id' => $team_id], 'object');
     }
 
     /**
-     * A project row (including the webhook_secret seed) if it belongs to the team.
+     * A project row (including the webhook_secret seed) if it belongs to the team
+     * and is not deleted. Every action on a project starts here.
      */
     function find_team_project(int $team_id, int $project_id): object|false {
         $sql = <<<SQL
             SELECT *
             FROM project
-            WHERE id = :project_id AND team_id = :team_id
+            WHERE id = :project_id AND team_id = :team_id AND deleted_at IS NULL
             LIMIT 1
         SQL;
         $rows = $this->db->query_bind($sql, ['project_id' => $project_id, 'team_id' => $team_id], 'object');
@@ -420,6 +479,24 @@ trait Platform_actions {
         $rows = $this->db->query_bind($sql, ['project_id' => $project_id], 'object');
 
         return $rows[0] ?? false;
+    }
+
+    /**
+     * The project's unfinished tasks, row-locked for the surrounding transaction.
+     * A worker claiming one of them (Runtime::pick_task) makes this wait until
+     * the claim is committed, so started_at is reliable.
+     */
+    function _open_project_tasks(int $project_id): array {
+        $sql = <<<SQL
+            SELECT id, deployment_id, started_at
+            FROM tasks
+            WHERE project_id = :project_id
+              AND completed_at IS NULL
+              AND failed_at IS NULL
+            ORDER BY id
+            FOR UPDATE
+        SQL;
+        return $this->db->query_bind($sql, ['project_id' => $project_id], 'object');
     }
 
     function _previous_successful_deployment(object $project): object|false {

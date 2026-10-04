@@ -7,7 +7,7 @@ require_once APPPATH . 'modules/platform/manifests/Manifests.php';
 require_once APPPATH . 'modules/platform/traits/Live_app_state.php';
 
 /**
- * Customer projects: create, overview, deploy/rollback and platform settings.
+ * Customer projects: create, overview, deploy/rollback, platform settings and delete.
  *
  * @property-read Projects_model $model
  * @property-read Trongate_tokens $trongate_tokens
@@ -26,6 +26,9 @@ class Projects extends Trongate {
 
     /** Top-level directories the platform mounts or owns; never persistent */
     const RESERVED_PATHS = ['config', 'engine'];
+
+    /** The project submit_delete() checks the typed confirmation against */
+    private ?object $project_to_delete = null;
 
     function create(): void {
         $this->_make_sure_allowed();
@@ -250,6 +253,57 @@ class Projects extends Trongate {
         redirect('projects/' . $project->id . '/settings');
     }
 
+    /**
+     * Confirmation page for deleting a project.
+     */
+    function delete(): void {
+        $this->_make_sure_allowed();
+        $team_id = $this->_team_id_or_redirect();
+        $project = $this->_find_or_redirect($team_id, segment(3, 'int'));
+
+        $data = [
+            'view_module' => 'projects',
+            'view_file' => 'delete',
+            'project' => $project,
+            'urls' => $this->_project_urls($project),
+            'additional_includes_top' => ['projects_module/css/projects.css'],
+        ];
+        $this->module('templates');
+        $this->templates->customer($data);
+    }
+
+    /**
+     * POST projects/{id}/delete/submit: the customer typed the project's slug to confirm.
+     */
+    function submit_delete(): void {
+        $this->_make_sure_allowed();
+        $team_id = $this->_team_id_or_redirect();
+        $project = $this->_find_or_redirect($team_id, segment(3, 'int'));
+
+        if (REQUEST_TYPE !== 'POST') {
+            http_response_code(405);
+            die('Method not allowed');
+        }
+
+        $this->project_to_delete = $project;
+        $this->validation->set_rules('confirm_slug', 'Project name', 'required|callback__validate_delete_confirmation');
+
+        if ($this->validation->run() !== true) {
+            $this->delete();
+            return;
+        }
+
+        try {
+            $this->model->queue_project_delete($team_id, (int) $project->id);
+        } catch (RuntimeException $e) {
+            set_flashdata('Could not delete the project: ' . $e->getMessage());
+            redirect('projects/' . $project->id);
+        }
+
+        set_flashdata(htmlspecialchars($project->label) . ' was deleted. Its app is being removed now.');
+        redirect('dashboard');
+    }
+
     // --- Helpers ---
 
     function _find_or_redirect(int $team_id, int $project_id): object {
@@ -338,6 +392,14 @@ class Projects extends Trongate {
             if (in_array($segments[0], self::RESERVED_PATHS, true)) {
                 return "\"{$path}\" is managed by the platform and cannot be persistent.";
             }
+        }
+
+        return true;
+    }
+
+    function _validate_delete_confirmation(string $value): bool|string {
+        if ($this->project_to_delete === null || trim($value) !== (string) $this->project_to_delete->slug) {
+            return 'Type the project name exactly as shown to confirm.';
         }
 
         return true;

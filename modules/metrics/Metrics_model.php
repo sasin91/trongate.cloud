@@ -36,7 +36,7 @@ class Metrics_model extends Model {
      */
     function live_project_count(): int {
         $sql = <<<SQL
-            SELECT COUNT(*) FROM project WHERE current_deployment_id IS NOT NULL
+            SELECT COUNT(*) FROM project WHERE current_deployment_id IS NOT NULL AND deleted_at IS NULL
         SQL;
         return (int) $this->db->query($sql, 'column');
     }

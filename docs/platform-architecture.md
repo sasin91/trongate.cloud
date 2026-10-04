@@ -40,22 +40,24 @@ Done in code:
 - **Schema**:
   - `db/014_k3s_platform.sql`: BYO-server tables dropped; generic `tasks`/`task_logs`; project `slug`, `persistent_paths`, `php_extensions`, `webhook_secret` (a seed, see webhooks), `always_on`, `database_server_id`, `current_deployment_id`; image-based deployment statuses (`pending → building → deploying → success | failed | rolled_back`) with `commit_sha`, `image`, `trigger_type`; `database_server` with the `shared-1` seed.
   - `db/015_domain_verification.sql`: `project.verified_domain` (UNIQUE).
+  - `db/016_project_deletion.sql`: `project.deleted_at` (soft delete).
 - **Worker** (`modules/platform/worker`): polls `tasks`, runs `modules/platform/tasks/{script}.php`, logs to `task_logs`, closes the task's deployment. Shell steps get a minimal environment (no `APP_KEY`/`DB_PASSWORD`/tokens) and are killed after 30 minutes (`Runtime::SHELL_TIMEOUT_SECONDS`).
 - **Task scripts** (`modules/platform/tasks`):
   - `deploy`: resolves the commit (webhook deploys always build the branch head), downloads the tarball, rejects symlinks that leave the tree, writes `railpack.json` (and an empty `composer.json` so `RAILPACK_PHP_EXTENSIONS` applies), builds with `railpack prepare` + `buildctl` on a BuildKit daemon Pod started for this build only, pushes to `PLATFORM_REGISTRY`, places the database, applies `Manifests::tenant` + `Manifests::app` and waits for the rollout.
   - `rollback`: re-applies a previous image.
-  - `destroy_project`: removes a project's resources (keeps the namespace, the database and the files).
+  - `destroy_project`: removes a deleted project's app (HTTPRoute, Middleware, Service, Deployment, MariaDB Grant/User/Database CRs, files PVC, database Secret), then releases its verified domain. Each object is read first and deleted only if it sits in the team's namespace and carries the project's ownership labels (`managed-by=trongate-cloud`, `project-id`, `app.kubernetes.io/name`), pinned to the checked uid. Keeps the namespace, the database (Database CR `cleanupPolicy: Skip`), the files (`reclaimPolicy: Retain`), the images and the soft-deleted row (slug and history).
 - **Library**:
   - Kubernetes client with server-side apply (`modules/services/clients/Kubernetes.php`).
   - Manifest builders (`modules/platform/manifests`): tenant namespaces, apps (with ephemeral-storage limits and Sablier `sablier.enable`/`sablier.group` labels) and per-build buildkitd Pods.
   - Config rendering for the mounted `config.php`/`database.php` (`Trongate_config`).
   - Settings in `config/platform.php`.
-- **Platform actions** (`modules/platform/traits/Platform_actions.php`): queue deploys and rollbacks, and read projects, deployments and logs by explicit team id. A project has at most one queued deploy; new requests update it instead of adding another. Also handles custom-domain verification (`_trongate-cloud.{domain}` TXT record). The UI, webhooks and MCP all use it.
+- **Platform actions** (`modules/platform/traits/Platform_actions.php`): queue deploys, rollbacks and project deletes, and read projects, deployments and logs by explicit team id. A project has at most one queued deploy; new requests update it instead of adding another. Also handles custom-domain verification (`_trongate-cloud.{domain}` TXT record). The UI, webhooks and MCP all use it.
 - **Customer UI**:
   - Onboarding: team → GitHub token → first project. The project gets a slug and webhook secret, and its first deploy is queued.
   - Dashboard: the team's projects with their live state from the cluster (running, asleep, starting, crashing, stuck).
   - Project page: live URLs, the current deployment, the app's live state (polled every 5s), deployment history, Deploy and Rollback (to the previous deployment or one you pick).
   - Project settings: custom domain with DNS verification, persistent paths, extra PHP extensions, always-on, and the GitHub webhook URL and secret.
+  - Delete project: a confirmation page (type the slug, CSRF-protected) soft-deletes the project and queues `destroy_project`. Refused while a deployment is running; queued deploys are cancelled.
   - Deployment page: logs polled with MX.
   - Team switcher: CSRF-protected.
 - **Custom domains**: platform hosts (`BASE_URL`, `PLATFORM_REGISTRY` and their subdomains) are rejected, and a domain is routed only once its TXT record verifies it. The admission policy also blocks platform hostnames on tenant HTTPRoutes.
@@ -64,19 +66,19 @@ Done in code:
   - Answers `ping`.
   - Queues a deploy when a push hits the project's branch. A replayed push cannot roll an app back, because deploys always build the branch head.
 - **Metrics**: `app_tasks`, `app_deployments`, `app_live_projects`.
-- **Admin MCP** (`POST /mcp`, `modules/mcp`): one `MCP_SECRET` bearer secret (in the app-only `trongate-cloud-mcp` Secret), tools across all teams. See `docs/mcp.md`.
+- **Admin MCP** (`POST /mcp`, `modules/mcp`): one `MCP_SECRET` bearer secret (in the app-only `trongate-cloud-mcp` Secret), tools across all teams, including `audit_app_resources`: a read-only list of labelled per-project objects that no longer match a live project (it never repairs). See `docs/mcp.md`.
 - **Cluster manifests** (`deploy/k8s`, see its README):
   - Operators; the shared MariaDB, Valkey and JuiceFS.
   - BuildKit: a namespace, quota and NetworkPolicy; daemons are created per build.
   - Sablier.
   - Platform: the app, the worker, and its own MariaDB `platform`, which tenants cannot reach.
-  - App access: a cluster-wide read-only role on Deployments and Pods for live app state (`platform/app-rbac.yaml`).
-  - Worker access: RBAC with write-only Secrets, plus admission policies that limit where the worker writes and what the objects contain.
+  - App access: a cluster-wide read-only role on Deployments and Pods for live app state, and on the other per-project kinds (no Secrets) for the orphan audit (`platform/app-rbac.yaml`).
+  - Worker access: RBAC with write-only Secrets, plus admission policies that limit where the worker writes, what the objects contain, and that it only deletes objects carrying its labels (a project's `p{id}-*` objects only with that project's id label; this is the only check for Secrets, which the worker cannot read).
 
 Still open:
 
 - **Not wired yet:**
-  - Nothing queues `destroy_project`; there is no project delete action.
+  - Released files PVs and kept `tc_p{id}` databases of deleted projects pile up until removed by hand; there is no purge step yet.
   - No CI workflow builds or pushes the platform images.
   - Valkey session/cache wiring for tenants (per-tenant ACL users).
   - Backups.
@@ -88,7 +90,7 @@ Still open:
 - **Needs a live cluster:**
   - Cross-namespace `mariaDbRef`.
   - The platform MariaDB passing restricted Pod Security.
-  - The CEL admission policies.
+  - The CEL admission policies (including `trongate-worker-owned-deletes`).
   - Railpack's FrankenPHP image running as uid 1000 on port 8080.
   - The empty `composer.json` approach.
   - Per-build buildkitd start-up time.

@@ -8,6 +8,9 @@
 #    cannot loosen a tenant namespace, expose a Service, mount a token, claim a
 #    platform hostname, or point MariaDB CRs at anything but a tenant's own
 #    tc_p{id} database on the shared servers.
+# 3. Deletes: trongate-worker-owned-deletes, so the worker only deletes objects
+#    it labelled itself (destroy_project, build daemon Pods), including Secrets,
+#    which it cannot read to check first.
 #
 # Keep the hostnames in trongate-worker-objects in sync with BASE_URL,
 # PLATFORM_APPS_DOMAIN and PLATFORM_REGISTRY (config.yaml), and the image with
@@ -147,4 +150,47 @@ metadata:
   name: trongate-worker-objects
 spec:
   policyName: trongate-worker-objects
+  validationActions: ["Deny"]
+---
+# The worker only deletes objects carrying its managed-by label. Per-project
+# objects (p{id}-...) must also carry the matching project-id label, so a wrong
+# name in destroy_project can never remove another project's objects.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: trongate-worker-owned-deletes
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["*"]
+        apiVersions: ["*"]
+        operations: ["DELETE"]
+        resources: ["*"]
+  matchConditions:
+    - name: is-worker
+      expression: request.userInfo.username == 'system:serviceaccount:trongate-cloud:trongate-worker'
+  variables:
+    - name: labelled
+      expression: oldObject != null && has(oldObject.metadata.labels)
+  validations:
+    - expression: >-
+        variables.labelled &&
+        'app.kubernetes.io/managed-by' in oldObject.metadata.labels &&
+        oldObject.metadata.labels['app.kubernetes.io/managed-by'] == 'trongate-cloud'
+      message: The trongate-cloud worker may only delete objects labelled app.kubernetes.io/managed-by=trongate-cloud
+    - expression: >-
+        (request.namespace == 'buildkit' && request.kind.kind == 'Pod' && request.name.startsWith('buildkitd-d')) ||
+        (variables.labelled &&
+         'platform.example.com/project-id' in oldObject.metadata.labels &&
+         oldObject.metadata.labels['platform.example.com/project-id'].matches('^[0-9]+$') &&
+         request.name.startsWith('p' + oldObject.metadata.labels['platform.example.com/project-id'] + '-'))
+      message: The trongate-cloud worker may only delete a project's objects (p{id}-*) when they carry that project's id label
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: trongate-worker-owned-deletes
+spec:
+  policyName: trongate-worker-owned-deletes
   validationActions: ["Deny"]
