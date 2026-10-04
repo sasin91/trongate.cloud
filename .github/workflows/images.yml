@@ -1,12 +1,17 @@
 name: Images
 
 # Builds and pushes the platform images the cluster runs
-# (deploy/k8s/platform/kustomization.yaml):
-#   ghcr.io/sasin91/trongate-cloud         from Dockerfile
-#   ghcr.io/sasin91/trongate-cloud-worker  from Dockerfile.worker
+# (deploy/k8s/platform/kustomization.yaml) to the cluster's own registry, the
+# same one tenant builds go to, so the node needs one pull credential:
+#   registry.trongate.cloud/platform/trongate-cloud         from Dockerfile
+#   registry.trongate.cloud/platform/trongate-cloud-worker  from Dockerfile.worker
 # Tags: `main` (what the cluster's kustomization points at) and `sha-<short>`.
 # Multi-arch: the cluster node is arm64 (Hetzner CAX), amd64 keeps local
 # development and x86 nodes working. arm64 is built under QEMU.
+#
+# Needs secret REGISTRY_PASSWORD (the registry's `push` user) and runs only once
+# repository variable PLATFORM_REGISTRY_READY is "true": the registry lives in
+# the cluster, so until it is up there is nothing to push to.
 
 on:
   push:
@@ -19,12 +24,12 @@ concurrency:
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
   build:
     name: ${{ matrix.image }}
     runs-on: ubuntu-latest
+    if: vars.PLATFORM_REGISTRY_READY == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -44,14 +49,14 @@ jobs:
 
       - uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          registry: registry.trongate.cloud
+          username: push
+          password: ${{ secrets.REGISTRY_PASSWORD }}
 
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+          images: registry.trongate.cloud/platform/${{ matrix.image }}
           tags: |
             type=raw,value=main,enable={{is_default_branch}}
             type=sha,format=short

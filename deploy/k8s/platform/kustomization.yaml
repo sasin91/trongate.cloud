@@ -13,11 +13,12 @@ resources:
   - worker-admission-policy.yaml
 # Not listed on purpose: secrets.example.yaml (create a SOPS-encrypted copy, see ../README.md)
 
-# Built from ../../Dockerfile and ../../Dockerfile.worker; pin tags (or let Flux image automation do it)
+# Built from ../../Dockerfile and ../../Dockerfile.worker by .github/workflows/images.yml
+# and pushed to the cluster's own registry; pin tags (or let Flux image automation do it)
 images:
   - name: trongate-cloud
-    newName: ghcr.io/sasin91/trongate-cloud
+    newName: registry.trongate.cloud/platform/trongate-cloud
     newTag: main
   - name: trongate-cloud-worker
-    newName: ghcr.io/sasin91/trongate-cloud-worker
+    newName: registry.trongate.cloud/platform/trongate-cloud-worker
     newTag: main

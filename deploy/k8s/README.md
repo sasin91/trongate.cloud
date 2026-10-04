@@ -55,10 +55,12 @@ From the platform kit (or installed separately):
   `registry.trongate.cloud/tc`). The per-build buildkitd Pods push to it over the
   public internet (their NetworkPolicy only allows 80/443 to non-private
   addresses), and nodes pull from it.
-- The platform images `ghcr.io/sasin91/trongate-cloud` and
-  `ghcr.io/sasin91/trongate-cloud-worker` (from `Dockerfile` and
-  `Dockerfile.worker`; tags in `platform/kustomization.yaml`). CI only lints the
-  Dockerfiles; build and push them yourself or add a publish workflow.
+- The platform images `registry.trongate.cloud/platform/trongate-cloud` and
+  `registry.trongate.cloud/platform/trongate-cloud-worker` (from `Dockerfile`
+  and `Dockerfile.worker`; tags in `platform/kustomization.yaml`), pushed to
+  the same registry by `.github/workflows/images.yml` (amd64 + arm64). The
+  workflow needs the secret `REGISTRY_PASSWORD` and the repository variable
+  `PLATFORM_REGISTRY_READY=true`, set once the registry is up.
 
 ## Secrets (SOPS)
 
