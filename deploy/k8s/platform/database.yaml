@@ -1,7 +1,7 @@
 # The platform's own database "tcloud" on its own MariaDB "platform" (mariadb.yaml),
 # never on the shared tenant server.
 # The user's password is DB_PASSWORD from the trongate-cloud-env Secret.
-# Schema: apply db/*.sql in order (see ../README.md).
+# Schema: apply db/schema.sql (see ../README.md).
 apiVersion: k8s.mariadb.com/v1alpha1
 kind: Database
 metadata:

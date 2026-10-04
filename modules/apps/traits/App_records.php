@@ -10,10 +10,12 @@ trait App_records {
 
     /**
      * Create an app with a unique slug and a fresh webhook secret.
+     * $source_customer_id is whose GitHub token picked the repository; deploys fetch it with that token.
      */
-    function create_app(int $project_id, string $label, string $type, string $source_url, string $source_provider, string $source_branch = 'main', ?string $domain = null, bool $auto_deploy = true): int|false {
+    function create_app(int $project_id, int $source_customer_id, string $label, string $type, string $source_url, string $source_provider, string $source_branch = 'main', ?string $domain = null, bool $auto_deploy = true): int|false {
         return $this->db->insert([
             'project_id' => $project_id,
+            'source_customer_id' => $source_customer_id,
             'label' => $label,
             'slug' => $this->generate_app_slug($label),
             'type' => $type,
@@ -41,7 +43,7 @@ trait App_records {
             SET domain = :domain,
                 -- Before verified_domain: MariaDB assigns left to right, so these
                 -- still compare against the old value. A new domain starts ungated
-                -- (db/019) and is checked afresh once verified.
+                -- and is checked afresh once verified.
                 domain_pointed_at = IF(verified_domain <=> :same_domain_1, domain_pointed_at, NULL),
                 domain_dns_failures = IF(verified_domain <=> :same_domain_2, domain_dns_failures, 0),
                 domain_checked_at = IF(verified_domain <=> :same_domain_3, domain_checked_at, NULL),

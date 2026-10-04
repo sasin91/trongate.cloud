@@ -293,8 +293,8 @@ trait Mcp_tools {
             throw new InvalidArgumentException('commit_sha must be 7 to 40 hex characters');
         }
 
-        // Admin deploys have no project member or customer behind them
-        $deployment_id = $this->model->queue_deploy($project_id, (int) $app->id, null, null, 'mcp', $commit_sha);
+        // Admin deploys have no customer behind them
+        $deployment_id = $this->model->queue_deploy($project_id, (int) $app->id, null, 'mcp', $commit_sha);
 
         return [
             'deployment_id' => $deployment_id,

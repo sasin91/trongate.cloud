@@ -2,7 +2,7 @@
 require_once APPPATH . 'modules/customer/traits/Customer_guard.php';
 
 /**
- * Deployment detail page with live build/rollout logs. Any active member of
+ * Deployment detail page with live build/rollout logs. Any member of
  * the deployment's project may read it.
  *
  * @property-read Deployments_model $model

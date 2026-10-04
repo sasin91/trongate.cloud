@@ -11,7 +11,7 @@ require_once __DIR__ . '/../manifests/Manifests.php';
  * the session, so the same code serves the customer UI, GitHub webhooks, the
  * admin MCP and the worker (Worker_actions). Anything fetched by id is checked
  * against that project. The find_member_* methods are the customer UI's way
- * in: they only return what an active member of the project may see.
+ * in: they only return what a member of the project may see.
  *
  * @property-read Db $db
  */
@@ -30,7 +30,7 @@ trait Platform_actions {
      * @return int The deployment id (new, or the queued one that was updated)
      * @throws RuntimeException when the app is not the project's or has no source
      */
-    function queue_deploy(int $project_id, int $app_id, ?int $project_member_id, ?int $customer_id, string $trigger = 'manual', ?string $commit_sha = null): int {
+    function queue_deploy(int $project_id, int $app_id, ?int $customer_id, string $trigger = 'manual', ?string $commit_sha = null): int {
         if (!in_array($trigger, ['manual', 'webhook', 'mcp', 'rollback', 'reconcile'], true)) {
             throw new InvalidArgumentException("Unknown deploy trigger: {$trigger}");
         }
@@ -49,13 +49,12 @@ trait Platform_actions {
 
         $commit_sha = $commit_sha !== null ? strtolower($commit_sha) : null;
 
-        return $this->db->transaction(function () use ($project_id, $app, $project_member_id, $customer_id, $trigger, $commit_sha) {
+        return $this->db->transaction(function () use ($project_id, $app, $customer_id, $trigger, $commit_sha) {
             $queued = $this->_queued_deploy((int) $app->id);
 
             if ($queued !== false) {
                 $deployment_id = (int) $queued->deployment_id;
                 $this->db->update($deployment_id, [
-                    'project_member_id' => $project_member_id,
                     'customer_id' => $customer_id,
                     'commit_sha' => $commit_sha,
                     'trigger_type' => $trigger,
@@ -74,11 +73,9 @@ trait Platform_actions {
 
             $deployment_id = $this->db->insert([
                 'project_id' => $project_id,
-                'project_member_id' => $project_member_id,
                 'customer_id' => $customer_id,
                 'app_id' => (int) $app->id,
                 'status' => 'pending',
-                'source_type' => 'git',
                 'source_url' => $app->source_url,
                 'commit_sha' => $commit_sha,
                 'trigger_type' => $trigger,
@@ -126,11 +123,9 @@ trait Platform_actions {
         return $this->db->transaction(function () use ($project_id, $app_id, $customer_id, $target) {
             $deployment_id = $this->db->insert([
                 'project_id' => $project_id,
-                'project_member_id' => null,
                 'customer_id' => $customer_id,
                 'app_id' => $app_id,
                 'status' => 'pending',
-                'source_type' => $target->source_type,
                 'source_url' => $target->source_url,
                 'commit_sha' => $target->commit_sha,
                 'image' => $target->image,
@@ -548,7 +543,6 @@ trait Platform_actions {
                 'project_id' => $project_id,
                 'customer_id' => $owner_customer_id,
                 'role' => 'owner',
-                'status' => 'active',
             ], 'project_member');
 
             return $project_id;
@@ -556,18 +550,17 @@ trait Platform_actions {
     }
 
     /**
-     * A project the customer is an active member of (not deleted), with their
-     * role as member_role and their membership id as project_member_id.
+     * A project the customer is a member of (not deleted), with their
+     * role as member_role.
      */
     function find_member_project(int $customer_id, int $project_id): object|false {
         $sql = <<<SQL
-            SELECT p.*, pm.role AS member_role, pm.id AS project_member_id
+            SELECT p.*, pm.role AS member_role
             FROM project p
             JOIN project_member pm ON pm.project_id = p.id
             WHERE p.id = :project_id
               AND p.deleted_at IS NULL
               AND pm.customer_id = :customer_id
-              AND pm.status = 'active'
             LIMIT 1
         SQL;
         $rows = $this->db->query_bind($sql, ['project_id' => $project_id, 'customer_id' => $customer_id], 'object');
@@ -576,19 +569,18 @@ trait Platform_actions {
     }
 
     /**
-     * The customer's projects (active memberships, not deleted), by name, with
+     * The customer's projects (not deleted), by name, with
      * their role (member_role) and how many apps each holds (app_count).
      */
     function member_projects(int $customer_id): array {
         $sql = <<<SQL
             SELECT p.id, p.name, p.namespace, p.owner_id, p.created_at,
-                pm.role AS member_role, pm.id AS project_member_id,
+                pm.role AS member_role,
                 COUNT(a.id) AS app_count
             FROM project p
             JOIN project_member pm ON pm.project_id = p.id
             LEFT JOIN app a ON a.project_id = p.id AND a.deleted_at IS NULL
             WHERE pm.customer_id = :customer_id
-              AND pm.status = 'active'
               AND p.deleted_at IS NULL
             GROUP BY p.id, p.name, p.namespace, p.owner_id, p.created_at, pm.role, pm.id
             ORDER BY p.name ASC, p.id ASC
@@ -597,15 +589,15 @@ trait Platform_actions {
     }
 
     /**
-     * An app (not deleted) in a project the customer is an active member of:
+     * An app (not deleted) in a project the customer is a member of:
      * the app row (webhook_secret seed included) plus project_name, namespace,
-     * member_role and project_member_id. Pass (int) $app->project_id on to the
+     * and member_role. Pass (int) $app->project_id on to the
      * other actions.
      */
     function find_member_app(int $customer_id, int $app_id): object|false {
         $sql = <<<SQL
             SELECT a.*, p.name AS project_name, p.namespace,
-                pm.role AS member_role, pm.id AS project_member_id
+                pm.role AS member_role
             FROM app a
             JOIN project p ON p.id = a.project_id
             JOIN project_member pm ON pm.project_id = p.id
@@ -613,7 +605,6 @@ trait Platform_actions {
               AND a.deleted_at IS NULL
               AND p.deleted_at IS NULL
               AND pm.customer_id = :customer_id
-              AND pm.status = 'active'
             LIMIT 1
         SQL;
         $rows = $this->db->query_bind($sql, ['app_id' => $app_id, 'customer_id' => $customer_id], 'object');
@@ -623,7 +614,7 @@ trait Platform_actions {
 
     /**
      * A deployment (with its app's label and slug, and the member's role as
-     * member_role) of an app in a project the customer is an active member
+     * member_role) of an app in a project the customer is a member
      * of. Deployments of deleted apps stay readable, like their logs.
      */
     function find_member_deployment(int $customer_id, int $deployment_id): object|false {
@@ -636,7 +627,6 @@ trait Platform_actions {
             WHERE d.id = :deployment_id
               AND p.deleted_at IS NULL
               AND pm.customer_id = :customer_id
-              AND pm.status = 'active'
             LIMIT 1
         SQL;
         $rows = $this->db->query_bind($sql, ['deployment_id' => $deployment_id, 'customer_id' => $customer_id], 'object');
@@ -645,7 +635,7 @@ trait Platform_actions {
     }
 
     /**
-     * The project's active members: the owner first, then by email.
+     * The project's members: the owner first, then by email.
      * Rows: id (membership), customer_id, email, role, created_at.
      */
     function project_members(int $project_id): array {
@@ -654,7 +644,6 @@ trait Platform_actions {
             FROM project_member pm
             JOIN customer c ON c.id = pm.customer_id
             WHERE pm.project_id = :project_id
-              AND pm.status = 'active'
             ORDER BY pm.role = 'owner' DESC, c.email ASC
         SQL;
         return $this->db->query_bind($sql, ['project_id' => $project_id], 'object');
@@ -662,7 +651,6 @@ trait Platform_actions {
 
     /**
      * Add an existing customer account to the project as a member, by email.
-     * A former member (removed, so suspended) is made active again.
      *
      * @return bool|string true, or why not (safe to show the owner)
      */
@@ -684,13 +672,12 @@ trait Platform_actions {
         }
 
         $member = $this->db->query_bind(
-            'SELECT id, status FROM project_member WHERE project_id = :project_id AND customer_id = :customer_id LIMIT 1',
+            'SELECT id FROM project_member WHERE project_id = :project_id AND customer_id = :customer_id LIMIT 1',
             ['project_id' => $project_id, 'customer_id' => (int) $customer_id],
-            'object'
+            'column'
         );
-        $member = $member[0] ?? false;
 
-        if ($member !== false && $member->status === 'active') {
+        if ($member !== false) {
             return 'They are already a member of this project.';
         }
 
@@ -698,24 +685,17 @@ trait Platform_actions {
             return 'Project not found.';
         }
 
-        if ($member !== false) {
-            $this->db->update((int) $member->id, ['status' => 'active', 'role' => 'member'], 'project_member');
-        } else {
-            $this->db->insert([
-                'project_id' => $project_id,
-                'customer_id' => (int) $customer_id,
-                'role' => 'member',
-                'status' => 'active',
-            ], 'project_member');
-        }
+        $this->db->insert([
+            'project_id' => $project_id,
+            'customer_id' => (int) $customer_id,
+            'role' => 'member',
+        ], 'project_member');
 
         return true;
     }
 
     /**
-     * Take a member out of the project. The membership row is suspended, not
-     * deleted: their past deployments still point at it. The owner can't be
-     * removed.
+     * Take a member out of the project. The owner can't be removed.
      *
      * @return bool|string true, or why not (safe to show the owner)
      */
@@ -726,7 +706,6 @@ trait Platform_actions {
             JOIN project p ON p.id = pm.project_id
             WHERE pm.project_id = :project_id
               AND pm.customer_id = :customer_id
-              AND pm.status = 'active'
             LIMIT 1
         SQL;
         $rows = $this->db->query_bind($sql, ['project_id' => $project_id, 'customer_id' => $customer_id], 'object');
@@ -740,7 +719,7 @@ trait Platform_actions {
             return "The project's owner can't be removed.";
         }
 
-        $this->db->update((int) $member->id, ['status' => 'suspended'], 'project_member');
+        $this->db->query_bind('DELETE FROM project_member WHERE id = :id', ['id' => (int) $member->id]);
 
         return true;
     }

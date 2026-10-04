@@ -8,7 +8,7 @@ require_once __DIR__ . '/Resource_tiers.php';
  * Kubernetes manifests for tenants and their apps, as arrays ready for Kubernetes::apply_all().
  *
  * Naming (C2): one namespace per project, stored in project.namespace
- * ("project-{project_id}", or "tc-team-{id}" for projects created before db/020),
+ * ("project-{project_id}"),
  * per-app resources "p{app_id}-…", MariaDB database + user "tc_p{app_id}".
  *
  * Framework-free: loaded by the worker.
@@ -26,11 +26,10 @@ class Manifests {
     const APP_LABEL = self::LABEL_PREFIX . '/project-id';
 
     /**
-     * Tenant namespace names: "project-{id}" for new projects, "tc-team-{id}"
-     * for projects created before db/020. The worker may only write in these
+     * Tenant namespace names, "project-{id}". The worker may only write in these
      * (worker-admission-policy.yaml has the same pattern).
      */
-    const NAMESPACE_PATTERN = '/^(project|tc-team)-[1-9][0-9]{0,9}$/';
+    const NAMESPACE_PATTERN = '/^project-[1-9][0-9]{0,9}$/';
 
     // Railpack's FrankenPHP Caddyfile serves ":{$PORT:80}" from /app (or RAILPACK_PHP_ROOT_DIR).
     // We set PORT because restricted pods run as non-root and cannot bind :80.
@@ -111,7 +110,7 @@ class Manifests {
     /**
      * The tenant namespace of an app or project row: its project.namespace
      * (app rows carry it through a JOIN on project, see Platform_task::app).
-     * Never derived from an id, so older projects keep "tc-team-{id}".
+     * Set once at creation (new_namespace) and read from the row from then on.
      *
      * @throws InvalidArgumentException when the row has no valid tenant namespace
      */
@@ -155,8 +154,8 @@ class Manifests {
 
     /**
      * The app's custom domains that may be routed: verified by TXT record
-     * (app.verified_domain, db/015) AND seen pointing at the cluster
-     * (app.domain_pointed_at, db/019, kept by the recheck_domains task).
+     * (app.verified_domain) AND seen pointing at the cluster
+     * (app.domain_pointed_at, kept by the recheck_domains task).
      *
      * The DNS half is the gate. A domain that still resolves elsewhere cannot
      * pass HTTP-01, and making it BASE_URL would send every generated link to a
@@ -180,7 +179,7 @@ class Manifests {
 
     /**
      * The routed custom domains whose certificate has been issued
-     * (app.domain_secured_at, db/019, set by recheck_domains once the
+     * (app.domain_secured_at, set by recheck_domains once the
      * Certificate is Ready). Only these may become BASE_URL
      * (Trongate_config::base_url): a domain whose certificate is pending, or
      * never comes (CAA record, rate limit), answers with Traefik's default

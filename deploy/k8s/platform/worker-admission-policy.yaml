@@ -2,9 +2,8 @@
 # RBAC (which cannot scope a ClusterRole to "namespaces matching a pattern").
 # Requires Kubernetes >= 1.30.
 #
-# Tenant namespaces: one per project, "project-{id}", or "tc-team-{id}" for
-# projects created before db/020 (Manifests::NAMESPACE_PATTERN; the same
-# pattern is the tenant_namespace variable of each policy below).
+# Tenant namespaces: one per project, "project-{id}" (Manifests::NAMESPACE_PATTERN;
+# the same pattern is the tenant_namespace variable of each policy below).
 #
 # 1. Where: only inside tenant namespaces (or the tenant Namespace objects
 #    themselves), plus per-build buildkitd-d* Pods in the buildkit namespace.
@@ -74,14 +73,14 @@ spec:
       expression: request.userInfo.username == 'system:serviceaccount:trongate-cloud:trongate-worker'
   variables:
     - name: tenant_namespace
-      expression: "'^(project|tc-team)-[1-9][0-9]{0,9}$'"
+      expression: "'^project-[1-9][0-9]{0,9}$'"
   validations:
     # Namespace DELETEs are checked further by trongate-worker-owned-deletes
     - expression: >-
         request.namespace.matches(variables.tenant_namespace) ||
         (request.kind.kind == 'Namespace' && request.name.matches(variables.tenant_namespace)) ||
         (request.namespace == 'buildkit' && request.kind.kind == 'Pod' && request.name.startsWith('buildkitd-d'))
-      message: The trongate-cloud worker may only write inside tenant (project-*, tc-team-*) namespaces (and build Pods in buildkit)
+      message: The trongate-cloud worker may only write inside tenant (project-*) namespaces (and build Pods in buildkit)
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding
@@ -290,7 +289,7 @@ spec:
       expression: request.userInfo.username == 'system:serviceaccount:trongate-cloud:trongate-worker'
   variables:
     - name: tenant_namespace
-      expression: "'^(project|tc-team)-[1-9][0-9]{0,9}$'"
+      expression: "'^project-[1-9][0-9]{0,9}$'"
     - name: labelled
       expression: oldObject != null && has(oldObject.metadata.labels)
     # A custom-domain Gateway's certificate Secret: cert-manager creates it, so

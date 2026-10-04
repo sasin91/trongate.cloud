@@ -48,8 +48,8 @@ class Metrics_model extends Model {
      * Periodic worker tasks (Runtime::PERIODIC_TASKS): when each last finished
      * and last failed (unix time) and its last run's summary.
      *
-     * Empty until db/017 is applied: migrations run by hand, and a missing
-     * table must not take the other gauges down with it.
+     * Empty when the table is missing (schema applied by hand), which must
+     * not take the other gauges down with it.
      */
     function scheduled_jobs(): array {
         $sql = <<<SQL

@@ -42,10 +42,11 @@ return function (Task_log $log) use ($payload, $runtime): int {
     }
 
     $repo = $match[1];
-    $token = Platform_task::github_token($runtime, (int) $app['project_owner_id']);
+    // The token of whoever picked the repository: a member's private repo may be out of the owner's reach
+    $token = Platform_task::github_token($runtime, (int) $app['token_customer_id']);
 
     if ($token === '') {
-        throw new RuntimeException("The project owner's GitHub account is not connected; they need to reconnect GitHub");
+        throw new RuntimeException('The GitHub account that added this app is not connected; they need to reconnect GitHub');
     }
 
     $github = new Github($token);

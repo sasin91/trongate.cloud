@@ -4,8 +4,8 @@
  * Access guard for customer-facing controllers.
  * The controller's model must use the Current_customer and Platform_actions traits.
  *
- * Authorization is per request: a project is reachable while the customer is an
- * active member of it, an app while they are a member of the app's project.
+ * Authorization is per request: a project is reachable while the customer is a
+ * member of it, an app while they are a member of the app's project.
  * Owners additionally manage members, rename and delete.
  *
  * @property-read Trongate_tokens $trongate_tokens
@@ -65,7 +65,7 @@ trait Customer_guard {
 
     /**
      * An app in one of the current customer's projects (with project_name,
-     * member_role and project_member_id), or redirect to the dashboard
+     * and member_role), or redirect to the dashboard
      */
     function _member_app_or_redirect(int $app_id): object {
         $customer = $this->_customer_or_redirect();

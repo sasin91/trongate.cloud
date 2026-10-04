@@ -1,12 +1,5 @@
-$DbDir = Join-Path $PSScriptRoot "..\db"
-
-# Collect SQL files
-$SqlFiles = Get-ChildItem -Path $DbDir -Filter "*.sql" | Sort-Object Name
-
-if ($SqlFiles.Count -eq 0) {
-    Write-Warning "No SQL files found in $DbDir"
-    exit 0
-}
+# Local dev: drop and recreate the tcloud database from db/schema.sql.
+$Schema = Join-Path $PSScriptRoot "..\db\schema.sql"
 
 # Determine MySQL/MariaDB executable
 $MysqlExe = "mysql"
@@ -58,26 +51,14 @@ if (-not (Test-Command $MysqlExe)) {
     }
 }
 
-foreach ($File in $SqlFiles) {
-    Write-Host "Importing $($File.Name)..." -NoNewline
-    
-    try {
-        # Prepend "USE tcloud;" to the file content
-        $Content = "USE tcloud;`n" + (Get-Content $File.FullName -Raw)
-        $Output = $Content | & $MysqlExe -h localhost -u root 2>&1
-        if ($LASTEXITCODE -eq 0) {
-                Write-Host " [OK]" -ForegroundColor Green
-        } else {
-                Write-Host " [FAILED]" -ForegroundColor Red
-                Write-Host $Output -ForegroundColor Yellow
-                exit 1
-        }
-    } catch {
-        Write-Host " [ERROR]" -ForegroundColor Red
-        Write-Error $_
-        exit 1
-    }
+Write-Host "Recreating tcloud from $Schema..." -NoNewline
+
+$Content = "DROP DATABASE IF EXISTS tcloud;`n" + (Get-Content $Schema -Raw)
+$Output = $Content | & $MysqlExe -h localhost -u root 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Host " [FAILED]" -ForegroundColor Red
+    Write-Host $Output -ForegroundColor Yellow
+    exit 1
 }
 
-Write-Host "All imports completed successfully." -ForegroundColor Green
-
+Write-Host " [OK]" -ForegroundColor Green

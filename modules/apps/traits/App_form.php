@@ -69,6 +69,7 @@ trait App_form {
 
         return $this->model->create_app(
             project_id: $project_id,
+            source_customer_id: $customer_id,
             label: post('label', true),
             type: post('type', true),
             source_url: $client->url(post('repository', true)),
@@ -95,7 +96,6 @@ trait App_form {
             return $this->model->queue_deploy(
                 (int) $app->project_id,
                 $app_id,
-                (int) $app->project_member_id,
                 $customer_id,
                 'manual'
             );

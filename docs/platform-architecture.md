@@ -8,7 +8,7 @@ Trongate.cloud hosts customer Trongate apps on our own k3s cluster. Customers co
 |---|---|---|
 | Cluster | k3s on Hetzner via `hcloud-k3s-platform-kit` (kube-hetzner, Flux, SOPS, Gateway API on Traefik) | Platform components via Flux; tenants created by our worker through the k8s API |
 | Builds | Railpack (BuildKit) → FrankenPHP image | Trongate has no root `index.php`/`composer.json`: inject config + `RAILPACK_PHP_ROOT_DIR=public`. Classic mode only — Trongate's per-request `define()`s rule out worker mode. Add the `frame-ancestors` header in the Caddyfile (`.htaccess` is ignored) |
-| Tenancy | Namespace per project (`project-{id}`, or `tc-team-{id}` for projects created before db/020, stored in `project.namespace`), holding its apps; per app a Deployment, Service, HTTPRoute, config Secret, DB credentials Secret, one `tenant-files` PVC (all `p{app id}-*`) | Quota, LimitRange, default-deny NetworkPolicy, restricted pod security from the kit's template. `allow-same-project` lets the apps of a project call each other (`http://p{id}-app`, TCP 8080 on the pod) in both directions; other projects cannot reach them |
+| Tenancy | Namespace per project (`project-{id}`, stored in `project.namespace`), holding its apps; per app a Deployment, Service, HTTPRoute, config Secret, DB credentials Secret, one `tenant-files` PVC (all `p{app id}-*`) | Quota, LimitRange, default-deny NetworkPolicy, restricted pod security from the kit's template. `allow-same-project` lets the apps of a project call each other (`http://p{id}-app`, TCP 8080 on the pod) in both directions; other projects cannot reach them |
 | Config | Render `config/config.php` + `config/database.php` into a Secret, mounted over the image's files | Customer apps hardcode config and don't read env |
 | Database | Shared `databases` namespace, mariadb-operator; a database + user + grant per app (`tc_p{app id}`) | `Database`/`User`/`Grant` CRs live in the app's project namespace (cross-namespace `mariaDbRef` — verify) |
 | Cache / sessions | Shared `cache` namespace, Valkey via redis-operator; ACL key prefix per tenant | Sessions here so scale-to-zero doesn't log users out |
@@ -24,9 +24,9 @@ Ported from Scaleweb's CRM (`hostname-gate.ts`, `domain-promotion.ts`), where an
 un-pointed customer domain shared a certificate with the app's preview host and
 kept its ACME order failing for 23 hours.
 
-- **DNS gate.** `app.verified_domain` (TXT record, db/015) proves ownership,
+- **DNS gate.** `app.verified_domain` (TXT record) proves ownership,
   not that the domain reaches us. `Manifests::custom_domains` routes it only
-  once `app.domain_pointed_at` (db/019) is set: the domain's A/AAAA records
+  once `app.domain_pointed_at` is set: the domain's A/AAAA records
   all point at `PLATFORM_INGRESS_IPV4`/`IPV6`, or it is a CNAME into
   `PLATFORM_APPS_DOMAIN` (`Domain_dns`). The gate reads the stored fact, never
   DNS during a deploy, so a resolver hiccup cannot drop a live domain. The
@@ -104,14 +104,7 @@ The whole pipeline is done in code; nothing has been applied to a cluster yet.
 
 Done in code:
 
-- **Schema**:
-  - `db/014_k3s_platform.sql`: BYO-server tables dropped; generic `tasks`/`task_logs`; project `slug`, `persistent_paths`, `php_extensions`, `webhook_secret` (a seed, see webhooks), `always_on`, `database_server_id`, `current_deployment_id`; image-based deployment statuses (`pending → building → deploying → success | failed | rolled_back`) with `commit_sha`, `image`, `trigger_type`; `database_server` with the `shared-1` seed.
-  - `db/015_domain_verification.sql`: `project.verified_domain` (UNIQUE).
-  - `db/016_resource_tiers.sql`: `project.resource_tier` (default `small`, today's limits).
-  - `db/017_deploy_reconcile.sql`: `reconcile` deploy trigger, `project.auto_deploy` and `reconciled_at`, `tasks.team_id` nullable for platform-wide tasks, `scheduled_jobs`.
-  - `db/018_project_deletion.sql`: `project.deleted_at` (soft delete).
-  - `db/019_custom_domain_dns_gate.sql`: `domain_pointed_at`, `domain_secured_at`, `domain_dns_failures`, `domain_checked_at` (the DNS gate and certificate state).
-  - `db/020_projects_hold_apps.sql`: teams are gone. `project` → `app` (the project columns above now live on `app`; `deployment`/`tasks.project_id` → `app_id`, queued `destroy_project` tasks → `destroy_app`), then `team` → `project` and `team_member` → `project_member` (`team_id` → `project_id`). Roles are `owner` and `member`; `customer.current_team_id` is dropped. `project.namespace` (NOT NULL UNIQUE; `tc-team-{id}` for existing projects, `project-{id}` for new ones) and `project.deleted_at`. GitHub tokens move from the team to its owner (`secrets` module `customer`). Ids are kept, so webhook URLs, slugs, `p{id}-*` objects and `tc_p{id}` databases keep working.
+- **Schema** (`db/schema.sql`, one file applied to an empty database; numbered migrations start once there are customers to migrate): `customer`; `project` (name, owner, `namespace` NOT NULL UNIQUE `project-{id}`, soft delete) and `project_member` (`owner` | `member`); `secrets` (APP_KEY-encrypted; GitHub tokens under module `customer`); `app` (slug, source, `source_customer_id` whose GitHub token builds it, webhook seed, custom-domain state, runtime settings, `resource_tier`, soft delete); `deployment` (image-based statuses `pending → building → deploying → success | failed | rolled_back`, `commit_sha`, `image`, `trigger_type`, `customer_id` who pressed Deploy); `database_server` with the `shared-1` seed; worker `tasks`/`task_logs`/`scheduled_jobs`.
 - **Worker** (`modules/platform/worker`): polls `tasks`, runs `modules/platform/tasks/{script}.php`, logs to `task_logs`, closes the task's deployment. Shell steps get a minimal environment (no `APP_KEY`/`DB_PASSWORD`/tokens) and are killed after 30 minutes (`Runtime::SHELL_TIMEOUT_SECONDS`).
   - Periodic tasks (`Runtime::PERIODIC_TASKS`, script => interval): the poll loop queues each as a project-less task when due. `scheduled_jobs` holds the claim (one conditional UPDATE, so extra replicas never queue a job twice or while its last run is unfinished), when each job last finished and last failed (recorded by the Runtime) and the last run's summary (optional, from the script). Finished and failed runs are pruned after 7 days.
   - Queues deploys through `Platform_actions` (`Worker_actions` over a mysqli `Worker_db`), so it follows the same rules as the UI.
@@ -150,7 +143,7 @@ Done in code:
   - Sablier.
   - Platform: the app, the worker, and its own MariaDB `platform`, which tenants cannot reach.
   - App access: a cluster-wide read-only role on Deployments and Pods for live app state, and on the other per-app kinds (no Secrets) for the orphan audit (`platform/app-rbac.yaml`).
-  - Worker access: RBAC with write-only Secrets (deleted only through a `deletecollection` filtered by the app's labels and the name, so the API server does the label check the worker cannot do by reading), plus admission policies that limit where the worker writes (tenant namespaces `project-*` and `tc-team-*`), what the objects contain, and that it only deletes objects carrying its labels (an app's `p{id}-*` objects only with that app's id and name labels; a tenant Namespace only with the tenant labels). Neither check knows which project an app belongs to: `destroy_app` takes the namespace from the project row named in its payload, and an app row that still exists must belong to that project.
+  - Worker access: RBAC with write-only Secrets (deleted only through a `deletecollection` filtered by the app's labels and the name, so the API server does the label check the worker cannot do by reading), plus admission policies that limit where the worker writes (tenant namespaces `project-*`), what the objects contain, and that it only deletes objects carrying its labels (an app's `p{id}-*` objects only with that app's id and name labels; a tenant Namespace only with the tenant labels). Neither check knows which project an app belongs to: `destroy_app` takes the namespace from the project row named in its payload, and an app row that still exists must belong to that project.
 
 Still open:
 

@@ -50,7 +50,7 @@ class App_resource_audit {
         }
 
         // One cluster-wide list per kind; the worker can only write in tenant
-        // namespaces (project-* and, from before db/020, tc-team-*)
+        // namespaces (project-*)
         $selector = 'app.kubernetes.io/managed-by=' . Manifests::MANAGED_BY . ',' . Manifests::APP_LABEL;
 
         $orphans = [];

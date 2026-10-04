@@ -157,7 +157,6 @@ class Apps extends Trongate {
             $deployment_id = $this->model->queue_deploy(
                 (int) $app->project_id,
                 (int) $app->id,
-                (int) $app->project_member_id,
                 (int) $customer->id,
                 'manual'
             );

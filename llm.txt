@@ -11,7 +11,7 @@ This project uses the Trongate PHP Framework v2.
 
 ## File Structure (Key Directories)
 - `/config`: Configuration files (database, routing, app settings).
-- `/db`: SQL migration files (numbered for load order).
+- `/db`: `schema.sql`, the whole database schema in one file.
 - `/engine`: Core framework source code.
 - `/modules`: Modular application logic (Controllers, Models, Views).
 - `/public`: Entry point and static assets (CSS, JS).

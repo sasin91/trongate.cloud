@@ -89,7 +89,7 @@ class Webhooks extends Trongate {
         }
 
         try {
-            $deployment_id = $this->model->queue_deploy((int) $app->project_id, (int) $app->id, null, null, 'webhook', $sha);
+            $deployment_id = $this->model->queue_deploy((int) $app->project_id, (int) $app->id, null, 'webhook', $sha);
         } catch (RuntimeException $e) {
             $this->_respond(422, ['error' => 'not_deployable', 'message' => $e->getMessage()]);
             return;

@@ -3,7 +3,7 @@
 /**
  * Recheck Domains Task
  *
- * The DNS gate for custom domains (db/019, Manifests::custom_domains). Checks
+ * The DNS gate for custom domains (Manifests::custom_domains). Checks
  * whether verified domains point at the platform (Domain_dns), records it, and
  * promotes a pointing domain in two steps, each by re-applying the app, so
  * nobody has to push a commit:

@@ -1,8 +1,7 @@
 # The worker creates tenants through the Kubernetes API. Permissions cover exactly
 # the kinds Manifests emits (plus read access to pods/events for rollout diagnostics).
 # worker-admission-policy.yaml further limits writes to tenant namespaces
-# (project-*, and tc-team-* for projects created before db/020) and checks what
-# the objects contain. Secrets are write-only: Kubernetes::apply is a
+# (project-*) and checks what the objects contain. Secrets are write-only: Kubernetes::apply is a
 # server-side-apply PATCH, so the worker never reads a Secret (and must not be
 # able to read the platform's, the operators' or Flux's). It deletes Secrets only
 # as a collection filtered by its own labels (Platform_task::delete_owned), never

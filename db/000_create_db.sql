@@ -1,3 +1,0 @@
-DROP DATABASE IF EXISTS tcloud;
-CREATE DATABASE tcloud;
-USE tcloud;

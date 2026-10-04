@@ -67,12 +67,14 @@ class Platform_task {
     }
 
     /**
-     * The app row plus its project's namespace and owner_id (project_owner_id);
+     * The app row plus its project's namespace and owner_id (project_owner_id),
+     * and the customer whose GitHub token fetches its source (token_customer_id);
      * fails unless it belongs to the project and neither is deleted
      */
     static function app(mysqli $db, int $project_id, int $app_id): array {
         $sql = <<<SQL
-            SELECT a.*, p.namespace, p.owner_id AS project_owner_id
+            SELECT a.*, p.namespace, p.owner_id AS project_owner_id,
+                COALESCE(a.source_customer_id, p.owner_id) AS token_customer_id
             FROM app a
             JOIN project p ON p.id = a.project_id
             WHERE a.id = ? AND a.project_id = ? AND a.deleted_at IS NULL AND p.deleted_at IS NULL
