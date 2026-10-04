@@ -219,18 +219,22 @@ class Platform_task {
      * pinned to the checked object's uid, so a replacement is never removed.
      *
      * Secrets are write-only for the worker (worker-rbac.yaml) and cannot be
-     * read first; for them, and as a backstop for every kind, the admission
-     * policy trongate-worker-owned-deletes rejects deleting an object without
-     * matching labels.
+     * read first. They are deleted as a collection filtered by name and by the
+     * same labels, so the API server does the label check: a Secret under that
+     * name without the project's labels matches nothing and stays. The
+     * admission policy trongate-worker-owned-deletes is a backstop for every
+     * kind.
      *
-     * @return bool false when the object was already gone
+     * @return bool false when the object was already gone (for a Secret: or is not the project's)
      * @throws RuntimeException when the object exists but is not the project's
      */
     static function delete_owned(Kubernetes $kube, string $api_version, string $kind, int $team_id, int $project_id, string $name): bool {
         $namespace = Manifests::namespace_name($team_id);
 
         if ($api_version === 'v1' && $kind === 'Secret') {
-            return $kube->delete($api_version, $kind, $namespace, $name);
+            $labels = array_map(fn(string $key, string $value) => "{$key}={$value}", array_keys(Manifests::project_labels($project_id)), Manifests::project_labels($project_id));
+
+            return $kube->delete_collection($api_version, $kind, $namespace, implode(',', $labels), 'metadata.name=' . $name) > 0;
         }
 
         $object = $kube->get($api_version, $kind, $namespace, $name);

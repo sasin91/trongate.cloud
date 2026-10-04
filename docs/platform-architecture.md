@@ -73,7 +73,7 @@ Done in code:
   - Sablier.
   - Platform: the app, the worker, and its own MariaDB `platform`, which tenants cannot reach.
   - App access: a cluster-wide read-only role on Deployments and Pods for live app state, and on the other per-project kinds (no Secrets) for the orphan audit (`platform/app-rbac.yaml`).
-  - Worker access: RBAC with write-only Secrets, plus admission policies that limit where the worker writes, what the objects contain, and that it only deletes objects carrying its labels (a project's `p{id}-*` objects only with that project's id label; this is the only check for Secrets, which the worker cannot read).
+  - Worker access: RBAC with write-only Secrets (deleted only through a `deletecollection` filtered by the project's labels and the name, so the API server does the label check the worker cannot do by reading), plus admission policies that limit where the worker writes, what the objects contain, and that it only deletes objects carrying its labels (a project's `p{id}-*` objects only with that project's id and name labels). Neither check knows the team: a project's namespace is trusted from the destroy_project payload, which must match the project row.
 
 Still open:
 
@@ -91,7 +91,7 @@ Still open:
 - **Needs a live cluster:**
   - Cross-namespace `mariaDbRef`.
   - The platform MariaDB passing restricted Pod Security.
-  - The CEL admission policies (including `trongate-worker-owned-deletes`).
+  - The CEL admission policies. `trongate-worker-owned-deletes` and the worker's `deletecollection` on Secrets are not on the cluster yet: apply them, and check them with a server-side dry run (a labelled and an unlabelled `p{id}-*` object, and a Secret via `deletecollection`), before the first tenant is deleted.
   - Railpack's FrankenPHP image running as uid 1000 on port 8080.
   - The empty `composer.json` approach.
   - Per-build buildkitd start-up time.

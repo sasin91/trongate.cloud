@@ -56,7 +56,9 @@ return function (Task_log $log) use ($payload, $runtime): int {
     foreach (Manifests::app_resources($project_id) as [$api_version, $kind, $name]) {
         try {
             $deleted = Platform_task::delete_owned($kube, $api_version, $kind, $team_id, $project_id, $name);
-            $log->info($deleted ? "Deleted {$kind} {$name}" : "{$kind} {$name} was already gone");
+            // A Secret cannot be read, so "not there" and "not ours" look the same
+            $gone = $kind === 'Secret' ? "was already gone or does not carry the project's labels (left in place)" : 'was already gone';
+            $log->info($deleted ? "Deleted {$kind} {$name}" : "{$kind} {$name} {$gone}");
         } catch (Throwable $e) {
             $failures++;
             $log->error("Deleting {$kind} {$name} failed: {$e->getMessage()}");
