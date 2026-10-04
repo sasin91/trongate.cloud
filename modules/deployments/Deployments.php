@@ -8,6 +8,7 @@ require_once APPPATH . 'modules/customer/traits/Customer_guard.php';
  * @property-read Deployments_model $model
  * @property-read Templates $templates
  * @property-read Trongate_tokens $trongate_tokens
+ * @property-read Validation $validation
  */
 class Deployments extends Trongate {
     use Customer_guard;

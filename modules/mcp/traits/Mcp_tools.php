@@ -147,7 +147,7 @@ trait Mcp_tools {
             [
                 'name' => 'retry_project_cleanup',
                 'title' => 'Retry project cleanup',
-                'description' => "Queue destroy_project again for a deleted project whose namespace is still there (see audit_app_resources). It deletes the namespace only if no app object is left in it.",
+                'description' => 'Queue destroy_project again for a deleted project whose namespace is still there (see audit_app_resources). It deletes the namespace only if no app object is left in it.',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => ['project_id' => ['type' => 'integer', 'minimum' => 1, 'description' => 'Deleted project id (from audit_app_resources)']],
