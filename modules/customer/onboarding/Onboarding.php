@@ -5,8 +5,7 @@ require_once APPPATH . 'modules/services/traits/Provider_clients.php';
 require_once APPPATH . 'modules/projects/traits/Project_form.php';
 
 /**
- * Onboarding: GitHub token -> first project (which queues its first deploy).
- * The account's team is created silently on the way in.
+ * Onboarding: team -> GitHub token -> first project (which queues its first deploy).
  *
  * @property-read Trongate_tokens $trongate_tokens
  * @property-read Onboarding_model $model
@@ -25,7 +24,7 @@ class Onboarding extends Trongate {
     }
 
     function index(): void {
-        $team_id = $this->_team_id_or_create();
+        $team_id = $this->_team_id_or_redirect();
 
         if ($this->_team_provider($team_id, 'source') === false) {
             redirect('onboarding/source');
@@ -36,36 +35,43 @@ class Onboarding extends Trongate {
 
     // --- Team ---
 
-    /**
-     * Customers never name a team: each account gets one behind the scenes,
-     * which owns its apps and GitHub connection.
-     */
     function team(): void {
-        $this->_team_id_or_create();
-        redirect('onboarding/source');
+        // Coming back to this question (browser Back) shows the team they already named
+        $team_id = $this->model->_get_current_team_id();
+        $teams = $team_id === false ? [] : array_column($this->model->get_customer_teams(), 'name', 'id');
+
+        $this->view('team', ['team_name' => $teams[$team_id] ?? '']);
     }
 
-    function _team_id_or_create(): int {
-        $team_id = $this->model->_get_current_team_id();
+    function submit_team(): void {
+        $this->validation->set_rules('name', 'Team name', 'required|min_length[3]|max_length[50]');
 
-        if ($team_id !== false) {
-            return $team_id;
+        if ($this->validation->run() === false) {
+            $this->team();
+            return;
         }
 
         $customer = $this->_customer_or_redirect();
-        $name = strstr((string) $customer->email, '@', true) ?: 'Personal';
+        $name = post('name', true);
 
-        $team_id = $this->model->create_team((int) $customer->id, $name);
-        $this->model->add_team_member($team_id, (int) $customer->id, 'owner');
+        // Answering again renames the team instead of creating a second one
+        $team_id = $this->model->_get_current_team_id();
+
+        if ($team_id !== false) {
+            $this->model->rename_team($team_id, $name);
+            redirect('onboarding/source');
+        }
+
+        $team_id = $this->model->create_team($customer->id, $name);
+        $this->model->add_team_member($team_id, $customer->id, 'owner');
         $this->model->set_current_team($team_id);
 
-        return $team_id;
+        redirect('onboarding/source');
     }
 
     // --- Source Control (GitHub) ---
 
     function source(): void {
-        $this->_team_id_or_create();
         $this->view('source');
     }
 

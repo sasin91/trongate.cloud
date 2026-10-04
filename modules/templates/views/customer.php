@@ -16,7 +16,6 @@
                 <?php require __DIR__ . '/_mark.php'; ?>
                 <div class="header-title">trongate<span>.cloud</span></div>
             </a>
-            <?php if (count($teams) > 1): ?>
             <div class="header-separator"></div>
             <?= form_open('switch-team', ['class' => 'team-switcher-form']) ?>
                 <select name="team_id" onchange="this.form.submit()" class="form-select team-switcher-select">
@@ -25,7 +24,6 @@
                     <?php endforeach; ?>
                 </select>
             <?= form_close() ?>
-            <?php endif; ?>
         </div>
         <nav class="header-nav" style="display: flex; gap: 1.25rem; align-items: center;">
             <a href="dashboard" class="nav-link">Dashboard</a>
