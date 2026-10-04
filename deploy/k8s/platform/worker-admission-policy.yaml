@@ -77,7 +77,7 @@ spec:
     - name: platform_domain
       expression: "'trongate.cloud'"
     - name: apps_domain
-      expression: "'apps.trongate.cloud'"
+      expression: "'trongate.dev'"
   validations:
     # Tenant namespaces stay restricted and never get a platform role label
     # (allow-gateway admits ingress from namespaces labelled role=gateway)
@@ -125,12 +125,21 @@ spec:
            object.spec.username.matches(variables.tenant_db) &&
            (!has(object.spec.grantOption) || object.spec.grantOption == false))))
       message: MariaDB CRs must target a tc_p{id} database and user on a server in the databases namespace
+    # A route without hostnames inherits the listener's, which on the shared
+    # wildcard listener means claiming every tenant's hostname
+    - expression: >-
+        request.kind.kind != 'HTTPRoute' ||
+        (has(object.spec.hostnames) && size(object.spec.hostnames) > 0)
+      message: Tenant HTTPRoutes must declare at least one hostname
     - expression: >-
         request.kind.kind != 'HTTPRoute' || !has(object.spec.hostnames) ||
         object.spec.hostnames.all(h,
-          h.endsWith('.' + variables.apps_domain) ||
-          !(h == variables.platform_domain || h.endsWith('.' + variables.platform_domain)))
-      message: Tenant HTTPRoutes may not use platform hostnames
+          h != variables.apps_domain &&
+          (h.endsWith('.' + variables.apps_domain) ||
+           !(h == variables.platform_domain || h.endsWith('.' + variables.platform_domain))))
+      # The apps domain's apex is the CNAME target custom domains point at,
+      # not a tenant hostname
+      message: Tenant HTTPRoutes may not use platform hostnames or the apps domain itself
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding

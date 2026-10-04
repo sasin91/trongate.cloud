@@ -13,9 +13,9 @@ data:
   DB_PORT: "3306"
   DB_NAME: tcloud
   DB_USER: tcloud
-  PLATFORM_APPS_DOMAIN: apps.trongate.cloud
+  PLATFORM_APPS_DOMAIN: trongate.dev
   PLATFORM_REGISTRY: registry.trongate.cloud/tc
-  PLATFORM_GATEWAY_NAME: traefik-gateway
+  PLATFORM_GATEWAY_NAME: platform
   PLATFORM_GATEWAY_NAMESPACE: traefik
   SABLIER_URL: http://sablier.sablier.svc.cluster.local:10000
   FILES_STORAGE_CLASS: tenant-files

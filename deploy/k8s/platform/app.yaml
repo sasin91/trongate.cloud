@@ -92,8 +92,11 @@ spec:
   parentRefs:
     - group: gateway.networking.k8s.io
       kind: Gateway
-      name: traefik-gateway
+      name: platform
       namespace: traefik
+      # The listener serving trongate.cloud (trongate-cloud-infra's
+      # platform/configs/gateway.yaml)
+      sectionName: https-platform
   hostnames:
     - trongate.cloud
   rules:

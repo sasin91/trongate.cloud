@@ -28,9 +28,9 @@ From the platform kit (or installed separately):
   and `PLATFORM_REGISTRY` if you change them.
 - Flux with SOPS decryption (an age key in `flux-system/sops-age`).
 - `hcloud-volumes` StorageClass (Hetzner CSI), used by MariaDB and Valkey.
-- Traefik with the Gateway API provider and a Gateway `traefik-gateway` in
+- Traefik with the Gateway API provider and a Gateway `platform` in
   namespace `traefik` (`PLATFORM_GATEWAY_NAME` / `PLATFORM_GATEWAY_NAMESPACE`), with
-  HTTPS listeners for `trongate.cloud` and `*.apps.trongate.cloud` (wildcard
+  HTTPS listeners for `trongate.cloud` (`sectionName: https-platform`) and `*.trongate.dev` (wildcard
   certificate, so DNS-01) that allow routes from all namespaces.
 - The Traefik namespace labelled `platform.example.com/role=gateway`: tenant
   NetworkPolicies only admit ingress from namespaces with that label (and from
@@ -49,7 +49,7 @@ From the platform kit (or installed separately):
       allowCrossNamespace: false
   ```
 
-- DNS: `trongate.cloud` and `*.apps.trongate.cloud` pointing at the load balancer.
+- DNS: `trongate.cloud`, `trongate.dev` and `*.trongate.dev` pointing at the ingress.
 - A Hetzner Object Storage bucket for JuiceFS.
 - An OCI registry for built app images (`PLATFORM_REGISTRY`, default
   `registry.trongate.cloud/tc`). The per-build buildkitd Pods push to it over the

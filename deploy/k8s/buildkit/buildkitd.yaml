@@ -54,8 +54,21 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
+    # PLATFORM_REGISTRY when it is served by this cluster's own ingress: its
+    # hostname resolves to the node's public IP, and kube-proxy short-circuits
+    # that address straight to the Traefik pod (a 10.x address the rule below
+    # excludes), so the push never leaves the node. 8000/8443 are Traefik's
+    # container ports behind the Service's 80/443.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik
+      ports:
+        - protocol: TCP
+          port: 8000
+        - protocol: TCP
+          port: 8443
     # Package mirrors, GitHub, the frontend image and PLATFORM_REGISTRY.
-    # An in-cluster registry would need its own rule here.
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0

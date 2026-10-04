@@ -4,7 +4,9 @@ FROM php:8.4-cli-bookworm
 
 ARG RAILPACK_VERSION=0.40.1
 ARG BUILDKIT_VERSION=0.33.1
-ARG TARGETARCH=amd64
+# Set by BuildKit from --platform (linux/amd64 -> amd64, linux/arm64 -> arm64);
+# no default, so a build without it fails below instead of shipping the wrong arch
+ARG TARGETARCH
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
