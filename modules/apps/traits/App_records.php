@@ -32,7 +32,7 @@ trait App_records {
     /**
      * Update an app's platform settings (the app must be in the project).
      *
-     * @param array{domain: ?string, persistent_paths: list<string>, php_extensions: string, always_on: bool, resource_tier: string, auto_deploy: bool} $settings
+     * @param array{domain: ?string, persistent_paths: list<string>, php_extensions: string, always_on: bool, auto_deploy: bool} $settings
      */
     function update_app_settings(int $project_id, int $app_id, array $settings): void {
         $old = $this->find_project_app($project_id, $app_id);
@@ -52,7 +52,6 @@ trait App_records {
                 persistent_paths = :persistent_paths,
                 php_extensions = :php_extensions,
                 always_on = :always_on,
-                resource_tier = :resource_tier,
                 auto_deploy = :auto_deploy
             WHERE id = :app_id AND project_id = :project_id
         SQL;
@@ -66,7 +65,6 @@ trait App_records {
             'persistent_paths' => json_encode($settings['persistent_paths']),
             'php_extensions' => $settings['php_extensions'],
             'always_on' => $settings['always_on'] ? 1 : 0,
-            'resource_tier' => $settings['resource_tier'],
             'auto_deploy' => $settings['auto_deploy'] ? 1 : 0,
             'app_id' => $app_id,
             'project_id' => $project_id,
@@ -96,24 +94,5 @@ trait App_records {
         $count = $this->db->query_bind($sql, ['domain' => $domain, 'ignore_id' => $ignore_app_id ?? 0], 'column');
 
         return (int) $count > 0;
-    }
-
-    /**
-     * The resource tier of every live app in a project, for the tenant quota
-     * check (Manifests::quota_shortfall). Deleted apps keep their row but
-     * no pods, so they do not count.
-     *
-     * @return list<string>
-     */
-    function project_resource_tiers(int $project_id, ?int $except_app_id = null): array {
-        $sql = <<<SQL
-            SELECT resource_tier
-            FROM app
-            WHERE project_id = :project_id AND id <> :except_id
-              AND deleted_at IS NULL
-        SQL;
-        $rows = $this->db->query_bind($sql, ['project_id' => $project_id, 'except_id' => $except_app_id ?? 0], 'array');
-
-        return array_map(fn(array $row) => (string) $row['resource_tier'], $rows);
     }
 }

@@ -21,9 +21,6 @@ trait App_form {
         'trongate_v1' => 'Trongate v1',
     ];
 
-    /** The project the new app goes into, for the quota check (0: a project yet to be created) */
-    private int $new_app_project_id = 0;
-
     /** The app whose settings are being saved, so its own domain does not count as taken */
     private int $editing_app_id = 0;
 
@@ -44,16 +41,11 @@ trait App_form {
         ];
     }
 
-    /**
-     * @param int $project_id The target project (0 when onboarding creates it after validation)
-     */
-    function _set_app_rules(int $project_id): void {
-        $this->new_app_project_id = $project_id;
-
+    function _set_app_rules(): void {
         $this->validation->set_rules('provider', 'Source Control Provider', 'required|callback__validate_source_provider');
         $this->validation->set_rules('repository', 'Repository', 'required|max_length[200]|callback__validate_repository');
         $this->validation->set_rules('repository_branch', 'Branch', 'required|max_length[100]|callback__validate_branch');
-        $this->validation->set_rules('label', 'App Name', 'required|min_length[3]|max_length[50]|callback__validate_project_has_room');
+        $this->validation->set_rules('label', 'App Name', 'required|min_length[3]|max_length[50]');
         $this->validation->set_rules('domain', 'Custom Domain', 'max_length[253]|callback__validate_domain');
         $this->validation->set_rules('type', 'App Type', 'required|callback__validate_app_type');
     }
@@ -167,21 +159,6 @@ trait App_form {
     function _validate_app_type(string $type): bool|string {
         if (!isset(self::APP_TYPES[$type])) {
             return 'Invalid app type.';
-        }
-
-        return true;
-    }
-
-    /**
-     * A new app starts on the default resource tier; the project's apps must
-     * still fit its quota with it (Manifests::quota_shortfall), or its rollouts hang.
-     */
-    function _validate_project_has_room(string $label): bool|string {
-        $tiers = $this->new_app_project_id > 0 ? $this->model->project_resource_tiers($this->new_app_project_id) : [];
-        $tiers[] = Resource_tiers::DEFAULT_TIER;
-
-        if (Manifests::quota_shortfall($tiers) !== null) {
-            return 'This project has no room for another app. Make one of its apps smaller, or delete one, first.';
         }
 
         return true;

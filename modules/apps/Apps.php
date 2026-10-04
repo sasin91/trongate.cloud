@@ -58,7 +58,7 @@ class Apps extends Trongate {
         $project = $this->_member_project_or_redirect(segment(3, 'int'));
         $customer = $this->_customer_or_redirect();
 
-        $this->_set_app_rules((int) $project->id);
+        $this->_set_app_rules();
 
         if ($this->validation->run() !== true) {
             $this->create();
@@ -211,8 +211,6 @@ class Apps extends Trongate {
             'persistent_paths' => $is_resubmit ? (string) post('persistent_paths') : implode("\n", $paths),
             'php_extensions' => $is_resubmit ? (string) post('php_extensions', true) : (string) $app->php_extensions,
             'always_on' => $is_resubmit ? (bool) post('always_on') : (bool) $app->always_on,
-            'resource_tier' => $is_resubmit ? (string) post('resource_tier', true) : (string) $app->resource_tier,
-            'resource_tiers' => Resource_tiers::options(),
             'auto_deploy' => $is_resubmit ? (bool) post('auto_deploy') : (bool) $app->auto_deploy,
             'domain_record' => !empty($app->domain) ? $this->model->domain_verification_record((int) $app->id, (string) $app->domain) : null,
             'domain_routed' => Manifests::custom_domains((array) $app) !== [],
@@ -236,7 +234,6 @@ class Apps extends Trongate {
         $this->validation->set_rules('domain', 'Custom Domain', 'max_length[253]|callback__validate_domain');
         $this->validation->set_rules('persistent_paths', 'Persistent Paths', 'max_length[4000]|callback__validate_persistent_paths');
         $this->validation->set_rules('php_extensions', 'PHP Extensions', 'max_length[255]|callback__validate_php_extensions');
-        $this->validation->set_rules('resource_tier', 'Resources', 'required|callback__validate_resource_tier');
 
         if ($this->validation->run() !== true) {
             $this->settings();
@@ -248,7 +245,6 @@ class Apps extends Trongate {
             'persistent_paths' => $this->_parse_persistent_paths((string) post('persistent_paths')),
             'php_extensions' => implode(',', $this->_parse_php_extensions((string) post('php_extensions', true))),
             'always_on' => (bool) post('always_on'),
-            'resource_tier' => (string) post('resource_tier', true),
             'auto_deploy' => (bool) post('auto_deploy'),
         ]);
 
@@ -421,32 +417,6 @@ class Apps extends Trongate {
             if (!preg_match('/^[a-z][a-z0-9_]{0,39}$/', $name)) {
                 return "\"{$name}\" is not a valid PHP extension name.";
             }
-        }
-
-        return true;
-    }
-
-    /**
-     * The tier must be on the ladder, and the project's apps must still fit its
-     * quota with it (Manifests::quota_shortfall); otherwise every later rollout
-     * in the project would hang on "exceeded quota". Moving down is always allowed.
-     */
-    function _validate_resource_tier(string $tier): bool|string {
-        if (!Resource_tiers::exists($tier)) {
-            return 'Please choose one of the listed resource sizes.';
-        }
-
-        $app = $this->_member_app_or_redirect(segment(3, 'int'));
-
-        if (Resource_tiers::rank($tier) <= Resource_tiers::rank((string) $app->resource_tier)) {
-            return true;
-        }
-
-        $tiers = $this->model->project_resource_tiers((int) $app->project_id, (int) $app->id);
-        $tiers[] = $tier;
-
-        if (Manifests::quota_shortfall($tiers) !== null) {
-            return "This project's apps would not fit in its resources with this size. Choose a smaller size, or make another app in the project smaller first.";
         }
 
         return true;

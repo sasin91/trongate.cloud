@@ -249,7 +249,7 @@ trait Platform_actions {
                 a.id, a.project_id, a.label, a.slug, a.type, a.domain, a.verified_domain,
                 a.domain_pointed_at, a.domain_secured_at, a.domain_checked_at,
                 a.source_provider, a.source_url, a.source_branch,
-                a.persistent_paths, a.php_extensions, a.always_on, a.resource_tier,
+                a.persistent_paths, a.php_extensions, a.always_on,
                 a.database_server_id, a.current_deployment_id, a.created_at,
                 cd.status AS current_status,
                 cd.commit_sha AS current_commit_sha,

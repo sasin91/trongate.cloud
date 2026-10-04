@@ -78,7 +78,7 @@ class Onboarding extends Trongate {
         $customer = $this->_customer_or_redirect();
         $project_id = $this->_onboarding_project_id((int) $customer->id);
 
-        $this->_set_app_rules($project_id ?? 0);
+        $this->_set_app_rules();
 
         if ($this->validation->run() === false) {
             $this->app();

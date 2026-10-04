@@ -451,7 +451,6 @@ trait Mcp_tools {
             'source_url' => $app->source_url ?? null,
             'source_branch' => $app->source_branch ?? null,
             'always_on' => !empty($app->always_on),
-            'resource_tier' => $app->resource_tier ?? Resource_tiers::DEFAULT_TIER,
             'current_deployment_id' => isset($app->current_deployment_id) ? (int) $app->current_deployment_id : null,
             'current_status' => $app->current_status ?? null,
             'current_commit_sha' => $app->current_commit_sha ?? null,

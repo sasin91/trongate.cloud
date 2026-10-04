@@ -186,7 +186,6 @@ CREATE TABLE app (
   persistent_paths JSON DEFAULT '[]',
   php_extensions VARCHAR(255) NOT NULL DEFAULT '',
   always_on TINYINT(1) NOT NULL DEFAULT 0,
-  resource_tier VARCHAR(20) NOT NULL DEFAULT 'small' COMMENT 'A rung of modules/platform/manifests/Resource_tiers.php',
   database_server_id INT NULL,
   current_deployment_id INT NULL,
 
