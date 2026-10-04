@@ -104,7 +104,9 @@ $config['login'] = [
         2 => [
             'target_table'            => 'customer',
             'user_ref_field'          => 'trongate_user_id',
-            'secret_login_word'       => 'customer',
+            // Also the /login route's last segment: the login module matches the
+            // secret word against the raw URL, so the two must be the same word.
+            'secret_login_word'       => 'login',
             'redirect_on_success'     => 'onboarding',
             'allow_remember'          => 1,
             'remember_days'           => 30,

@@ -36,9 +36,7 @@ class Login extends Trongate {
     private function resolve_level(): int {
 
         $levels = $this->model->get_configured_level_configs();
-        // The routed segment, not the raw URL: /login routes to
-        // login/login/customer, whose raw last part is "login"
-        $last_segment = segment(3);
+        $last_segment = get_last_part(current_url(), '/');
 
         // Check if last URL segment matches a configured secret word
         foreach ($levels as $level_id => $config) {
