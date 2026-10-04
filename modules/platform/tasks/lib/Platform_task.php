@@ -32,19 +32,19 @@ class Platform_task {
     }
 
     /**
-     * The project row; fails unless it belongs to the team
+     * The project row; fails unless it belongs to the team and is not deleted
      */
     static function project(mysqli $db, int $team_id, int $project_id): array {
         $sql = <<<SQL
             SELECT *
             FROM project
-            WHERE id = ? AND team_id = ?
+            WHERE id = ? AND team_id = ? AND deleted_at IS NULL
             SQL;
 
         $project = self::row($db, $sql, 'ii', $project_id, $team_id);
 
         if ($project === null) {
-            throw new RuntimeException("Project #{$project_id} not found for team #{$team_id}");
+            throw new RuntimeException("Project #{$project_id} not found for team #{$team_id} (or deleted)");
         }
 
         return $project;
@@ -211,6 +211,45 @@ class Platform_task {
                 }
             }
         }
+    }
+
+    /**
+     * Delete one of a project's objects, but only after checking that it carries
+     * the project's ownership labels (Manifests::owned_by_project). The delete is
+     * pinned to the checked object's uid, so a replacement is never removed.
+     *
+     * Secrets are write-only for the worker (worker-rbac.yaml) and cannot be
+     * read first. They are deleted as a collection filtered by name and by the
+     * same labels, so the API server does the label check: a Secret under that
+     * name without the project's labels matches nothing and stays. The
+     * admission policy trongate-worker-owned-deletes is a backstop for every
+     * kind.
+     *
+     * @return bool false when the object was already gone (for a Secret: or is not the project's)
+     * @throws RuntimeException when the object exists but is not the project's
+     */
+    static function delete_owned(Kubernetes $kube, string $api_version, string $kind, int $team_id, int $project_id, string $name): bool {
+        $namespace = Manifests::namespace_name($team_id);
+
+        if ($api_version === 'v1' && $kind === 'Secret') {
+            $labels = array_map(fn(string $key, string $value) => "{$key}={$value}", array_keys(Manifests::project_labels($project_id)), Manifests::project_labels($project_id));
+
+            return $kube->delete_collection($api_version, $kind, $namespace, implode(',', $labels), 'metadata.name=' . $name) > 0;
+        }
+
+        $object = $kube->get($api_version, $kind, $namespace, $name);
+
+        if ($object === null) {
+            return false;
+        }
+
+        if (!Manifests::owned_by_project($object, $team_id, $project_id)) {
+            throw new RuntimeException("{$kind} {$name} does not carry project #{$project_id}'s labels; left in place");
+        }
+
+        $uid = $object['metadata']['uid'] ?? null;
+
+        return $kube->delete($api_version, $kind, $namespace, $name, is_string($uid) ? $uid : null);
     }
 
     /**

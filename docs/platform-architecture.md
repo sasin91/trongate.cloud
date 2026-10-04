@@ -44,25 +44,27 @@ Done in code:
   - `db/015_domain_verification.sql`: `project.verified_domain` (UNIQUE).
   - `db/016_resource_tiers.sql`: `project.resource_tier` (default `small`, today's limits).
   - `db/017_deploy_reconcile.sql`: `reconcile` deploy trigger, `project.auto_deploy` and `reconciled_at`, `tasks.team_id` nullable for platform-wide tasks, `scheduled_jobs`.
+  - `db/018_project_deletion.sql`: `project.deleted_at` (soft delete).
 - **Worker** (`modules/platform/worker`): polls `tasks`, runs `modules/platform/tasks/{script}.php`, logs to `task_logs`, closes the task's deployment. Shell steps get a minimal environment (no `APP_KEY`/`DB_PASSWORD`/tokens) and are killed after 30 minutes (`Runtime::SHELL_TIMEOUT_SECONDS`).
   - Periodic tasks (`Runtime::PERIODIC_TASKS`, script => interval): the poll loop queues each as a team-less task when due. `scheduled_jobs` holds the claim (one conditional UPDATE, so extra replicas never queue a job twice or while its last run is unfinished), when each job last finished and last failed (recorded by the Runtime) and the last run's summary (optional, from the script). Finished and failed runs are pruned after 7 days.
   - Queues deploys through `Platform_actions` (`Worker_actions` over a mysqli `Worker_db`), so it follows the same rules as the UI.
 - **Task scripts** (`modules/platform/tasks`):
   - `deploy`: resolves the commit (webhook deploys always build the branch head), downloads the tarball, rejects symlinks that leave the tree, writes `railpack.json` (and an empty `composer.json` so `RAILPACK_PHP_EXTENSIONS` applies), builds with `railpack prepare` + `buildctl` on a BuildKit daemon Pod started for this build only, pushes to `PLATFORM_REGISTRY`, places the database, applies `Manifests::tenant` + `Manifests::app` and waits for the rollout.
   - `rollback`: re-applies a previous image.
-  - `destroy_project`: removes a project's resources (keeps the namespace, the database and the files).
+  - `destroy_project`: removes a deleted project's app (HTTPRoute, Middleware, Service, Deployment, MariaDB Grant/User/Database CRs, files PVC, database Secret), then releases its verified domain. Each object is read first and deleted only if it sits in the team's namespace and carries the project's ownership labels (`managed-by=trongate-cloud`, `project-id`, `app.kubernetes.io/name`), pinned to the checked uid. If it fails, nothing retries it automatically: the project stays soft-deleted (hidden everywhere, its verified domain still held) and its app may keep serving until an admin re-queues it with the MCP tool `retry_project_cleanup`. Keeps the namespace, the database (Database CR `cleanupPolicy: Skip`), the files (`reclaimPolicy: Retain`), the images and the soft-deleted row (slug and history).
   - `reconcile_deploys` (periodic, `DEPLOY_RECONCILE_INTERVAL`, default 600s): the backstop for missed GitHub push webhooks, which GitHub does not retry. For projects with Deploy on push on (`project.auto_deploy`) whose webhook has deployed before, compares the branch head with the deployments and queues a `reconcile` deploy for a head nothing has built, after confirming through the GitHub hooks API that the project's webhook is still on the repository (no webhook, or a token that may not read hooks: no deploy). Never re-queues a SHA that has any deployment (a failed head waits for a human), leaves heads under 5 minutes old to their webhook, does not queue while a deploy is pending or running, counts heads undeployed over 15 minutes that nothing will deploy as stuck, and makes one GitHub call per repository branch with the team's token. At most 200 projects per run, longest unchecked first (`project.reconciled_at`), so the cap rotates. The worker runs one task at a time, so a run stops as soon as a customer task is waiting, or when GitHub answers 5xx or cannot be reached; customer deploys wait at most for the GitHub call in flight (normally well under a second, about 90 s at worst with the client's timeout and retries).
 - **Library**:
   - Kubernetes client with server-side apply (`modules/services/clients/Kubernetes.php`).
   - Manifest builders (`modules/platform/manifests`): tenant namespaces, apps (with ephemeral-storage limits and Sablier `sablier.enable`/`sablier.group` labels) and per-build buildkitd Pods.
   - Config rendering for the mounted `config.php`/`database.php` (`Trongate_config`).
   - Settings in `config/platform.php`.
-- **Platform actions** (`modules/platform/traits/Platform_actions.php`): queue deploys and rollbacks, and read projects, deployments and logs by explicit team id. A project has at most one queued deploy; new requests update it instead of adding another. Also handles custom-domain verification (`_trongate-cloud.{domain}` TXT record). The UI, webhooks and MCP all use it.
+- **Platform actions** (`modules/platform/traits/Platform_actions.php`): queue deploys, rollbacks and project deletes, and read projects, deployments and logs by explicit team id. A project has at most one queued deploy; new requests update it instead of adding another. Also handles custom-domain verification (`_trongate-cloud.{domain}` TXT record). The UI, webhooks and MCP all use it.
 - **Customer UI**:
   - Onboarding: team → GitHub token → first project. The project gets a slug and webhook secret, and its first deploy is queued.
   - Dashboard: the team's projects with their live state from the cluster (running, asleep, starting, crashing, stuck).
   - Project page: live URLs, the current deployment, the app's live state (polled every 5s), deployment history, Deploy and Rollback (to the previous deployment or one you pick).
   - Project settings: custom domain with DNS verification, persistent paths, extra PHP extensions, always-on, resources (a rung of the tier ladder), and the GitHub webhook URL and secret.
+  - Delete project (team owners and admins only; deploys and rollbacks stay open to every member): a confirmation page (type the slug, CSRF-protected) soft-deletes the project and queues `destroy_project`. Refused while a deployment is running; queued deploys are cancelled.
   - Deployment page: logs polled with MX.
   - Team switcher: CSRF-protected.
 - **Custom domains**: platform hosts (`BASE_URL`, `PLATFORM_REGISTRY` and their subdomains) are rejected, and a domain is routed only once its TXT record verifies it. The admission policy also blocks platform hostnames on tenant HTTPRoutes.
@@ -71,19 +73,20 @@ Done in code:
   - Answers `ping`.
   - Queues a deploy when a push hits the project's branch, unless the customer turned Deploy on push off in project settings. A replayed push cannot roll an app back, because deploys always build the branch head.
 - **Metrics**: `app_tasks` (customer tasks only), `app_deployments`, `app_live_projects`, `app_periodic_task_last_run_timestamp_seconds{task}`, `app_periodic_task_last_failure_timestamp_seconds{task}`, `app_deploy_reconcile_heads{outcome}` (last run; `recovered` > 0 means a push webhook was missed), `app_deploy_reconcile_stuck_heads` (last run; > 0 means a head is not getting deployed, worth an alert).
-- **Admin MCP** (`POST /mcp`, `modules/mcp`): one `MCP_SECRET` bearer secret (in the app-only `trongate-cloud-mcp` Secret), tools across all teams. See `docs/mcp.md`.
+- **Admin MCP** (`POST /mcp`, `modules/mcp`): one `MCP_SECRET` bearer secret (in the app-only `trongate-cloud-mcp` Secret), tools across all teams, including `audit_app_resources`: a read-only list of labelled per-project objects that no longer match a live project, and of deleted projects whose cleanup failed or is pending (it never repairs), and `retry_project_cleanup` to re-queue such a cleanup. See `docs/mcp.md`.
 - **Cluster manifests** (`deploy/k8s`, see its README):
   - Operators; the shared MariaDB, Valkey and JuiceFS.
   - BuildKit: a namespace, quota and NetworkPolicy; daemons are created per build.
   - Sablier.
   - Platform: the app, the worker, and its own MariaDB `platform`, which tenants cannot reach.
-  - App access: a cluster-wide read-only role on Deployments and Pods for live app state (`platform/app-rbac.yaml`).
-  - Worker access: RBAC with write-only Secrets, plus admission policies that limit where the worker writes and what the objects contain.
+  - App access: a cluster-wide read-only role on Deployments and Pods for live app state, and on the other per-project kinds (no Secrets) for the orphan audit (`platform/app-rbac.yaml`).
+  - Worker access: RBAC with write-only Secrets (deleted only through a `deletecollection` filtered by the project's labels and the name, so the API server does the label check the worker cannot do by reading), plus admission policies that limit where the worker writes, what the objects contain, and that it only deletes objects carrying its labels (a project's `p{id}-*` objects only with that project's id and name labels). Neither check knows the team: a project's namespace is trusted from the destroy_project payload, which must match the project row.
 
 Still open:
 
 - **Not wired yet:**
-  - Nothing queues `destroy_project`; there is no project delete action.
+  - A failed `destroy_project` is not retried automatically and nobody is alerted; it shows up in the MCP's `audit_app_resources` and is re-queued by hand (`retry_project_cleanup`).
+  - Released files PVs and kept `tc_p{id}` databases of deleted projects pile up until removed by hand; there is no purge step yet.
   - No CI workflow builds or pushes the platform images.
   - Valkey session/cache wiring for tenants (per-tenant ACL users).
   - Backups.
@@ -95,7 +98,7 @@ Still open:
 - **Needs a live cluster:**
   - Cross-namespace `mariaDbRef`.
   - The platform MariaDB passing restricted Pod Security.
-  - The CEL admission policies.
+  - The CEL admission policies. `trongate-worker-owned-deletes` and the worker's `deletecollection` on Secrets are not on the cluster yet: apply them, and check them with a server-side dry run (a labelled and an unlabelled `p{id}-*` object, and a Secret via `deletecollection`), before the first tenant is deleted.
   - Railpack's FrankenPHP image running as uid 1000 on port 8080.
   - The empty `composer.json` approach.
   - Per-build buildkitd start-up time.

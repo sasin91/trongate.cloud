@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../../platform/manifests/Manifests.php';
+require_once __DIR__ . '/../../platform/live/App_resource_audit.php';
 
 /**
  * MCP tools for controllers: definitions (tools/list) and handlers (tools/call).
@@ -24,6 +25,8 @@ trait Mcp_tools {
         'platform_status',
         'deploy_project',
         'rollback_project',
+        'audit_app_resources',
+        'retry_project_cleanup',
     ];
 
     /** Deployment statuses after which nothing changes */
@@ -116,6 +119,25 @@ trait Mcp_tools {
                         'project_id' => $project_id,
                         'deployment_id' => ['type' => 'integer', 'minimum' => 1, 'description' => 'Optional successful deployment to roll back to'],
                     ],
+                    'required' => ['project_id'],
+                    'additionalProperties' => false,
+                ],
+                'annotations' => ['readOnlyHint' => false, 'destructiveHint' => true, 'idempotentHint' => false, 'openWorldHint' => false],
+            ],
+            [
+                'name' => 'audit_app_resources',
+                'title' => 'Audit app resources',
+                'description' => 'List cluster objects labelled as a trongate.cloud project that no longer match a live project in their namespace, and deleted projects whose cleanup (destroy_project) failed or has not finished. Read-only: reports, never repairs.',
+                'inputSchema' => ['type' => 'object', 'properties' => (object) [], 'additionalProperties' => false],
+                'annotations' => $read_only,
+            ],
+            [
+                'name' => 'retry_project_cleanup',
+                'title' => 'Retry project cleanup',
+                'description' => "Queue destroy_project again for a deleted project whose cleanup failed (see audit_app_resources). It removes the app's objects that carry the project's labels; the database and files are kept.",
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => ['project_id' => ['type' => 'integer', 'minimum' => 1, 'description' => 'Deleted project id (from audit_app_resources)']],
                     'required' => ['project_id'],
                     'additionalProperties' => false,
                 ],
@@ -275,6 +297,55 @@ trait Mcp_tools {
             'status' => 'pending',
             'project' => ['id' => (int) $project->id, 'label' => $project->label],
             'next' => 'Follow progress with get_deployment_logs {"deployment_id": ' . $deployment_id . '}',
+        ];
+    }
+
+    function _tool_audit_app_resources(array $args): array {
+        try {
+            $orphans = App_resource_audit::orphans(Kubernetes::from_env(), $this->model->live_project_refs());
+        } catch (Client_Error $e) {
+            throw new RuntimeException('Could not read the cluster: ' . $e->getMessage());
+        }
+
+        $cleanups = array_map(fn(object $row) => [
+            'project_id' => (int) $row->project_id,
+            'team_id' => (int) $row->team_id,
+            'label' => $row->label,
+            'slug' => $row->slug,
+            'verified_domain' => $row->verified_domain,
+            'deleted_at' => $row->deleted_at,
+            'task_id' => $row->task_id === null ? null : (int) $row->task_id,
+            'state' => match (true) {
+                $row->task_id === null => 'never_queued',
+                $row->failed_at !== null => 'failed',
+                $row->started_at !== null => 'running',
+                default => 'queued',
+            },
+            'error' => $row->error_message,
+        ], $this->model->unfinished_cleanups());
+
+        return [
+            'orphans' => $orphans,
+            'unfinished_cleanups' => $cleanups,
+            'checked_kinds' => array_column(App_resource_audit::KINDS, 1),
+            'note' => 'Read-only: nothing was changed. Secrets are not listed (the app cannot read them); a failed or never-queued cleanup may also have left the database Secret. Re-run one with retry_project_cleanup {"project_id": ...}.',
+        ];
+    }
+
+    function _tool_retry_project_cleanup(array $args): array {
+        $project_id = $this->_int_arg($args, 'project_id');
+        $team_id = $this->model->project_team_id($project_id);
+
+        if ($team_id === false) {
+            throw new RuntimeException('Project not found');
+        }
+
+        $task_id = $this->model->requeue_project_destroy($team_id, $project_id);
+
+        return [
+            'task_id' => $task_id,
+            'project_id' => $project_id,
+            'next' => 'Check the result with audit_app_resources once the worker has run it',
         ];
     }
 

@@ -17,6 +17,9 @@ class Manifests {
     const LABEL_PREFIX = 'platform.example.com';
     const MANAGED_BY = 'trongate-cloud';
 
+    /** Every per-project object carries this label (the project id) next to managed-by */
+    const PROJECT_LABEL = self::LABEL_PREFIX . '/project-id';
+
     // Railpack's FrankenPHP Caddyfile serves ":{$PORT:80}" from /app (or RAILPACK_PHP_ROOT_DIR).
     // We set PORT because restricted pods run as non-root and cannot bind :80.
     const APP_DIR = '/app';
@@ -291,10 +294,7 @@ class Manifests {
             throw new InvalidArgumentException('Deployment has no image');
         }
 
-        $labels = self::_labels([
-            'app.kubernetes.io/name' => $name,
-            self::LABEL_PREFIX . '/project-id' => (string) $project_id,
-        ]);
+        $labels = self::project_labels($project_id);
         $selector = ['app.kubernetes.io/name' => $name];
 
         $password = (string) ($database['password'] ?? self::database_password($project_id));
@@ -462,6 +462,59 @@ class Manifests {
         ];
 
         return $manifests;
+    }
+
+    /**
+     * Ownership labels of every object app() emits for a project
+     */
+    static function project_labels(int $project_id): array {
+        return self::_labels([
+            'app.kubernetes.io/name' => self::app_name($project_id),
+            self::PROJECT_LABEL => (string) $project_id,
+        ]);
+    }
+
+    /**
+     * Whether a live object is one of this project's: it sits in the team's
+     * namespace and carries all of project_labels(). Cleanup checks this before
+     * deleting anything, so a wrong name can never remove someone else's object.
+     */
+    static function owned_by_project(array $object, int $team_id, int $project_id): bool {
+        $metadata = $object['metadata'] ?? [];
+
+        if (($metadata['namespace'] ?? null) !== self::namespace_name($team_id)) {
+            return false;
+        }
+
+        foreach (self::project_labels($project_id) as $key => $value) {
+            if (($metadata['labels'][$key] ?? null) !== $value) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * [apiVersion, kind, name] of everything app() may create for a project, in
+     * teardown order: traffic first, then workloads, then data access, then config
+     *
+     * @return list<array{string, string, string}>
+     */
+    static function app_resources(int $project_id): array {
+        $name = self::app_name($project_id);
+
+        return [
+            ['gateway.networking.k8s.io/v1', 'HTTPRoute', $name],
+            ['traefik.io/v1alpha1', 'Middleware', $name],
+            ['v1', 'Service', $name],
+            ['apps/v1', 'Deployment', $name],
+            ['k8s.mariadb.com/v1alpha1', 'Grant', "{$name}-db-grant"],
+            ['k8s.mariadb.com/v1alpha1', 'User', "{$name}-db-user"],
+            ['k8s.mariadb.com/v1alpha1', 'Database', "{$name}-db"],
+            ['v1', 'PersistentVolumeClaim', "p{$project_id}-files"],
+            ['v1', 'Secret', "p{$project_id}-database"],
+        ];
     }
 
     /**

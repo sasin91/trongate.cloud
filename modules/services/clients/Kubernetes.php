@@ -3,7 +3,7 @@
 require_once __DIR__ . '/Client.php';
 
 /**
- * Kubernetes API client (server-side apply, get, delete, rollout wait)
+ * Kubernetes API client (server-side apply, get, list, delete, rollout wait)
  * https://kubernetes.io/docs/reference/using-api/server-side-apply/
  *
  * Framework-free: loaded by the worker as well as the web app.
@@ -164,10 +164,19 @@ class Kubernetes extends Client {
 
     /**
      * Delete an object (background propagation); false when it did not exist
+     *
+     * With $uid, the API server only deletes the object with that uid (409
+     * otherwise), so an object replaced since it was checked survives.
      */
-    function delete(string $api_version, string $kind, ?string $namespace, string $name): bool {
+    function delete(string $api_version, string $kind, ?string $namespace, string $name, ?string $uid = null): bool {
+        $options = $uid === null ? [] : [
+            'apiVersion' => 'v1',
+            'kind' => 'DeleteOptions',
+            'preconditions' => ['uid' => $uid],
+        ];
+
         try {
-            $this->request('DELETE', $this->path($api_version, $kind, $namespace, $name) . '?propagationPolicy=Background');
+            $this->request('DELETE', $this->path($api_version, $kind, $namespace, $name) . '?propagationPolicy=Background', $options);
             return true;
         } catch (Client_Error $e) {
             if ($e->getCode() === 404) {
@@ -176,6 +185,32 @@ class Kubernetes extends Client {
 
             throw $e;
         }
+    }
+
+    /**
+     * Delete the objects of a kind in a namespace that match a label selector
+     * (and field selector); returns how many were deleted.
+     *
+     * The API server applies the selectors, so this deletes by labels without
+     * reading the objects first: the way to delete a Secret only if it carries
+     * our labels when the caller cannot read Secrets. The response lists the
+     * deleted objects; only their count is returned.
+     */
+    function delete_collection(string $api_version, string $kind, string $namespace, string $label_selector, string $field_selector = ''): int {
+        // Without a selector this would delete every object of the kind
+        if ($namespace === '' || trim($label_selector) === '') {
+            throw new InvalidArgumentException('delete_collection needs a namespace and a label selector');
+        }
+
+        $query = ['labelSelector' => $label_selector, 'propagationPolicy' => 'Background'];
+
+        if ($field_selector !== '') {
+            $query['fieldSelector'] = $field_selector;
+        }
+
+        $result = $this->request('DELETE', $this->path($api_version, $kind, $namespace) . '?' . http_build_query($query));
+
+        return count($result['items'] ?? []);
     }
 
     /**
@@ -251,7 +286,8 @@ class Kubernetes extends Client {
     }
 
     /**
-     * API path for a kind; omit $name for the collection
+     * API path for a kind; omit $name for the collection, and also $namespace
+     * for a namespaced kind's collection across all namespaces
      */
     function path(string $api_version, string $kind, ?string $namespace, ?string $name = null): string {
         $key = $api_version . '/' . $kind;
@@ -264,11 +300,11 @@ class Kubernetes extends Client {
         $path = str_contains($api_version, '/') ? '/apis/' . $api_version : '/api/' . $api_version;
 
         if ($namespaced) {
-            if ($namespace === null || $namespace === '') {
+            if ($namespace !== null && $namespace !== '') {
+                $path .= '/namespaces/' . rawurlencode($namespace);
+            } elseif ($name !== null) {
                 throw new InvalidArgumentException("{$kind} is namespaced; a namespace is required");
             }
-
-            $path .= '/namespaces/' . rawurlencode($namespace);
         }
 
         $path .= '/' . $plural;

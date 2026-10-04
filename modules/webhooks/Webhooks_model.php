@@ -15,7 +15,7 @@ class Webhooks_model extends Model {
         $sql = <<<SQL
             SELECT id, team_id, source_url, source_branch, webhook_secret, auto_deploy
             FROM project
-            WHERE id = :project_id
+            WHERE id = :project_id AND deleted_at IS NULL
             LIMIT 1
         SQL;
         $rows = $this->db->query_bind($sql, ['project_id' => $project_id], 'object');

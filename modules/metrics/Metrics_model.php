@@ -39,7 +39,7 @@ class Metrics_model extends Model {
      */
     function live_project_count(): int {
         $sql = <<<SQL
-            SELECT COUNT(*) FROM project WHERE current_deployment_id IS NOT NULL
+            SELECT COUNT(*) FROM project WHERE current_deployment_id IS NOT NULL AND deleted_at IS NULL
         SQL;
         return (int) $this->db->query($sql, 'column');
     }
@@ -48,7 +48,7 @@ class Metrics_model extends Model {
      * Periodic worker tasks (Runtime::PERIODIC_TASKS): when each last finished
      * and last failed (unix time) and its last run's summary.
      *
-     * Empty until db/016 is applied: migrations run by hand, and a missing
+     * Empty until db/017 is applied: migrations run by hand, and a missing
      * table must not take the other gauges down with it.
      */
     function scheduled_jobs(): array {

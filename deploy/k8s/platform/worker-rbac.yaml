@@ -3,7 +3,9 @@
 # worker-admission-policy.yaml further limits writes to tc-team-* namespaces and
 # checks what the objects contain. Secrets are write-only: Kubernetes::apply is a
 # server-side-apply PATCH, so the worker never reads a Secret (and must not be
-# able to read the platform's, the operators' or Flux's).
+# able to read the platform's, the operators' or Flux's). It deletes Secrets only
+# as a collection filtered by its own labels (Platform_task::delete_owned), never
+# by name: a DELETE response carries the deleted object, data included.
 # Build daemon Pods in the buildkit namespace: ../buildkit/worker-rbac.yaml.
 apiVersion: v1
 kind: ServiceAccount
@@ -25,7 +27,7 @@ rules:
     verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["create", "patch", "update", "delete"]
+    verbs: ["create", "patch", "update", "deletecollection"]
   - apiGroups: [""]
     resources: ["pods", "events"]
     verbs: ["get", "list", "watch"]
