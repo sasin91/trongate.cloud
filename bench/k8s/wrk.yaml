@@ -1,4 +1,4 @@
-# Rendered by cluster-run.sh with envsubst: NAME, WRK_IMAGE, URL, LUA_FLAG, HOST_HEADER.
+# Rendered by cluster-run.sh with envsubst: NAME, WRK_IMAGE, URL, LUA_FLAG, HOST_HEADER, ALIAS_IP, ALIAS_HOST.
 # Runs on a different node than the app so they do not share CPU.
 apiVersion: batch/v1
 kind: Job
@@ -13,6 +13,10 @@ spec:
       labels: {app: wrk}
     spec:
       restartPolicy: Never
+      # Sends the gateway runs' hostname to the gateway Service, so TLS gets the right SNI
+      hostAliases:
+        - ip: "${ALIAS_IP}"
+          hostnames: ["${ALIAS_HOST}"]
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true

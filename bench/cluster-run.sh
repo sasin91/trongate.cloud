@@ -2,8 +2,10 @@
 # Runs the Trongate benchmark in a throwaway "bench" namespace and deletes it afterwards.
 # Needs kubectl for the cluster and the images from bench/push-images.sh.
 #   KUBECONFIG=~/.config/trongate-cloud/kubeconfig bench/cluster-run.sh   # in-cluster: wrk Job -> Service -> app pod
-#   GATEWAY_URL=http://<gateway svc>.<ns>.svc GATEWAY_NAME=... GATEWAY_NAMESPACE=... \
-#   GATEWAY_SECTION=... BENCH_HOST=bench.trongate.dev bench/cluster-run.sh   # also via the gateway
+#   GATEWAY_IP=<gateway Service ClusterIP> GATEWAY_NAME=... GATEWAY_NAMESPACE=... GATEWAY_SECTION=... \
+#   BENCH_HOST=bench.trongate.dev bench/cluster-run.sh   # also over HTTPS through the gateway
+# Gateway runs label the bench namespace as a tenant and authorise BENCH_HOST on it, which is what
+# the gateway listener and the hostname admission policy require; both go with the namespace.
 # Results land in bench/results/<UTC timestamp>/ (raw wrk output + summary.csv).
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -18,7 +20,7 @@ if [ "$context" != "$EXPECTED_CONTEXT" ]; then
 fi
 kubectl() { command kubectl --context "$EXPECTED_CONTEXT" "$@"; }
 REGISTRY="${REGISTRY:-registry.trongate.cloud/platform}"
-export WRK_IMAGE="$REGISTRY/bench-wrk:latest"
+export WRK_IMAGE="$REGISTRY/bench-wrk:latest" ALIAS_IP=127.0.0.1 ALIAS_HOST=bench.invalid
 OUT="results/$(date -u +%Y%m%dT%H%M%SZ)"; mkdir -p "$OUT"
 KEEP="${KEEP:-0}"
 cleanup() { [ "$KEEP" = 1 ] || kubectl delete namespace bench --wait=false >/dev/null 2>&1 || true; }
@@ -75,11 +77,14 @@ for store in files valkey; do for s in stock lazy; do
 done; done
 
 # 4. Optional: the same app through the gateway (ingress path)
-if [ -n "${GATEWAY_URL:-}" ]; then
+if [ -n "${GATEWAY_IP:-}" ]; then
+  export BENCH_HOST GATEWAY_NAME GATEWAY_NAMESPACE GATEWAY_SECTION ALIAS_IP="$GATEWAY_IP" ALIAS_HOST="$BENCH_HOST"
+  kubectl label namespace bench platform.example.com/managed=tenant --overwrite >/dev/null
+  kubectl annotate namespace bench "platform.example.com/domains=$BENCH_HOST" --overwrite >/dev/null
   envsubst < k8s/route.yaml | kubectl apply -f - >/dev/null
   app stock 1 INFO files; sleep 5
-  load gateway_1cpu_raw /raw.php nocookie "$GATEWAY_URL" "$BENCH_HOST"
-  load gateway_1cpu_users /bench users "$GATEWAY_URL" "$BENCH_HOST"
+  load gateway_1cpu_raw /raw.php nocookie "https://$BENCH_HOST" "$BENCH_HOST"
+  load gateway_1cpu_users /bench users "https://$BENCH_HOST" "$BENCH_HOST"
 fi
 
 echo "Results: bench/$OUT"
