@@ -27,6 +27,33 @@ class Mcp_model extends Model {
         return $team_id === false ? false : (int) $team_id;
     }
 
+    /**
+     * Id and team of every project that is not deleted (all teams).
+     */
+    function live_project_refs(): array {
+        return $this->db->query('SELECT id, team_id FROM project WHERE deleted_at IS NULL', 'array');
+    }
+
+    /**
+     * Deleted projects whose app may still be on the cluster: their latest
+     * destroy_project task failed, has not finished, or was never queued.
+     * Each row says how far the last attempt got (all teams).
+     */
+    function unfinished_cleanups(): array {
+        $sql = <<<SQL
+            SELECT p.id AS project_id, p.team_id, p.label, p.slug, p.verified_domain, p.deleted_at,
+                t.id AS task_id, t.started_at, t.failed_at, t.error_message
+            FROM project p
+            LEFT JOIN tasks t ON t.id = (
+                SELECT MAX(lt.id) FROM tasks lt WHERE lt.project_id = p.id AND lt.script = 'destroy_project'
+            )
+            WHERE p.deleted_at IS NOT NULL
+              AND t.completed_at IS NULL
+            ORDER BY p.deleted_at ASC
+        SQL;
+        return $this->db->query($sql, 'object');
+    }
+
     function deployment_team_id(int $deployment_id): int|false {
         $team_id = $this->db->query_bind('SELECT team_id FROM deployment WHERE id = :id', ['id' => $deployment_id], 'column');
 
@@ -39,7 +66,7 @@ class Mcp_model extends Model {
      */
     function platform_status(?int $team_id = null): array {
         $params = $team_id === null ? [] : ['team_id' => $team_id];
-        $project_filter = $team_id === null ? '' : 'WHERE p.team_id = :team_id';
+        $project_filter = $team_id === null ? 'WHERE p.deleted_at IS NULL' : 'WHERE p.team_id = :team_id AND p.deleted_at IS NULL';
         $deployment_filter = $team_id === null ? '' : 'AND d.team_id = :team_id';
 
         $sql = <<<SQL

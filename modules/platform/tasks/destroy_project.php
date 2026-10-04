@@ -3,23 +3,41 @@
 /**
  * Destroy Project Task
  *
- * Deletes a project's resources from its tenant namespace. The namespace
- * itself stays (other projects of the team live there).
+ * Deletes a deleted project's resources from its tenant namespace. Queued by
+ * Platform_actions::queue_project_delete, which soft-deletes the project row
+ * (project.deleted_at) first.
  *
- * Payload: {project_id, team_id}. Works from the payload alone, so the
- * project row may be deleted once this task has completed.
+ * Payload: {project_id, team_id}. Works from the payload alone, so the project
+ * row may be gone. A row that still exists must belong to the team and be
+ * soft-deleted, otherwise nothing is touched.
+ *
+ * Only objects carrying the project's ownership labels are deleted
+ * (Platform_task::delete_owned); anything else under an expected name is
+ * reported and left in place, and the task fails. It is safe to re-run after a
+ * partial failure; nothing retries it automatically, the admin MCP does
+ * (retry_project_cleanup, Platform_actions::requeue_project_destroy).
+ *
+ * Removed: custom-domain Gateways and their certificate Secrets, HTTPRoute,
+ * Middleware, Service and Deployment (the app stops
+ * serving), the MariaDB Grant and User CRs (cleanupPolicy Delete, so access is
+ * revoked), the Database CR, the files PVC and the database Secret. Once all of
+ * them are gone, the project's verified custom domain is released.
  *
  * Kept on purpose:
+ * - the tenant namespace: other projects of the team live there
  * - the MariaDB database: the Database CR uses cleanupPolicy Skip, so the
  *   data survives deleting the CR (drop it by hand after the backup window)
  * - the uploaded files: the tenant-files StorageClass uses reclaimPolicy
  *   Retain, so the JuiceFS subdirectory survives deleting the PVC
- * The User and Grant CRs use cleanupPolicy Delete, so access is revoked.
+ * - the project row (soft-deleted) with its deployments, logs and slug, so
+ *   {slug}.PLATFORM_APPS_DOMAIN is never handed to another project
+ * - the built images in PLATFORM_REGISTRY
  */
 
 require_once __DIR__ . '/lib/Platform_task.php';
 
 return function (Task_log $log) use ($payload, $runtime): int {
+    $db = $runtime->db();
     $team_id = (int) $payload['team_id'];
     $project_id = (int) $payload['project_id'];
 
@@ -27,32 +45,47 @@ return function (Task_log $log) use ($payload, $runtime): int {
         throw new InvalidArgumentException('destroy_project needs team_id and project_id');
     }
 
+    $row = Platform_task::row($db, 'SELECT team_id, deleted_at FROM project WHERE id = ?', 'i', $project_id);
+
+    if ($row !== null && ((int) $row['team_id'] !== $team_id || $row['deleted_at'] === null)) {
+        throw new RuntimeException("Project #{$project_id} is not a deleted project of team #{$team_id}; refusing to destroy it");
+    }
+
     $kube = $runtime->kube();
-    $namespace = Manifests::namespace_name($team_id);
-    $name = Manifests::app_name($project_id);
-
-    // Traffic first, then workloads, then data access, then config
-    $resources = [
-        ['gateway.networking.k8s.io/v1', 'HTTPRoute', $name],
-        ['traefik.io/v1alpha1', 'Middleware', $name],
-        ['v1', 'Service', $name],
-        ['apps/v1', 'Deployment', $name],
-        ['k8s.mariadb.com/v1alpha1', 'Grant', "{$name}-db-grant"],
-        ['k8s.mariadb.com/v1alpha1', 'User', "{$name}-db-user"],
-        ['k8s.mariadb.com/v1alpha1', 'Database', "{$name}-db"],
-        ['v1', 'PersistentVolumeClaim', "p{$project_id}-files"],
-        ['v1', 'Secret', "p{$project_id}-database"],
-    ];
-
     $failures = 0;
 
-    foreach ($resources as [$api_version, $kind, $resource]) {
+    $namespace = Manifests::namespace_name($team_id);
+
+    // Custom-domain Gateways first (traffic), found by label because their names
+    // carry a domain hash; each is ownership-checked like everything else, and
+    // its cert-manager certificate Secret (private key included) goes with it.
+    try {
+        foreach ($kube->list('gateway.networking.k8s.io/v1', 'Gateway', $namespace, Manifests::domain_gateway_selector($project_id)) as $gateway) {
+            $gateway_name = (string) $gateway['metadata']['name'];
+
+            try {
+                Platform_task::delete_owned($kube, 'gateway.networking.k8s.io/v1', 'Gateway', $team_id, $project_id, $gateway_name);
+                Platform_task::delete_domain_tls_secret($kube, $namespace, $gateway_name);
+                $log->info("Deleted Gateway {$gateway_name} and its certificate");
+            } catch (Throwable $e) {
+                $failures++;
+                $log->error("Deleting Gateway {$gateway_name} failed: {$e->getMessage()}");
+            }
+        }
+    } catch (Throwable $e) {
+        $failures++;
+        $log->error("Listing custom-domain Gateways failed: {$e->getMessage()}");
+    }
+
+    foreach (Manifests::project_objects($project_id) as [$api_version, $kind, $name]) {
         try {
-            $deleted = $kube->delete($api_version, $kind, $namespace, $resource);
-            $log->info($deleted ? "Deleted {$kind} {$resource}" : "{$kind} {$resource} was already gone");
+            $deleted = Platform_task::delete_owned($kube, $api_version, $kind, $team_id, $project_id, $name);
+            // A Secret cannot be read, so "not there" and "not ours" look the same
+            $gone = $kind === 'Secret' ? "was already gone or does not carry the project's labels (left in place)" : 'was already gone';
+            $log->info($deleted ? "Deleted {$kind} {$name}" : "{$kind} {$name} {$gone}");
         } catch (Throwable $e) {
             $failures++;
-            $log->error("Deleting {$kind} {$resource} failed: {$e->getMessage()}");
+            $log->error("Deleting {$kind} {$name} failed: {$e->getMessage()}");
         }
     }
 
@@ -60,7 +93,13 @@ return function (Task_log $log) use ($payload, $runtime): int {
         return 1;
     }
 
-    $log->info("Project #{$project_id} removed from {$namespace}");
+    // The route is gone, so another project may verify the domain now
+    $stmt = $db->prepare('UPDATE project SET verified_domain = NULL WHERE id = ? AND deleted_at IS NOT NULL');
+    $stmt->bind_param('i', $project_id);
+    $stmt->execute();
+    $stmt->close();
+
+    $log->info("Project #{$project_id} removed from " . Manifests::namespace_name($team_id) . '; its database and files are kept');
 
     return 0;
 };

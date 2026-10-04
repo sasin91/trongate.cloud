@@ -39,8 +39,10 @@ Start Claude Code on your machine with the server configured, then enable **Remo
 | `platform_status` | `team_id?` | Projects and deployments by status, deployments in progress, recent failures |
 | `deploy_project` | `project_id`, `commit_sha?` | Queues a deployment (`trigger_type = mcp`, no team member) and returns its id |
 | `rollback_project` | `project_id`, `deployment_id?` | Redeploys an earlier successful image. Without `deployment_id`, it rolls back to the one before the current deployment |
+| `audit_app_resources` | | Read-only: per-project objects in tenant namespaces (HTTPRoute, Middleware, Service, Deployment, MariaDB CRs, PVC) that carry trongate.cloud's labels but match no live project, e.g. after a failed `destroy_project`, plus deleted projects whose `destroy_project` failed, is still pending, or was never queued (`unfinished_cleanups`). Never repairs; Secrets are not listed |
+| `retry_project_cleanup` | `project_id` | Queues `destroy_project` again for a deleted project (refused while one is queued or running). The only way to finish a failed cleanup: a deleted project is hidden from every other tool and the UI, and the worker does not retry |
 
-- **Annotations:** read tools are marked `readOnlyHint`; `deploy_project` and `rollback_project` are marked `destructiveHint`, so clients ask before running them.
+- **Annotations:** read tools are marked `readOnlyHint`; `deploy_project`, `rollback_project` and `retry_project_cleanup` are marked `destructiveHint`, so clients ask before running them.
 - **Results:** pretty-printed JSON text. Under `2025-06-18` the same data is also sent as `structuredContent`.
 - **Tool errors** (bad arguments, not found) come back as `isError: true` results. An unknown tool is JSON-RPC `-32602`.
 

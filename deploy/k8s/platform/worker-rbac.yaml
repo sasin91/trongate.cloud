@@ -3,7 +3,9 @@
 # worker-admission-policy.yaml further limits writes to tc-team-* namespaces and
 # checks what the objects contain. Secrets are write-only: Kubernetes::apply is a
 # server-side-apply PATCH, so the worker never reads a Secret (and must not be
-# able to read the platform's, the operators' or Flux's).
+# able to read the platform's, the operators' or Flux's). It deletes Secrets only
+# as a collection filtered by its own labels (Platform_task::delete_owned), never
+# by name: a DELETE response carries the deleted object, data included.
 # Build daemon Pods in the buildkit namespace: ../buildkit/worker-rbac.yaml.
 apiVersion: v1
 kind: ServiceAccount
@@ -25,7 +27,7 @@ rules:
     verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["create", "patch", "update", "delete"]
+    verbs: ["create", "patch", "update", "deletecollection"]
   - apiGroups: [""]
     resources: ["pods", "events"]
     verbs: ["get", "list", "watch"]
@@ -38,6 +40,20 @@ rules:
   - apiGroups: ["gateway.networking.k8s.io"]
     resources: ["httproutes"]
     verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  # Custom domains: per-domain Gateways and the per-namespace ACME Gateway
+  # (Manifests::domain_gateway, acme_gateway). Listing finds the ones to prune.
+  # Listing across namespaces finds Gateways a previous owner of a domain left
+  # (Platform_task::release_domains). worker-admission-policy.yaml keeps writes
+  # to tenant namespaces and checks the listeners.
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["gateways"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  # The certificates are cert-manager's: read-only, so recheck_domains can wait
+  # for a custom domain's Certificate to be Ready before it becomes BASE_URL.
+  # (Certificates hold no key material; that is in the Secret.)
+  - apiGroups: ["cert-manager.io"]
+    resources: ["certificates"]
+    verbs: ["get"]
   - apiGroups: ["traefik.io"]
     resources: ["middlewares"]
     verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]

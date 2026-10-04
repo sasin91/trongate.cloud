@@ -1,14 +1,11 @@
+// Single-question pages: show a spinner on the button while the form submits.
 document.addEventListener('DOMContentLoaded', function () {
-    const form = document.querySelector('form');
-    if (!form) return;
-
-    form.addEventListener('submit', function (e) {
-        const submitButton = this.querySelector('button[type="submit"]');
-
-        submitButton.classList.add('btn-loading');
-        submitButton.disabled = true;
-
-        const spinner = submitButton.querySelector('.spinner');
-        spinner.style.display = 'inline-block';
+    document.querySelectorAll('form.wz-stage:not([data-steps])').forEach(function (form) {
+        form.addEventListener('submit', function () {
+            const button = form.querySelector('.wz-ok');
+            if (!button) return;
+            button.disabled = true;
+            button.insertAdjacentHTML('afterbegin', '<span class="wz-spinner" aria-hidden="true"></span>');
+        });
     });
 });

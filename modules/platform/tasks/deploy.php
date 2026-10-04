@@ -52,8 +52,9 @@ return function (Task_log $log) use ($payload, $runtime): int {
     $commit_sha = strtolower((string) ($payload['commit_sha'] ?? ''));
 
     // Webhook pushes always build the branch head: a replayed (validly signed) old
-    // push must not roll the app back to an older commit.
-    if (($deployment['trigger_type'] ?? '') === 'webhook' && $commit_sha !== '') {
+    // push must not roll the app back to an older commit. Reconcile deploys stand
+    // in for a missed push, so they follow the branch the same way.
+    if (in_array($deployment['trigger_type'] ?? '', ['webhook', 'reconcile'], true) && $commit_sha !== '') {
         $head = $github->request('GET', "/repos/{$repo}/commits/" . rawurlencode($branch));
         $head_sha = strtolower((string) ($head['sha'] ?? ''));
 

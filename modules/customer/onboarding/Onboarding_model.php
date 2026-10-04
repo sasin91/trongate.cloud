@@ -26,6 +26,10 @@ class Onboarding_model extends Model {
         ], 'team');
     }
 
+    function rename_team(int $team_id, string $name): bool {
+        return (bool) $this->db->update($team_id, ['name' => $name], 'team');
+    }
+
     function add_team_member(int $team_id, int $customer_id, string $role = 'owner'): bool {
         return (bool) $this->db->insert([
             'team_id' => $team_id,

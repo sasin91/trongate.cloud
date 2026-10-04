@@ -1,5 +1,7 @@
 <?php
 
+require_once APPPATH . 'modules/platform/manifests/Manifests.php';
+
 /**
  * New-project form shared by onboarding and the projects module:
  * repository picker data, validation rules/callbacks and project creation.
@@ -38,7 +40,7 @@ trait Project_form {
         $this->validation->set_rules('provider', 'Source Control Provider', 'required|callback__validate_source_provider');
         $this->validation->set_rules('repository', 'Repository', 'required|max_length[200]|callback__validate_repository');
         $this->validation->set_rules('repository_branch', 'Branch', 'required|max_length[100]|callback__validate_branch');
-        $this->validation->set_rules('label', 'Project Name', 'required|min_length[3]|max_length[50]');
+        $this->validation->set_rules('label', 'Project Name', 'required|min_length[3]|max_length[50]|callback__validate_team_has_room');
         $this->validation->set_rules('domain', 'Custom Domain', 'max_length[253]|callback__validate_domain');
         $this->validation->set_rules('type', 'Project Type', 'required|callback__validate_project_type');
     }
@@ -60,6 +62,8 @@ trait Project_form {
             source_provider: $provider,
             source_branch: post('repository_branch', true),
             domain: $this->_normalise_domain(post('domain', true)),
+            // The switch posts a hidden 0 then the checkbox's 1; older forms leave it out
+            auto_deploy: !isset($_POST['auto_deploy']) || post('auto_deploy') === '1',
         );
     }
 
@@ -99,7 +103,7 @@ trait Project_form {
         }
 
         $client = $this->_provider_client($team_id, $provider);
-        $branches = $client->list_branches($repository);
+        $branches = $client->list_branches($repository, 100);
 
         header('Content-Type: text/html');
         require APPPATH . 'modules/projects/views/_repository_branch_options.php';
@@ -156,6 +160,21 @@ trait Project_form {
      * Optional custom domain: a valid hostname, not a platform host and not verified by another project.
      * The project being edited (segment 3 on projects/{id}/settings/submit) is ignored.
      */
+    /**
+     * A new project starts on the default resource tier; the team's apps must
+     * still fit its quota with it (Manifests::quota_shortfall), or its rollouts hang.
+     */
+    function _validate_team_has_room(string $label): bool|string {
+        $tiers = $this->model->team_resource_tiers($this->_team_id_or_redirect());
+        $tiers[] = Resource_tiers::DEFAULT_TIER;
+
+        if (Manifests::quota_shortfall($tiers) !== null) {
+            return 'Your team has no room for another app. Make one of your apps smaller, or delete one, first.';
+        }
+
+        return true;
+    }
+
     function _validate_domain(string $domain): bool|string {
         $domain = $this->_normalise_domain($domain);
 

@@ -40,7 +40,7 @@ class Metrics extends Trongate {
     function _collect_metrics(): string {
         $tasks = $this->model->task_counts();
 
-        $output = "# HELP app_tasks Worker tasks by state\n";
+        $output = "# HELP app_tasks Customer worker tasks by state\n";
         $output .= "# TYPE app_tasks gauge\n";
         foreach (['pending', 'running', 'failed'] as $state) {
             $count = (int) ($tasks[$state] ?? 0);
@@ -61,6 +61,43 @@ class Metrics extends Trongate {
         $output .= "\n# HELP app_live_projects Projects with a live deployment\n";
         $output .= "# TYPE app_live_projects gauge\n";
         $output .= "app_live_projects {$live}\n";
+
+        $jobs = $this->model->scheduled_jobs();
+
+        $output .= "\n# HELP app_periodic_task_last_run_timestamp_seconds When each periodic worker task last finished\n";
+        $output .= "# TYPE app_periodic_task_last_run_timestamp_seconds gauge\n";
+        foreach ($jobs as $job) {
+            if ($job['last_finished'] !== null) {
+                $output .= "app_periodic_task_last_run_timestamp_seconds{task=\"{$job['script']}\"} " . (int) $job['last_finished'] . "\n";
+            }
+        }
+
+        $output .= "\n# HELP app_periodic_task_last_failure_timestamp_seconds When each periodic worker task last failed\n";
+        $output .= "# TYPE app_periodic_task_last_failure_timestamp_seconds gauge\n";
+        foreach ($jobs as $job) {
+            if ($job['last_failed'] !== null) {
+                $output .= "app_periodic_task_last_failure_timestamp_seconds{task=\"{$job['script']}\"} " . (int) $job['last_failed'] . "\n";
+            }
+        }
+
+        // The last reconcile_deploys run; recovered > 0 means a GitHub push webhook was missed
+        $reconcile = json_decode((string) (array_column($jobs, 'last_summary', 'script')['reconcile_deploys'] ?? ''), true);
+        $outcomes = is_array($reconcile) ? ($reconcile['outcomes'] ?? []) : [];
+
+        $output .= "\n# HELP app_deploy_reconcile_heads Branch heads the last deploy reconcile run checked, by outcome\n";
+        $output .= "# TYPE app_deploy_reconcile_heads gauge\n";
+        foreach (is_array($outcomes) ? $outcomes : [] as $outcome => $count) {
+            if (preg_match('/^[a-z-]+$/', (string) $outcome)) {
+                $output .= "app_deploy_reconcile_heads{outcome=\"{$outcome}\"} " . (int) $count . "\n";
+            }
+        }
+
+        // Heads undeployed over 15 minutes that nothing will deploy (Deploy_reconcile::STUCK_OUTCOMES)
+        if (is_array($reconcile)) {
+            $output .= "\n# HELP app_deploy_reconcile_stuck_heads Branch heads the last deploy reconcile run found stuck undeployed\n";
+            $output .= "# TYPE app_deploy_reconcile_stuck_heads gauge\n";
+            $output .= 'app_deploy_reconcile_stuck_heads ' . (int) ($reconcile['stuck'] ?? 0) . "\n";
+        }
 
         return $output;
     }
