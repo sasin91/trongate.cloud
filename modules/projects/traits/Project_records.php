@@ -35,6 +35,12 @@ trait Project_records {
         $sql = <<<SQL
             UPDATE project
             SET domain = :domain,
+                -- Before verified_domain: MariaDB assigns left to right, so these
+                -- still compare against the old value. A new domain starts ungated
+                -- (db/016) and is checked afresh once verified.
+                domain_pointed_at = IF(verified_domain <=> :same_domain_1, domain_pointed_at, NULL),
+                domain_dns_failures = IF(verified_domain <=> :same_domain_2, domain_dns_failures, 0),
+                domain_checked_at = IF(verified_domain <=> :same_domain_3, domain_checked_at, NULL),
                 verified_domain = IF(verified_domain <=> :same_domain, verified_domain, NULL),
                 persistent_paths = :persistent_paths,
                 php_extensions = :php_extensions,
@@ -44,6 +50,9 @@ trait Project_records {
         $this->db->query_bind($sql, [
             'domain' => $settings['domain'],
             'same_domain' => $settings['domain'],
+            'same_domain_1' => $settings['domain'],
+            'same_domain_2' => $settings['domain'],
+            'same_domain_3' => $settings['domain'],
             'persistent_paths' => json_encode($settings['persistent_paths']),
             'php_extensions' => $settings['php_extensions'],
             'always_on' => $settings['always_on'] ? 1 : 0,

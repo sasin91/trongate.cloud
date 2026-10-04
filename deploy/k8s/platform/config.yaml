@@ -17,5 +17,14 @@ data:
   PLATFORM_REGISTRY: registry.trongate.cloud/tc
   PLATFORM_GATEWAY_NAME: platform
   PLATFORM_GATEWAY_NAMESPACE: traefik
+  # Custom domains: per-domain Gateways of this class, certificates from this
+  # issuer, and the load balancer addresses their DNS must point at. Keep the
+  # class and issuer in sync with worker-admission-policy.yaml and
+  # the ClusterIssuer (infra repo, platform/configs/cluster-issuers.yaml), the
+  # addresses with the load balancer.
+  PLATFORM_GATEWAY_CLASS: traefik
+  PLATFORM_DOMAIN_ISSUER: letsencrypt-tenants
+  PLATFORM_INGRESS_IPV4: 142.132.241.236
+  PLATFORM_INGRESS_IPV6: 2a01:4f8:c01e:2396::1
   SABLIER_URL: http://sablier.sablier.svc.cluster.local:10000
   FILES_STORAGE_CLASS: tenant-files

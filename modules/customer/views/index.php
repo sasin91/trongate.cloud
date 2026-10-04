@@ -21,7 +21,7 @@
                         <?php endif; ?>
                     </div>
                     <div class="card-meta">
-                        <span><?= htmlspecialchars($project->verified_domain ?: $project->slug . '.' . PLATFORM_APPS_DOMAIN) ?></span>
+                        <span><?= htmlspecialchars(!empty($project->domain_pointed_at) && !empty($project->verified_domain) ? $project->verified_domain : $project->slug . '.' . PLATFORM_APPS_DOMAIN) ?></span>
                         <?php if (!empty($project->current_commit_sha)): ?>
                             <span>&bull;</span>
                             <code><?= htmlspecialchars(substr($project->current_commit_sha, 0, 7)) ?></code>

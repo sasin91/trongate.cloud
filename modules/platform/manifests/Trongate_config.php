@@ -80,16 +80,15 @@ class Trongate_config {
     }
 
     /**
-     * Public URL of a project (trailing slash, as Trongate expects)
+     * Public URL of a project (trailing slash, as Trongate expects): its custom
+     * domain once that is routed, the {slug} host until then. It must follow the
+     * DNS gate (Manifests::custom_domains), never verified_domain alone, or every
+     * link the app generates points at a host it is not served on yet.
      */
     static function base_url(array $project): string {
-        $domain = trim((string) ($project['verified_domain'] ?? ''));
+        $domain = Manifests::custom_domains($project)[0] ?? strtolower($project['slug'] . '.' . PLATFORM_APPS_DOMAIN);
 
-        if ($domain === '') {
-            $domain = $project['slug'] . '.' . PLATFORM_APPS_DOMAIN;
-        }
-
-        return 'https://' . strtolower($domain) . '/';
+        return 'https://' . $domain . '/';
     }
 
     /**

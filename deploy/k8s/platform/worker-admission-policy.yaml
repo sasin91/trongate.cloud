@@ -9,8 +9,28 @@
 #    platform hostname, or point MariaDB CRs at anything but a tenant's own
 #    tc_p{id} database on the shared servers.
 #
+# Custom domains (Manifests::domain_gateway) put Gateways in tenant namespaces,
+# so a tenant Gateway is checked as strictly as a route. Traefik merges every
+# Gateway of its class into the same entrypoints, so a listener for
+# trongate.cloud or another app's {slug}.trongate.dev would be a second,
+# competing way to serve it. Hence: one exact (never wildcard) hostname per
+# HTTPS listener, never a platform host or anything under the apps domain;
+# routes from its own namespace only; a certificate Secret from its own
+# namespace; certificates only from the tenant ClusterIssuer, which can only
+# solve HTTP-01 (so it cannot issue for *.trongate.dev, whose DNS-01 solver is
+# the platform issuer's). The one plain HTTP listener allowed is the ACME
+# Gateway's, and the worker's HTTPRoutes may not attach to it: only
+# cert-manager's challenge routes do.
+#
+# Not enforced here: which tenant may use which custom domain. The worker
+# writes every tenant, so a compromised worker could already route any domain
+# to any app; project.verified_domain (UNIQUE, proven by a TXT record) is that
+# check, in the app.
+#
 # Keep the hostnames in trongate-worker-objects in sync with BASE_URL,
-# PLATFORM_APPS_DOMAIN and PLATFORM_REGISTRY (config.yaml), and the image with
+# PLATFORM_APPS_DOMAIN and PLATFORM_REGISTRY (config.yaml), the gateway class
+# and issuer with PLATFORM_GATEWAY_CLASS and PLATFORM_DOMAIN_ISSUER, the ACME
+# Gateway with Manifests::ACME_GATEWAY, and the image with
 # Manifests::BUILDKIT_IMAGE.
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
@@ -65,7 +85,7 @@ spec:
       - apiGroups: ["gateway.networking.k8s.io"]
         apiVersions: ["*"]
         operations: ["CREATE", "UPDATE"]
-        resources: ["httproutes"]
+        resources: ["httproutes", "gateways"]
   matchConditions:
     - name: is-worker
       expression: request.userInfo.username == 'system:serviceaccount:trongate-cloud:trongate-worker'
@@ -78,6 +98,16 @@ spec:
       expression: "'trongate.cloud'"
     - name: apps_domain
       expression: "'trongate.dev'"
+    - name: platform_gateway
+      expression: "'platform'"
+    - name: platform_gateway_namespace
+      expression: "'traefik'"
+    - name: gateway_class
+      expression: "'traefik'"
+    - name: domain_issuer
+      expression: "'letsencrypt-tenants'"
+    - name: acme_gateway
+      expression: "'acme-http01'"
   validations:
     # Tenant namespaces stay restricted and never get a platform role label
     # (allow-gateway admits ingress from namespaces labelled role=gateway)
@@ -140,6 +170,53 @@ spec:
       # The apps domain's apex is the CNAME target custom domains point at,
       # not a tenant hostname
       message: Tenant HTTPRoutes may not use platform hostnames or the apps domain itself
+    # Routes attach to the platform Gateway or to a custom-domain Gateway in
+    # their own namespace, never to the ACME Gateway (plain HTTP)
+    - expression: >-
+        request.kind.kind != 'HTTPRoute' || !has(object.spec.parentRefs) ||
+        object.spec.parentRefs.all(p,
+          (!has(p.kind) || p.kind == 'Gateway') &&
+          (!has(p.group) || p.group == 'gateway.networking.k8s.io') &&
+          ((p.name == variables.platform_gateway && has(p.namespace) &&
+            p.namespace == variables.platform_gateway_namespace) ||
+           ((!has(p.namespace) || p.namespace == request.namespace) &&
+            p.name != variables.acme_gateway)))
+      message: Tenant HTTPRoutes may only attach to the platform Gateway or a custom-domain Gateway in their own namespace
+    # Tenant Gateways (custom domains), see the header. An unset allowedRoutes
+    # or tls.mode defaults to Same / Terminate.
+    - expression: >-
+        request.kind.kind != 'Gateway' ||
+        (object.spec.gatewayClassName == variables.gateway_class &&
+         !has(object.spec.addresses) &&
+         !has(object.spec.infrastructure) &&
+         (!has(object.metadata.annotations) ||
+          ((!('cert-manager.io/cluster-issuer' in object.metadata.annotations) ||
+            object.metadata.annotations['cert-manager.io/cluster-issuer'] == variables.domain_issuer) &&
+           !('cert-manager.io/issuer' in object.metadata.annotations))) &&
+         object.spec.listeners.all(l,
+           (!has(l.allowedRoutes) ||
+            ((!has(l.allowedRoutes.namespaces) || !has(l.allowedRoutes.namespaces.from) ||
+              l.allowedRoutes.namespaces.from == 'Same') &&
+             (!has(l.allowedRoutes.kinds) || l.allowedRoutes.kinds.all(k, k.kind == 'HTTPRoute'))))))
+      message: Tenant Gateways must use the platform's class and the tenant issuer, request no addresses, and admit routes from their own namespace only
+    - expression: >-
+        request.kind.kind != 'Gateway' ||
+        (object.metadata.name == variables.acme_gateway ?
+          object.spec.listeners.all(l,
+            l.protocol == 'HTTP' && l.port == 8000 && !has(l.hostname) && !has(l.tls)) :
+          object.spec.listeners.all(l,
+            l.protocol == 'HTTPS' && l.port == 8443 &&
+            has(l.hostname) && !l.hostname.contains('*') &&
+            l.hostname != variables.apps_domain && !l.hostname.endsWith('.' + variables.apps_domain) &&
+            l.hostname != variables.platform_domain && !l.hostname.endsWith('.' + variables.platform_domain) &&
+            has(l.tls) && (!has(l.tls.mode) || l.tls.mode == 'Terminate') && has(l.tls.certificateRefs) &&
+            l.tls.certificateRefs.all(r,
+              (!has(r.kind) || r.kind == 'Secret') &&
+              (!has(r.group) || r.group == '') &&
+              (!has(r.namespace) || r.namespace == request.namespace))))
+      message: >-
+        Tenant Gateway listeners must be the ACME Gateway's plain HTTP listener, or HTTPS for one
+        exact custom domain (no wildcard, platform or apps-domain host) with a Secret from their own namespace
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding

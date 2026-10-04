@@ -152,6 +152,7 @@ trait Platform_actions {
         $sql = <<<SQL
             SELECT
                 p.id, p.team_id, p.label, p.slug, p.type, p.domain, p.verified_domain,
+                p.domain_pointed_at, p.domain_checked_at,
                 p.source_provider, p.source_url, p.source_branch,
                 p.persistent_paths, p.php_extensions, p.always_on,
                 p.database_server_id, p.current_deployment_id, p.created_at,
@@ -301,7 +302,10 @@ trait Platform_actions {
 
     /**
      * Check the TXT record and, when it matches, make the requested domain the
-     * project's verified (routed) domain.
+     * project's verified domain. It is routed once its DNS also points at the
+     * platform (the gate in Manifests::custom_domains): this queues a
+     * recheck_domains task, which promotes it right away if it already does.
+     * Pressing Verify again on a verified domain queues another check.
      *
      * @return bool|string true, or why it failed
      */
@@ -314,6 +318,7 @@ trait Platform_actions {
         }
 
         if ($domain === (string) ($project->verified_domain ?? '')) {
+            $this->queue_domain_recheck($team_id, $project_id);
             return true;
         }
 
@@ -332,13 +337,44 @@ trait Platform_actions {
         }
 
         try {
-            $this->db->update($project_id, ['verified_domain' => $domain], 'project');
+            $this->db->update($project_id, [
+                'verified_domain' => $domain,
+                'domain_pointed_at' => null,
+                'domain_dns_failures' => 0,
+                'domain_checked_at' => null,
+            ], 'project');
         } catch (PDOException $e) {
             // unique_verified_domain: another project already serves it
             return 'This domain is already used by another project.';
         }
 
+        $this->queue_domain_recheck($team_id, $project_id);
+
         return true;
+    }
+
+    /**
+     * Queue a DNS check of the project's verified domain (tasks/recheck_domains.php),
+     * unless one is already waiting
+     */
+    function queue_domain_recheck(int $team_id, int $project_id): void {
+        $sql = <<<SQL
+            SELECT COUNT(*)
+            FROM tasks
+            WHERE project_id = :project_id
+              AND script = 'recheck_domains'
+              AND started_at IS NULL
+              AND completed_at IS NULL
+              AND failed_at IS NULL
+        SQL;
+        $waiting = (int) $this->db->query_bind($sql, ['project_id' => $project_id], 'column');
+
+        if ($waiting === 0) {
+            $this->_queue_task($team_id, $project_id, null, 'recheck_domains', [
+                'team_id' => $team_id,
+                'project_id' => $project_id,
+            ]);
+        }
     }
 
     /**

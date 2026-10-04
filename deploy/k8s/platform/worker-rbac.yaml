@@ -38,6 +38,13 @@ rules:
   - apiGroups: ["gateway.networking.k8s.io"]
     resources: ["httproutes"]
     verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  # Custom domains: per-domain Gateways and the per-namespace ACME Gateway
+  # (Manifests::domain_gateway, acme_gateway). Listing finds the ones to prune.
+  # worker-admission-policy.yaml keeps them to tenant namespaces and checks the
+  # listeners; the certificates are cert-manager's, so no cert-manager access.
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["gateways"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
   - apiGroups: ["traefik.io"]
     resources: ["middlewares"]
     verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]

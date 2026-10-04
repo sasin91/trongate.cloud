@@ -31,6 +31,7 @@ class Kubernetes extends Client {
         'apps/v1/ReplicaSet' => ['replicasets', true],
         'networking.k8s.io/v1/NetworkPolicy' => ['networkpolicies', true],
         'gateway.networking.k8s.io/v1/HTTPRoute' => ['httproutes', true],
+        'gateway.networking.k8s.io/v1/Gateway' => ['gateways', true],
         'traefik.io/v1alpha1/Middleware' => ['middlewares', true],
         'k8s.mariadb.com/v1alpha1/MariaDB' => ['mariadbs', true],
         'k8s.mariadb.com/v1alpha1/Database' => ['databases', true],

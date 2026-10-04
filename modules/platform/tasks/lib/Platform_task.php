@@ -1,7 +1,8 @@
 <?php
 
 /**
- * Helpers shared by the platform task scripts (deploy, rollback, destroy_project).
+ * Helpers shared by the platform task scripts (deploy, rollback, destroy_project,
+ * recheck_domains).
  *
  * Lives in tasks/lib/ so the Runtime can never run it as a task
  * (it only includes tasks/{script}.php). Framework-free.
@@ -29,6 +30,40 @@ class Platform_task {
         $stmt->close();
 
         return $row ?: null;
+    }
+
+    /**
+     * Fetch all rows with a prepared statement
+     */
+    static function rows(mysqli $db, string $sql, string $types = '', mixed ...$params): array {
+        $stmt = $db->prepare($sql);
+
+        if ($types !== '') {
+            $stmt->bind_param($types, ...$params);
+        }
+
+        $stmt->execute();
+        $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+
+        return $rows;
+    }
+
+    /**
+     * Run a write with a prepared statement; returns the affected row count
+     */
+    static function execute(mysqli $db, string $sql, string $types = '', mixed ...$params): int {
+        $stmt = $db->prepare($sql);
+
+        if ($types !== '') {
+            $stmt->bind_param($types, ...$params);
+        }
+
+        $stmt->execute();
+        $affected = (int) $stmt->affected_rows;
+        $stmt->close();
+
+        return $affected;
     }
 
     /**
@@ -124,11 +159,24 @@ class Platform_task {
     }
 
     /**
-     * Apply the tenant namespace and the project's app manifests
+     * Apply the tenant namespace and the project's app manifests, then remove
+     * custom-domain Gateways the project no longer routes.
+     *
+     * Re-reads the custom-domain gate first: a build takes minutes, and
+     * recheck_domains leaves promoting a domain to a deploy that is already
+     * running. $project comes back with the values that were applied.
      */
-    static function apply(Runtime $runtime, Task_log $log, array $project, array $deployment, array $database): void {
+    static function apply(Runtime $runtime, Task_log $log, array &$project, array $deployment, array $database): void {
         $kube = $runtime->kube();
         $team_id = (int) $project['team_id'];
+
+        $gate = self::row(
+            $runtime->db(),
+            'SELECT verified_domain, domain_pointed_at FROM project WHERE id = ?',
+            'i',
+            (int) $project['id']
+        );
+        $project = ($gate ?? []) + $project;
 
         $log->info('Applying tenant namespace ' . Manifests::namespace_name($team_id));
         $kube->apply_all(Manifests::tenant($team_id));
@@ -139,6 +187,38 @@ class Platform_task {
             // Names and kinds only: Secrets carry the database password
             $log->info("Applying {$manifest['kind']} {$manifest['metadata']['name']}");
             $kube->apply($manifest);
+        }
+
+        self::prune_domain_gateways($runtime, $log, $project);
+    }
+
+    /**
+     * Delete the project's custom-domain Gateways for domains it no longer routes
+     * (changed, removed, or demoted by recheck_domains). cert-manager's
+     * Certificate goes with its Gateway. Never throws: a leftover Gateway serves
+     * a hostname the app's HTTPRoute no longer lists, so it routes nothing.
+     */
+    static function prune_domain_gateways(Runtime $runtime, Task_log $log, array $project): void {
+        $project_id = (int) $project['id'];
+        $namespace = Manifests::namespace_name((int) $project['team_id']);
+        $keep = array_map(
+            fn(string $domain) => Manifests::domain_gateway_name($project_id, $domain),
+            Manifests::custom_domains($project)
+        );
+
+        try {
+            $gateways = $runtime->kube()->list('gateway.networking.k8s.io/v1', 'Gateway', $namespace, Manifests::domain_gateway_selector($project_id));
+
+            foreach ($gateways as $gateway) {
+                $name = (string) ($gateway['metadata']['name'] ?? '');
+
+                if ($name !== '' && !in_array($name, $keep, true)) {
+                    $runtime->kube()->delete('gateway.networking.k8s.io/v1', 'Gateway', $namespace, $name);
+                    $log->info("Deleted Gateway {$name} (custom domain no longer routed)");
+                }
+            }
+        } catch (Throwable $e) {
+            $log->warn("Could not prune custom-domain Gateways: {$e->getMessage()}");
         }
     }
 
