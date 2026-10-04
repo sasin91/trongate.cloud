@@ -38,6 +38,11 @@ require_once __DIR__ . '/../../worker/Worker_actions.php';
  * repository branch, spaced by GITHUB_DELAY_MS; a rate-limited or rejected
  * token skips the team's remaining projects until the next run.
  *
+ * The worker runs one task at a time, so a run must not hold up customer
+ * deploys: it stops as soon as a team task is waiting, and when GitHub itself
+ * fails (5xx or no connection, after the client's retries). The rotation in
+ * projects() resumes with the unchecked projects next run.
+ *
  * Framework-free; lives in tasks/lib/ so the Runtime never runs it as a task.
  */
 class Deploy_reconcile {
@@ -70,6 +75,7 @@ class Deploy_reconcile {
         'no-token',       // the team has no GitHub token
         'token-rejected', // GitHub refused the token (401/403)
         'rate-limited',   // GitHub rate limit; retried next run
+        'github-unavailable', // GitHub 5xx or unreachable; the run stops
         'branch-missing', // repository or branch not found (404)
         'no-webhook',     // the webhook is gone from the repository: not a missed push
         'webhook-unverifiable', // the token may not read the repository's hooks
@@ -106,12 +112,14 @@ class Deploy_reconcile {
     /**
      * Check every auto-deploying project once.
      *
-     * @return array{scanned: int, github_calls: int, stuck: int, outcomes: array<string, int>}
+     * @return array{scanned: int, github_calls: int, stuck: int, stopped: ?string, outcomes: array<string, int>}
      */
     function run(): array {
         $projects = $this->projects();
         $outcomes = array_fill_keys(self::OUTCOMES, 0);
+        $scanned = 0;
         $stuck = 0;
+        $stopped = null;
 
         if (count($projects) > self::MAX_PROJECTS_PER_RUN) {
             $this->log->warn(sprintf('More than %d auto-deploying projects; checking those checked longest ago', self::MAX_PROJECTS_PER_RUN));
@@ -119,6 +127,13 @@ class Deploy_reconcile {
         }
 
         foreach ($projects as $project) {
+            // Customer deploys go first; the rotation picks up from here next run
+            if ($this->team_task_waiting()) {
+                $stopped = 'team-task-waiting';
+                $this->log->info('A customer task is waiting; stopping until the next run');
+                break;
+            }
+
             try {
                 $outcome = $this->reconcile($project);
             } catch (\Throwable $e) {
@@ -129,17 +144,25 @@ class Deploy_reconcile {
 
             $this->mark_checked((int) $project['id']);
             $outcomes[$outcome]++;
+            $scanned++;
 
             if (in_array($outcome, self::STUCK_OUTCOMES, true) && $this->head_age !== null && $this->head_age > self::STUCK_HEAD_AGE_SECONDS) {
                 $stuck++;
                 $this->log->warn(sprintf('Project #%d: branch head undeployed for %d min (%s)', $project['id'], intdiv($this->head_age, 60), $outcome));
             }
+
+            // Every further call would wait out the same timeouts and retries
+            if ($outcome === 'github-unavailable') {
+                $stopped = 'github-unavailable';
+                break;
+            }
         }
 
         $summary = [
-            'scanned' => count($projects),
+            'scanned' => $scanned,
             'github_calls' => $this->github_calls,
             'stuck' => $stuck,
+            'stopped' => $stopped,
             'outcomes' => $outcomes,
         ];
 
@@ -188,6 +211,23 @@ class Deploy_reconcile {
         $stmt->close();
 
         return $rows;
+    }
+
+    /**
+     * Whether a team (customer) task is queued and waiting for the worker.
+     */
+    function team_task_waiting(): bool {
+        $row = Platform_task::row(
+            $this->db,
+            'SELECT id FROM tasks
+             WHERE team_id IS NOT NULL
+               AND started_at IS NULL
+               AND completed_at IS NULL
+               AND failed_at IS NULL
+             LIMIT 1'
+        );
+
+        return $row !== null;
     }
 
     /**
@@ -371,6 +411,7 @@ class Deploy_reconcile {
             $code === 429, $code === 403 && stripos($e->getMessage(), 'rate limit') !== false => 'rate-limited',
             $code === 401, $code === 403 => 'token-rejected',
             $code === 404 => 'branch-missing',
+            $code === 0, $code >= 500 => 'github-unavailable',
             default => 'error',
         };
 
