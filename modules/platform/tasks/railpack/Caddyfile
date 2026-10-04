@@ -1,0 +1,41 @@
+# Railpack v0.40.1 PHP Caddyfile (MIT, github.com/railwayapp/railpack core/providers/php/Caddyfile)
+# with the global log level at INFO instead of DEBUG: DEBUG logs every request and cost
+# ~20% throughput at the app CPU limit. deploy.php copies this in when the repo has no Caddyfile.
+{
+	admin off
+	persist_config off
+	auto_https off
+
+  {$CADDY_GLOBAL_OPTIONS}
+
+  log {
+    format json
+    output stderr
+    level INFO
+  }
+
+	frankenphp {
+		{$FRANKENPHP_CONFIG}
+	}
+}
+
+{$CADDY_EXTRA_CONFIG}
+
+:{$PORT:80} {
+  {{if .RAILPACK_PHP_ROOT_DIR}}
+    root * {{.RAILPACK_PHP_ROOT_DIR}}
+  {{else}}
+    root * /app
+  {{end}}
+
+	encode zstd br gzip
+
+	file_server {
+		hide .git
+		hide .env*
+	}
+
+	{$CADDY_SERVER_EXTRA_DIRECTIVES}
+
+	php_server
+}
