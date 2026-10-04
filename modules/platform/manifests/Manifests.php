@@ -42,12 +42,13 @@ class Manifests {
     // pods of the top Resource_tiers rung (_assert_quota_fits_ladder).
     // requests.memory stays well below the memory the cluster has left for all
     // tenants (~3.6 GiB of ~11 GiB allocatable), so one team cannot reserve it
-    // all and leave every other team's pods Pending. There is no limits.cpu:
-    // apps have no CPU limit (see Resource_tiers), and a quota on it would make
-    // Kubernetes refuse every pod that does not set one.
+    // all and leave every other team's pods Pending. 2Gi costs a team nothing:
+    // every rung requests 128Mi per 500m of CPU limit, so limits.cpu 8 already
+    // stops a team at 2Gi of memory requests.
     const TENANT_QUOTA = [
         'requests.cpu' => '2',
         'requests.memory' => '2Gi',
+        'limits.cpu' => '8',
         'limits.memory' => '8Gi',
         'requests.ephemeral-storage' => '8Gi',
         'limits.ephemeral-storage' => '30Gi',
@@ -292,7 +293,7 @@ class Manifests {
                     'type' => 'Container',
                     'default' => $default['limits'],
                     'defaultRequest' => $default['requests'],
-                    'max' => ['memory' => $top['memory_mi'] . 'Mi', 'ephemeral-storage' => '4Gi'],
+                    'max' => ['cpu' => $top['cpu_m'] . 'm', 'memory' => $top['memory_mi'] . 'Mi', 'ephemeral-storage' => '4Gi'],
                 ]],
             ],
         ];
@@ -932,7 +933,7 @@ class Manifests {
         $largest = Resource_tiers::resources(Resource_tiers::largest($tiers));
         $pods[] = $largest;
 
-        foreach (['requests.cpu', 'requests.memory', 'limits.memory'] as $key) {
+        foreach (['requests.cpu', 'limits.cpu', 'requests.memory', 'limits.memory'] as $key) {
             [$kind, $resource] = explode('.', $key);
             $parse = $resource === 'cpu' ? self::_millicores(...) : self::_mebibytes(...);
             $total = array_sum(array_map(fn(array $pod) => $parse($pod[$kind][$resource]), $pods));

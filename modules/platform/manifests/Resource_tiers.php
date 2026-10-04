@@ -4,8 +4,7 @@
  * The resource tier ladder: the only place an app container's CPU/memory is decided.
  *
  * A project picks a rung (project.resource_tier, see db/016); the rung sets the
- * container's memory limit (there is no CPU limit) and the requests are derived
- * from the rung at a fixed fraction,
+ * container's limits and the requests are derived from them at a fixed fraction,
  * so every app is Burstable QoS. A few legible rungs ("512 MB") instead of free
  * numbers keep capacity planning and the tenant quota easy to reason about.
  *
@@ -13,11 +12,7 @@
  */
 class Resource_tiers {
 
-    /**
-     * Rungs, smallest first. memory_mi is the container's memory limit. cpu_m is not a
-     * limit: apps have no CPU limit (a 500m limit halved throughput and CFS throttling
-     * added ~55 ms at p99 even for plain PHP), it only sizes the CPU request.
-     */
+    /** Limit rungs, smallest first. "small" is the limits every app had before tiers. */
     const TIERS = [
         'small' => ['label' => 'Small', 'memory_mi' => 256, 'cpu_m' => 500],
         'medium' => ['label' => 'Medium', 'memory_mi' => 512, 'cpu_m' => 1000],
@@ -84,9 +79,9 @@ class Resource_tiers {
     }
 
     /**
-     * Container requests (cpu + memory) and limits (memory only) for a rung
+     * Container requests/limits (cpu + memory) for a rung
      *
-     * @return array{requests: array{cpu: string, memory: string}, limits: array{memory: string}}
+     * @return array{requests: array{cpu: string, memory: string}, limits: array{cpu: string, memory: string}}
      */
     static function resources(?string $tier): array {
         $rung = self::tier($tier);
@@ -97,19 +92,21 @@ class Resource_tiers {
                 'memory' => self::derive($rung['memory_mi'], self::MEMORY_REQUEST_FRACTION) . 'Mi',
             ],
             'limits' => [
+                'cpu' => $rung['cpu_m'] . 'm',
                 'memory' => $rung['memory_mi'] . 'Mi',
             ],
         ];
     }
 
     /**
-     * Human label for forms and pages, e.g. "Medium: 512 MB memory"
+     * Human label for forms and pages, e.g. "Medium: 512 MB memory, 1 CPU"
      */
     static function describe(string $tier): string {
         $rung = self::tier($tier);
         $memory = $rung['memory_mi'] >= 1024 ? ($rung['memory_mi'] / 1024) . ' GB' : $rung['memory_mi'] . ' MB';
+        $cpu = $rung['cpu_m'] / 1000;
 
-        return "{$rung['label']}: {$memory} memory";
+        return "{$rung['label']}: {$memory} memory, {$cpu} CPU";
     }
 
     /**
