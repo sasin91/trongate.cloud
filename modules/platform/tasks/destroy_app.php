@@ -20,8 +20,9 @@
  * Removed: custom-domain Gateways and their certificate Secrets, HTTPRoute,
  * Middleware, Service and Deployment (the app stops
  * serving), the MariaDB Grant and User CRs (cleanupPolicy Delete, so access is
- * revoked), the Database CR, the files PVC and the database Secret. Once all of
- * them are gone, the app's verified custom domain is released.
+ * revoked), the Database CR, the files PVC and the database Secret, and the
+ * app's Valkey session user (its session keys expire on their own). Once all
+ * of them are gone, the app's verified custom domain is released.
  *
  * Kept on purpose:
  * - the project's namespace: other apps of the project live there (an empty
@@ -88,6 +89,16 @@ return function (Task_log $log) use ($payload, $runtime): int {
             $failures++;
             $log->error("Deleting {$kind} {$name} failed: {$e->getMessage()}");
         }
+    }
+
+    // The app has stopped serving, so its session store can go
+    try {
+        if (Platform_task::delete_session_user($runtime, $app_id)) {
+            $log->info('Deleted Valkey user ' . Manifests::session_user($app_id));
+        }
+    } catch (Throwable $e) {
+        $failures++;
+        $log->error("Deleting Valkey user failed: {$e->getMessage()}");
     }
 
     if ($failures > 0) {

@@ -178,8 +178,9 @@ return function (Task_log $log) use ($payload, $runtime): int {
             file_put_contents("{$src}/composer.json", json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         }
 
-        // Trongate's database class uses PDO; app extras come from settings
-        $extensions = ['pdo_mysql'];
+        // Trongate's database class uses PDO; redis is the session handler for
+        // Valkey (Manifests::sessions_ini); app extras come from settings
+        $extensions = ['pdo_mysql', 'redis'];
 
         foreach (preg_split('/[\s,]+/', strtolower((string) ($app['php_extensions'] ?? ''))) ?: [] as $extension) {
             if (preg_match('/^[a-z0-9_]{1,40}$/', $extension) && !in_array($extension, $extensions, true)) {

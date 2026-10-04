@@ -210,7 +210,7 @@ class Platform_task {
 
         self::release_domains($runtime, $log, $app);
 
-        $manifests = Manifests::app($app, $deployment, $database);
+        $manifests = Manifests::app($app, $deployment, $database, self::ensure_session_user($runtime, $log, (int) $app['id']));
 
         foreach ($manifests as $manifest) {
             // Names and kinds only: Secrets carry the database password
@@ -219,6 +219,53 @@ class Platform_task {
         }
 
         self::prune_domain_gateways($runtime, $log, $app);
+    }
+
+    /**
+     * Create or refresh the app's Valkey ACL user for PHP sessions and persist
+     * it (ACL SAVE, to the users.acl on Valkey's volume). Idempotent: the
+     * password is derived from APP_KEY, so every apply rewrites the same user.
+     *
+     * Returns the settings for Manifests::sessions_ini, or null when the
+     * worker has no Valkey credentials (the app keeps file sessions).
+     *
+     * @return array{host: string, port: int, password: string}|null
+     * @throws RuntimeException when Valkey is configured but unreachable
+     */
+    static function ensure_session_user(Runtime $runtime, Task_log $log, int $app_id): ?array {
+        $valkey = $runtime->valkey();
+
+        if ($valkey === null) {
+            $log->warn('Valkey is not configured for the worker; PHP sessions stay in the pod');
+
+            return null;
+        }
+
+        $user = Manifests::session_user($app_id);
+        $password = Manifests::session_password($app_id);
+
+        $valkey->command('ACL', 'SETUSER', $user, ...Manifests::session_acl($app_id, $password));
+        $valkey->command('ACL', 'SAVE');
+        $log->info("Session store ready (Valkey user {$user})");
+
+        return ['host' => VALKEY_HOST, 'port' => VALKEY_PORT, 'password' => $password];
+    }
+
+    /**
+     * Remove the app's Valkey ACL user. Its session keys expire on their own
+     * (session.gc_maxlifetime), so they are left to do so.
+     */
+    static function delete_session_user(Runtime $runtime, int $app_id): bool {
+        $valkey = $runtime->valkey();
+
+        if ($valkey === null) {
+            return false;
+        }
+
+        $deleted = (int) $valkey->command('ACL', 'DELUSER', Manifests::session_user($app_id));
+        $valkey->command('ACL', 'SAVE');
+
+        return $deleted > 0;
     }
 
     /**

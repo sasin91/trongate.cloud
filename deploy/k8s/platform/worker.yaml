@@ -46,6 +46,10 @@ spec:
             - secretRef:
                 name: trongate-cloud-github
                 optional: true
+            # Valkey user for customer app sessions (Platform_task::ensure_session_user)
+            - secretRef:
+                name: trongate-cloud-valkey
+                optional: true
           resources:
             requests:
               cpu: 100m

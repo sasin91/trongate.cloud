@@ -11,7 +11,7 @@ Trongate.cloud hosts customer Trongate apps on our own k3s cluster. Customers si
 | Tenancy | Namespace per project (`project-{id}`, stored in `project.namespace`), holding its apps; per app a Deployment, Service, HTTPRoute, config Secret, DB credentials Secret, one `tenant-files` PVC (all `p{app id}-*`) | Quota, LimitRange, default-deny NetworkPolicy, restricted pod security from the kit's template. `allow-same-project` lets the apps of a project call each other (`http://p{id}-app`, TCP 8080 on the pod) in both directions; other projects cannot reach them |
 | Config | Render `config/config.php` + `config/database.php` into a Secret, mounted over the image's files | Customer apps hardcode config and don't read env |
 | Database | Shared `databases` namespace, mariadb-operator; a database + user + grant per app (`tc_p{app id}`) | `Database`/`User`/`Grant` CRs live in the app's project namespace (cross-namespace `mariaDbRef` — verify) |
-| Cache / sessions | Shared `cache` namespace, Valkey via redis-operator; ACL key prefix per tenant | Sessions here so scale-to-zero doesn't log users out |
+| Sessions | Shared `cache` namespace, one Valkey StatefulSet; an ACL user per app (`tc_p{app id}`, keys `tc_p{app id}:*`) created by the worker on every apply | A php.ini in `conf.d` sets the phpredis session handler (`persistent=1`), so redeploys and scale-to-zero don't log visitors out and customers change no code. Every build adds the `redis` extension; an image without it (a rollback) keeps file sessions |
 | Uploads | JuiceFS on Hetzner object storage; one StorageClass, subdirectory per tenant, mount-pod sharing | Metadata in the shared MariaDB. Persistent paths mounted via `subPath`, seeded by an init container on first deploy |
 | Scale-to-zero | Sablier as a Traefik middleware on the HTTPRoute | App pods only; shared namespaces stay up. Only a request through Traefik wakes a sleeping app: a direct in-cluster call from another app of the project does not, so an app that others call needs `always_on` |
 | App resources | No size to pick and no CPU or memory limit yet; every app requests 128Mi / 50m (`Manifests::APP_RESOURCES`) so the scheduler can place it, and grows past that as it needs | We observe what real apps use before enforcing limits or pricing sizes. Memory is the binding constraint (2× 8 GB nodes, ~11 GiB allocatable, ~7.4 GiB already requested by the platform before any tenant), so the small request packs apps densely and overcommits: when many apps burst at once the node evicts the pods furthest over their requests. The tenant quota, shared by every app in the project, bounds only disk, pod count and exposure; ephemeral-storage keeps a 1Gi limit per container so one app cannot fill a node's disk |
@@ -153,7 +153,6 @@ Still open:
   - A failed `destroy_app` or `destroy_project` is not retried automatically and nobody is alerted; it shows up in the MCP's `audit_app_resources` and is re-queued by hand (`retry_app_cleanup`, `retry_project_cleanup`).
   - Released files PVs and kept `tc_p{id}` databases of deleted apps pile up until removed by hand; there is no purge step yet.
   - No CI workflow builds or pushes the platform images.
-  - Valkey session/cache wiring for tenants (per-tenant ACL users).
   - Backups.
   - Image pull credentials for `PLATFORM_REGISTRY` in tenant namespaces.
 - **Hardening:**

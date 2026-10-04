@@ -1,6 +1,10 @@
-# Shared Valkey for sessions/cache (sessions here survive scale-to-zero).
+# Shared Valkey for customer app PHP sessions (they survive redeploys and scale-to-zero).
 # ACL-enabled: the default user is off; every client authenticates as an ACL user.
-# TODO: per-tenant ACL users with a key prefix (~{namespace}:*, per project) managed by the worker.
+# The worker (user trongate-cloud) creates one user per app, tc_p{id}, limited to keys
+# tc_p{id}:* (Platform_task::ensure_session_user), and saves them with ACL SAVE to
+# /data/users.acl on the volume. The init container seeds that file from the
+# valkey-acl Secret on every start: users in the Secret are replaced by the Secret's
+# lines, users the worker created are kept.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -15,7 +19,7 @@ data:
     # Instance-wide; sessions should carry a TTL so volatile-lru can evict them
     maxmemory 768mb
     maxmemory-policy volatile-lru
-    aclfile /etc/valkey/acl/users.acl
+    aclfile /data/users.acl
     # ACLs guard access (the default user is disabled in users.acl)
     protected-mode no
 ---
@@ -70,6 +74,37 @@ spec:
         fsGroup: 999
         seccompProfile:
           type: RuntimeDefault
+      initContainers:
+        - name: acl
+          image: valkey/valkey:9.1-alpine
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              src=/etc/valkey/acl/users.acl
+              dst=/data/users.acl
+              touch "$dst"
+              awk 'NR == FNR { if ($1 == "user") { seen[$2] = 1; print } next }
+                   $1 == "user" && !($2 in seen)' "$src" "$dst" > "$dst.new"
+              mv "$dst.new" "$dst"
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: acl
+              mountPath: /etc/valkey/acl
+              readOnly: true
       containers:
         - name: valkey
           image: valkey/valkey:9.1-alpine
