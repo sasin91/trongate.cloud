@@ -49,7 +49,7 @@
                ]'>
     <?php endif; ?>
 
-    <?php if ($deployment->status === 'success' && $deployment->trigger_type !== 'webhook'): ?>
+    <?php if ($deployment->status === 'success' && !in_array($deployment->trigger_type, ['webhook', 'reconcile'], true)): ?>
         <div class="card" style="margin-top: 1.5rem; background: #f0f9ff; border: 1px solid #0284c7;">
             <h4 style="margin-top: 0; color: #0284c7;">Deploy on every push</h4>
             <p>Add a GitHub webhook and pushes to your branch deploy automatically.</p>

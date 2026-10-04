@@ -4,10 +4,11 @@ require_once APPPATH . 'modules/customer/traits/Customer_guard.php';
 require_once APPPATH . 'modules/services/traits/Provider_clients.php';
 require_once __DIR__ . '/traits/Project_form.php';
 require_once APPPATH . 'modules/platform/manifests/Manifests.php';
+require_once APPPATH . 'modules/platform/manifests/Domain_dns.php';
 require_once APPPATH . 'modules/platform/traits/Live_app_state.php';
 
 /**
- * Customer projects: create, overview, deploy/rollback and platform settings.
+ * Customer projects: create, overview, deploy/rollback, platform settings and delete.
  *
  * @property-read Projects_model $model
  * @property-read Trongate_tokens $trongate_tokens
@@ -26,6 +27,12 @@ class Projects extends Trongate {
 
     /** Top-level directories the platform mounts or owns; never persistent */
     const RESERVED_PATHS = ['config', 'engine'];
+
+    /** Team roles that may delete a project (db/003_teams.sql); deploys are open to every member */
+    const DELETE_ROLES = ['owner', 'admin'];
+
+    /** The project submit_delete() checks the typed confirmation against */
+    private ?object $project_to_delete = null;
 
     function create(): void {
         $this->_make_sure_allowed();
@@ -199,9 +206,16 @@ class Projects extends Trongate {
             'persistent_paths' => $is_resubmit ? (string) post('persistent_paths') : implode("\n", $paths),
             'php_extensions' => $is_resubmit ? (string) post('php_extensions', true) : (string) $project->php_extensions,
             'always_on' => $is_resubmit ? (bool) post('always_on') : (bool) $project->always_on,
+            'resource_tier' => $is_resubmit ? (string) post('resource_tier', true) : (string) $project->resource_tier,
+            'resource_tiers' => Resource_tiers::options(),
+            'auto_deploy' => $is_resubmit ? (bool) post('auto_deploy') : (bool) $project->auto_deploy,
             'domain_record' => !empty($project->domain) ? $this->model->domain_verification_record((int) $project->id, (string) $project->domain) : null,
+            'domain_routed' => Manifests::custom_domains((array) $project) !== [],
+            'domain_secured' => Manifests::secured_domains((array) $project) !== [],
+            'ingress_addresses' => Domain_dns::ingress_addresses(),
             'webhook_url' => BASE_URL . 'webhooks/github/' . $project->id,
             'webhook_secret' => $this->model->ensure_webhook_secret($team_id, (int) $project->id),
+            'can_delete' => $this->_may_delete_projects(),
             'additional_includes_top' => ['projects_module/css/projects.css'],
         ];
         $this->module('templates');
@@ -216,6 +230,7 @@ class Projects extends Trongate {
         $this->validation->set_rules('domain', 'Custom Domain', 'max_length[253]|callback__validate_domain');
         $this->validation->set_rules('persistent_paths', 'Persistent Paths', 'max_length[4000]|callback__validate_persistent_paths');
         $this->validation->set_rules('php_extensions', 'PHP Extensions', 'max_length[255]|callback__validate_php_extensions');
+        $this->validation->set_rules('resource_tier', 'Resources', 'required|callback__validate_resource_tier');
 
         if ($this->validation->run() !== true) {
             $this->settings();
@@ -227,6 +242,8 @@ class Projects extends Trongate {
             'persistent_paths' => $this->_parse_persistent_paths((string) post('persistent_paths')),
             'php_extensions' => implode(',', $this->_parse_php_extensions((string) post('php_extensions', true))),
             'always_on' => (bool) post('always_on'),
+            'resource_tier' => (string) post('resource_tier', true),
+            'auto_deploy' => (bool) post('auto_deploy'),
         ]);
 
         set_flashdata('Settings saved. They take effect on the next deployment.');
@@ -234,7 +251,8 @@ class Projects extends Trongate {
     }
 
     /**
-     * POST projects/{id}/verify-domain: check the domain's TXT record.
+     * POST projects/{id}/verify-domain: check the domain's TXT record, then (in
+     * the worker) whether its DNS points here yet.
      */
     function verify_domain(): void {
         $this->_make_sure_allowed();
@@ -245,9 +263,62 @@ class Projects extends Trongate {
         $result = $this->model->verify_project_domain($team_id, (int) $project->id);
 
         set_flashdata($result === true
-            ? 'Domain verified. Deploy to start serving it.'
+            ? 'Domain verified. It goes live by itself once its DNS points here; checking now.'
             : 'Could not verify the domain: ' . $result);
         redirect('projects/' . $project->id . '/settings');
+    }
+
+    /**
+     * Confirmation page for deleting a project.
+     */
+    function delete(): void {
+        $this->_make_sure_allowed();
+        $team_id = $this->_team_id_or_redirect();
+        $project = $this->_find_or_redirect($team_id, segment(3, 'int'));
+        $this->_make_sure_may_delete($project);
+
+        $data = [
+            'view_module' => 'projects',
+            'view_file' => 'delete',
+            'project' => $project,
+            'urls' => $this->_project_urls($project),
+            'additional_includes_top' => ['projects_module/css/projects.css'],
+        ];
+        $this->module('templates');
+        $this->templates->customer($data);
+    }
+
+    /**
+     * POST projects/{id}/delete/submit: the customer typed the project's slug to confirm.
+     */
+    function submit_delete(): void {
+        $this->_make_sure_allowed();
+        $team_id = $this->_team_id_or_redirect();
+        $project = $this->_find_or_redirect($team_id, segment(3, 'int'));
+        $this->_make_sure_may_delete($project);
+
+        if (REQUEST_TYPE !== 'POST') {
+            http_response_code(405);
+            die('Method not allowed');
+        }
+
+        $this->project_to_delete = $project;
+        $this->validation->set_rules('confirm_slug', 'Project name', 'required|callback__validate_delete_confirmation');
+
+        if ($this->validation->run() !== true) {
+            $this->delete();
+            return;
+        }
+
+        try {
+            $this->model->queue_project_delete($team_id, (int) $project->id);
+        } catch (RuntimeException $e) {
+            set_flashdata('Could not delete the project: ' . $e->getMessage());
+            redirect('projects/' . $project->id);
+        }
+
+        set_flashdata(htmlspecialchars($project->label) . ' was deleted. Its app is being removed now.');
+        redirect('dashboard');
     }
 
     // --- Helpers ---
@@ -260,6 +331,24 @@ class Projects extends Trongate {
         }
 
         return $project;
+    }
+
+    /**
+     * Whether the current customer's role in the current team may delete
+     * projects. Deleting is the one irreversible project action, so unlike
+     * deploys and rollbacks it is not open to every member.
+     */
+    function _may_delete_projects(): bool {
+        $member = $this->model->get_current_team_member();
+
+        return $member !== false && in_array((string) $member->role, self::DELETE_ROLES, true);
+    }
+
+    function _make_sure_may_delete(object $project): void {
+        if (!$this->_may_delete_projects()) {
+            set_flashdata('Only team owners and admins can delete a project.');
+            redirect('projects/' . $project->id . '/settings');
+        }
     }
 
     /**
@@ -343,11 +432,46 @@ class Projects extends Trongate {
         return true;
     }
 
+    function _validate_delete_confirmation(string $value): bool|string {
+        if ($this->project_to_delete === null || trim($value) !== (string) $this->project_to_delete->slug) {
+            return 'Type the project name exactly as shown to confirm.';
+        }
+
+        return true;
+    }
+
     function _validate_php_extensions(string $value): bool|string {
         foreach ($this->_parse_php_extensions($value) as $name) {
             if (!preg_match('/^[a-z][a-z0-9_]{0,39}$/', $name)) {
                 return "\"{$name}\" is not a valid PHP extension name.";
             }
+        }
+
+        return true;
+    }
+
+    /**
+     * The tier must be on the ladder, and the team's apps must still fit its
+     * quota with it (Manifests::quota_shortfall); otherwise every later rollout
+     * in the team would hang on "exceeded quota". Moving down is always allowed.
+     */
+    function _validate_resource_tier(string $tier): bool|string {
+        if (!Resource_tiers::exists($tier)) {
+            return 'Please choose one of the listed resource sizes.';
+        }
+
+        $team_id = $this->_team_id_or_redirect();
+        $project = $this->_find_or_redirect($team_id, segment(3, 'int'));
+
+        if (Resource_tiers::rank($tier) <= Resource_tiers::rank((string) $project->resource_tier)) {
+            return true;
+        }
+
+        $tiers = $this->model->team_resource_tiers($team_id, (int) $project->id);
+        $tiers[] = $tier;
+
+        if (Manifests::quota_shortfall($tiers) !== null) {
+            return "Your team's apps would not fit in its resources with this size. Choose a smaller size, or make another app smaller first.";
         }
 
         return true;

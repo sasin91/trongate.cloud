@@ -43,7 +43,8 @@ abstract class Client {
 
     function send_request(string $method, string $url, array $data = [], array $headers = []): array {
         $method = strtoupper($method);
-        $has_body = in_array($method, ['POST', 'PUT', 'PATCH'], true);
+        // A DELETE only carries a body when given one (e.g. Kubernetes DeleteOptions)
+        $has_body = in_array($method, ['POST', 'PUT', 'PATCH'], true) || ($method === 'DELETE' && $data !== []);
 
         if ($has_body && $this->_find_header($headers, 'Content-Type') === null && $this->_find_header($this->headers(), 'Content-Type') === null) {
             $headers[] = 'Content-Type: application/json';
