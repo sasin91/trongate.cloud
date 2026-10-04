@@ -73,6 +73,17 @@ class Manifests {
     const PRIVATE_V4 = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '100.64.0.0/10', '169.254.0.0/16'];
     const PRIVATE_V6 = ['fc00::/7', 'fe80::/10'];
 
+    // Custom domains (see domain_gateway()). Gateway listener ports are Traefik's
+    // entrypoint ports (web :8000, websecure :8443), not the Service's 80/443.
+    const GATEWAY_HTTP_PORT = 8000;
+    const GATEWAY_HTTPS_PORT = 8443;
+    // Per-namespace HTTP-only Gateway that PLATFORM_DOMAIN_ISSUER's HTTP-01
+    // challenge routes attach to. The issuer names it without a namespace, so
+    // each challenge lands on the Gateway in its own namespace. The name is also
+    // in worker-admission-policy.yaml and the issuer (infra repo, cluster-issuers.yaml).
+    const ACME_GATEWAY = 'acme-http01';
+    const DOMAIN_COMPONENT = 'custom-domain';
+
     static function namespace_name(int $team_id): string {
         return "tc-team-{$team_id}";
     }
@@ -86,18 +97,99 @@ class Manifests {
     }
 
     /**
-     * Hostnames routed to a project: "{slug}.PLATFORM_APPS_DOMAIN" plus the custom
-     * domain once DNS verified it (project.verified_domain, see db/015)
+     * Hostnames routed to a project: "{slug}.PLATFORM_APPS_DOMAIN" plus its routed
+     * custom domains (custom_domains())
      */
     static function hostnames(array $project): array {
         $hostnames = [strtolower($project['slug'] . '.' . PLATFORM_APPS_DOMAIN)];
-        $domain = strtolower(trim((string) ($project['verified_domain'] ?? '')));
 
-        if ($domain !== '' && !in_array($domain, $hostnames, true)) {
-            $hostnames[] = $domain;
+        foreach (self::custom_domains($project) as $domain) {
+            if (!in_array($domain, $hostnames, true)) {
+                $hostnames[] = $domain;
+            }
         }
 
         return $hostnames;
+    }
+
+    /**
+     * The project's custom domains that may be routed: verified by TXT record
+     * (project.verified_domain, db/015) AND seen pointing at the cluster
+     * (project.domain_pointed_at, db/019, kept by the recheck_domains task).
+     *
+     * The DNS half is the gate. A domain that still resolves elsewhere cannot
+     * pass HTTP-01, and making it BASE_URL would send every generated link to a
+     * host that does not serve the app. It reads the stored fact instead of
+     * resolving here, so a resolver hiccup during a deploy can never drop a live
+     * domain. Each domain is gated, and gets its own Gateway and certificate
+     * (domain_gateway()), on its own, and the {slug} host never is, so one
+     * un-pointed domain cannot hold up any other hostname of the app.
+     *
+     * @return list<string>
+     */
+    static function custom_domains(array $project): array {
+        $domain = strtolower(trim((string) ($project['verified_domain'] ?? '')));
+
+        if ($domain === '' || empty($project['domain_pointed_at'])) {
+            return [];
+        }
+
+        return [$domain];
+    }
+
+    /**
+     * The routed custom domains whose certificate has been issued
+     * (project.domain_secured_at, db/019, set by recheck_domains once the
+     * Certificate is Ready). Only these may become BASE_URL
+     * (Trongate_config::base_url): a domain whose certificate is pending, or
+     * never comes (CAA record, rate limit), answers with Traefik's default
+     * certificate, and must not drag the app's links, including those served on
+     * the {slug} host, along with it.
+     *
+     * @return list<string>
+     */
+    static function secured_domains(array $project): array {
+        return empty($project['domain_secured_at']) ? [] : self::custom_domains($project);
+    }
+
+    /**
+     * Short hash of a custom domain, for resource names and labels (a domain can
+     * be longer than either may be)
+     */
+    static function domain_hash(string $domain): string {
+        return substr(hash('sha256', strtolower($domain)), 0, 12);
+    }
+
+    /**
+     * Name of the Gateway serving one custom domain: "p{id}-domain-{hash}"
+     */
+    static function domain_gateway_name(int $project_id, string $domain): string {
+        return "p{$project_id}-domain-" . self::domain_hash($domain);
+    }
+
+    /**
+     * The certificate Secret of a custom-domain Gateway. cert-manager names the
+     * Certificate after it too, and does not delete it with the Certificate
+     * (no --enable-certificate-owner-ref), so it is deleted with the Gateway
+     * (Platform_task::delete_domain_gateway).
+     */
+    static function domain_tls_secret(string $gateway_name): string {
+        return "{$gateway_name}-tls";
+    }
+
+    /**
+     * Label selector for a project's custom-domain Gateways (to prune the ones it no longer routes)
+     */
+    static function domain_gateway_selector(int $project_id): string {
+        return 'app.kubernetes.io/component=' . self::DOMAIN_COMPONENT . ',' . self::LABEL_PREFIX . '/project-id=' . $project_id;
+    }
+
+    /**
+     * Label selector for every project's Gateways for one domain, in any
+     * namespace (to release the domain from a project that no longer owns it)
+     */
+    static function domain_hostname_selector(string $domain): string {
+        return 'app.kubernetes.io/component=' . self::DOMAIN_COMPONENT . ',' . self::LABEL_PREFIX . '/domain-hash=' . self::domain_hash($domain);
     }
 
     /**
@@ -269,13 +361,98 @@ class Manifests {
             ]],
         ]);
 
+        $manifests[] = self::acme_gateway($namespace, $labels);
+
         return $manifests;
+    }
+
+    /**
+     * The namespace's HTTP-only Gateway for HTTP-01 challenges of custom-domain
+     * certificates (see domain_gateway()). It has no TLS, so it is valid even
+     * while every certificate in the namespace is still pending. Only
+     * cert-manager attaches routes to it: the worker's own HTTPRoutes may not
+     * (worker-admission-policy.yaml), so apps never serve plain HTTP. Everything
+     * else on port 80 still gets the platform Gateway's HTTPS redirect.
+     */
+    static function acme_gateway(string $namespace, array $labels): array {
+        return [
+            'apiVersion' => 'gateway.networking.k8s.io/v1',
+            'kind' => 'Gateway',
+            'metadata' => self::_metadata(self::ACME_GATEWAY, $namespace, $labels),
+            'spec' => [
+                'gatewayClassName' => PLATFORM_GATEWAY_CLASS,
+                'listeners' => [[
+                    'name' => 'http',
+                    'protocol' => 'HTTP',
+                    'port' => self::GATEWAY_HTTP_PORT,
+                    'allowedRoutes' => ['namespaces' => ['from' => 'Same']],
+                ]],
+            ],
+        ];
+    }
+
+    /**
+     * A Gateway in the tenant namespace that serves one custom domain over HTTPS.
+     * cert-manager creates its certificate from the annotation.
+     *
+     * Why not listeners on the platform Gateway: Flux owns that object (infra
+     * repo) and would revert the worker's listeners, the worker must not be able
+     * to touch the listeners that serve trongate.cloud and *.trongate.dev, and a
+     * Gateway holds at most 64 listeners. Why not a ListenerSet: the CRD is
+     * installed (Gateway API v1.6.1 standard), but Traefik 3.7 does not list it
+     * among its GatewayClass's supported features.
+     *
+     * Why one Gateway per domain rather than per project or team: a listener
+     * whose certificate is not issued yet (or never will be: CAA record, rate
+     * limit, DNS moved away) reports ResolvedRefs=False, and its own Gateway
+     * confines that to the one domain. The app's HTTPRoute keeps its platform
+     * Gateway parent, so the {slug} host never depends on a custom domain.
+     *
+     * Certificates come from PLATFORM_DOMAIN_ISSUER, an HTTP-01-only ClusterIssuer
+     * whose challenge routes attach to acme_gateway() in this namespace.
+     * worker-admission-policy.yaml checks the listener: HTTPS, routes from this
+     * namespace only, a Secret from this namespace, and a hostname that is never
+     * a wildcard, a platform host or under PLATFORM_APPS_DOMAIN.
+     */
+    static function domain_gateway(array $project, string $domain): array {
+        $project_id = (int) $project['id'];
+        $name = self::domain_gateway_name($project_id, $domain);
+        // The project's ownership labels (project_labels), so destroy_project and
+        // the trongate-worker-owned-deletes policy recognise it as the project's
+        $metadata = self::_metadata($name, self::namespace_name((int) $project['team_id']), self::project_labels($project_id) + [
+            'app.kubernetes.io/component' => self::DOMAIN_COMPONENT,
+            self::LABEL_PREFIX . '/domain-hash' => self::domain_hash($domain),
+        ]);
+        // The only cert-manager annotation: worker-admission-policy.yaml refuses
+        // any other (common-name, subject, usages, ...), so the certificate names
+        // exactly the listener's hostname
+        $metadata['annotations'] = ['cert-manager.io/cluster-issuer' => PLATFORM_DOMAIN_ISSUER];
+
+        return [
+            'apiVersion' => 'gateway.networking.k8s.io/v1',
+            'kind' => 'Gateway',
+            'metadata' => $metadata,
+            'spec' => [
+                'gatewayClassName' => PLATFORM_GATEWAY_CLASS,
+                'listeners' => [[
+                    'name' => 'https',
+                    'protocol' => 'HTTPS',
+                    'port' => self::GATEWAY_HTTPS_PORT,
+                    'hostname' => $domain,
+                    'tls' => [
+                        'mode' => 'Terminate',
+                        'certificateRefs' => [['group' => '', 'kind' => 'Secret', 'name' => self::domain_tls_secret($name)]],
+                    ],
+                    'allowedRoutes' => ['namespaces' => ['from' => 'Same']],
+                ]],
+            ],
+        ];
     }
 
     /**
      * Everything one project needs inside its tenant namespace, in apply order
      *
-     * @param array $project    project row (id, team_id, slug, label, type, domain, persistent_paths, always_on, resource_tier)
+     * @param array $project    project row (id, team_id, slug, label, type, verified_domain, domain_pointed_at, domain_secured_at, persistent_paths, always_on, resource_tier)
      * @param array $deployment deployment row (id, image)
      * @param array $database   database_server row (host, port, operator_name, operator_namespace); optional 'password'
      */
@@ -445,17 +622,31 @@ class Manifests {
             $rule['filters'] = $filters;
         }
 
+        // The platform Gateway serves the {slug} host; each routed custom domain
+        // has its own Gateway in this namespace (domain_gateway())
+        $parent_refs = [[
+            'group' => 'gateway.networking.k8s.io',
+            'kind' => 'Gateway',
+            'name' => PLATFORM_GATEWAY_NAME,
+            'namespace' => PLATFORM_GATEWAY_NAMESPACE,
+        ]];
+
+        foreach (self::custom_domains($project) as $domain) {
+            $manifests[] = self::domain_gateway($project, $domain);
+            $parent_refs[] = [
+                'group' => 'gateway.networking.k8s.io',
+                'kind' => 'Gateway',
+                'name' => self::domain_gateway_name($project_id, $domain),
+                'sectionName' => 'https',
+            ];
+        }
+
         $manifests[] = [
             'apiVersion' => 'gateway.networking.k8s.io/v1',
             'kind' => 'HTTPRoute',
             'metadata' => self::_metadata($name, $namespace, $labels),
             'spec' => [
-                'parentRefs' => [[
-                    'group' => 'gateway.networking.k8s.io',
-                    'kind' => 'Gateway',
-                    'name' => PLATFORM_GATEWAY_NAME,
-                    'namespace' => PLATFORM_GATEWAY_NAMESPACE,
-                ]],
+                'parentRefs' => $parent_refs,
                 'hostnames' => self::hostnames($project),
                 'rules' => [$rule],
             ],
@@ -501,7 +692,7 @@ class Manifests {
      *
      * @return list<array{string, string, string}>
      */
-    static function app_resources(int $project_id): array {
+    static function project_objects(int $project_id): array {
         $name = self::app_name($project_id);
 
         return [
@@ -669,6 +860,8 @@ class Manifests {
                     'annotations' => [
                         self::LABEL_PREFIX . '/deployment-id' => (string) ($deployment['id'] ?? ''),
                         self::LABEL_PREFIX . '/config-hash' => $o['config_hash'],
+                        // Read by recheck_domains to see whether a secured custom domain is BASE_URL yet
+                        self::LABEL_PREFIX . '/base-url' => $o['base_url'],
                     ],
                 ],
                 'spec' => [

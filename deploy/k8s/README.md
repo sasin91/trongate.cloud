@@ -32,6 +32,14 @@ From the platform kit (or installed separately):
   namespace `traefik` (`PLATFORM_GATEWAY_NAME` / `PLATFORM_GATEWAY_NAMESPACE`), with
   HTTPS listeners for `trongate.cloud` (`sectionName: https-platform`) and `*.trongate.dev` (wildcard
   certificate, so DNS-01) that allow routes from all namespaces.
+- cert-manager with Gateway API support (`config.gatewayAPI.enabled`) and a
+  ClusterIssuer `letsencrypt-tenants` (`PLATFORM_DOMAIN_ISSUER`) with only an
+  HTTP-01 `gatewayHTTPRoute` solver whose parentRef is the Gateway
+  `acme-http01` **without a namespace** (`Manifests::ACME_GATEWAY`), for
+  custom-domain certificates. The infra repository's
+  `platform/configs/cluster-issuers.yaml` has it. (Not in this directory: a
+  cluster-scoped custom resource would get the `trongate-cloud` namespace from
+  `platform/kustomization.yaml`.)
 - The Traefik namespace labelled `platform.example.com/role=gateway`: tenant
   NetworkPolicies only admit ingress from namespaces with that label (and from
   `sablier`).
@@ -49,7 +57,9 @@ From the platform kit (or installed separately):
       allowCrossNamespace: false
   ```
 
-- DNS: `trongate.cloud`, `trongate.dev` and `*.trongate.dev` pointing at the ingress.
+- DNS: `trongate.cloud`, `trongate.dev` and `*.trongate.dev` pointing at the ingress,
+  whose addresses are `PLATFORM_INGRESS_IPV4`/`PLATFORM_INGRESS_IPV6` in
+  `platform/config.yaml` (custom domains are routed once they point there).
 - A Hetzner Object Storage bucket for JuiceFS.
 - An OCI registry for built app images (`PLATFORM_REGISTRY`, default
   `registry.trongate.cloud/tc`). The per-build buildkitd Pods push to it over the

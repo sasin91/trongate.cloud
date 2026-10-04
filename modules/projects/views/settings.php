@@ -19,7 +19,7 @@
         <div class="form-group">
             <label for="domain" class="form-label">Custom Domain</label>
             <input type="text" name="domain" id="domain" class="form-input" placeholder="e.g. app.example.com" value="<?= htmlspecialchars($domain) ?>">
-            <p class="form-hint">Create a CNAME record pointing this domain at <code><?= htmlspecialchars(PLATFORM_APPS_DOMAIN) ?></code>, then verify it below. Leave empty to remove it.</p>
+            <p class="form-hint">Point this domain here (see below), then verify it. Leave empty to remove it.</p>
         </div>
 
         <div class="form-group">
@@ -71,7 +71,28 @@
     <h2>Custom domain</h2>
     <div class="card settings-card">
         <?php if ((string) $project->verified_domain === (string) $project->domain): ?>
-        <p><code><?= htmlspecialchars((string) $project->domain) ?></code> is verified and served from the next deployment on.</p>
+        <?php if ($domain_secured): ?>
+        <p><code><?= htmlspecialchars((string) $project->domain) ?></code> is verified, points here and has its HTTPS certificate, so it is served and is the app's base URL.</p>
+        <?php elseif ($domain_routed): ?>
+        <p><code><?= htmlspecialchars((string) $project->domain) ?></code> is verified and points here. It becomes the app's base URL once its HTTPS certificate is issued, usually within minutes<?= !empty($project->domain_checked_at) ? ' (checked ' . htmlspecialchars((string) $project->domain_checked_at) . ')' : '' ?>. If that takes longer, check that no CAA record for the domain excludes Let's Encrypt.</p>
+        <?= form_open('projects/' . $project->id . '/verify-domain') ?>
+            <button type="submit" class="btn-secondary">Check again</button>
+        <?= form_close() ?>
+        <?php else: ?>
+        <p><code><?= htmlspecialchars((string) $project->domain) ?></code> is verified, but its DNS does not point here yet<?= !empty($project->domain_checked_at) ? ' (checked ' . htmlspecialchars((string) $project->domain_checked_at) . ')' : '' ?>. It goes live by itself once it does. Add one of these:</p>
+        <dl class="webhook-details">
+            <dt>CNAME</dt>
+            <dd><code><?= htmlspecialchars(PLATFORM_APPS_DOMAIN) ?></code> (subdomains such as www or app)</dd>
+            <?php foreach ($ingress_addresses as $address): ?>
+            <dt><?= str_contains($address, ':') ? 'AAAA' : 'A' ?></dt>
+            <dd><code><?= htmlspecialchars($address) ?></code></dd>
+            <?php endforeach; ?>
+        </dl>
+        <p class="form-hint">Use A/AAAA records for a bare domain (example.com) and remove any other A/AAAA records for it.</p>
+        <?= form_open('projects/' . $project->id . '/verify-domain') ?>
+            <button type="submit" class="btn-secondary">Check again</button>
+        <?= form_close() ?>
+        <?php endif; ?>
         <?php else: ?>
         <p>To prove you own <code><?= htmlspecialchars((string) $project->domain) ?></code>, add this DNS record, then press Verify. Until then the domain is not served.</p>
         <dl class="webhook-details">

@@ -40,6 +40,20 @@ rules:
   - apiGroups: ["gateway.networking.k8s.io"]
     resources: ["httproutes"]
     verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  # Custom domains: per-domain Gateways and the per-namespace ACME Gateway
+  # (Manifests::domain_gateway, acme_gateway). Listing finds the ones to prune.
+  # Listing across namespaces finds Gateways a previous owner of a domain left
+  # (Platform_task::release_domains). worker-admission-policy.yaml keeps writes
+  # to tenant namespaces and checks the listeners.
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["gateways"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  # The certificates are cert-manager's: read-only, so recheck_domains can wait
+  # for a custom domain's Certificate to be Ready before it becomes BASE_URL.
+  # (Certificates hold no key material; that is in the Secret.)
+  - apiGroups: ["cert-manager.io"]
+    resources: ["certificates"]
+    verbs: ["get"]
   - apiGroups: ["traefik.io"]
     resources: ["middlewares"]
     verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]

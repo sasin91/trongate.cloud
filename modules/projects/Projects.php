@@ -4,6 +4,7 @@ require_once APPPATH . 'modules/customer/traits/Customer_guard.php';
 require_once APPPATH . 'modules/services/traits/Provider_clients.php';
 require_once __DIR__ . '/traits/Project_form.php';
 require_once APPPATH . 'modules/platform/manifests/Manifests.php';
+require_once APPPATH . 'modules/platform/manifests/Domain_dns.php';
 require_once APPPATH . 'modules/platform/traits/Live_app_state.php';
 
 /**
@@ -209,6 +210,9 @@ class Projects extends Trongate {
             'resource_tiers' => Resource_tiers::options(),
             'auto_deploy' => $is_resubmit ? (bool) post('auto_deploy') : (bool) $project->auto_deploy,
             'domain_record' => !empty($project->domain) ? $this->model->domain_verification_record((int) $project->id, (string) $project->domain) : null,
+            'domain_routed' => Manifests::custom_domains((array) $project) !== [],
+            'domain_secured' => Manifests::secured_domains((array) $project) !== [],
+            'ingress_addresses' => Domain_dns::ingress_addresses(),
             'webhook_url' => BASE_URL . 'webhooks/github/' . $project->id,
             'webhook_secret' => $this->model->ensure_webhook_secret($team_id, (int) $project->id),
             'can_delete' => $this->_may_delete_projects(),
@@ -247,7 +251,8 @@ class Projects extends Trongate {
     }
 
     /**
-     * POST projects/{id}/verify-domain: check the domain's TXT record.
+     * POST projects/{id}/verify-domain: check the domain's TXT record, then (in
+     * the worker) whether its DNS points here yet.
      */
     function verify_domain(): void {
         $this->_make_sure_allowed();
@@ -258,7 +263,7 @@ class Projects extends Trongate {
         $result = $this->model->verify_project_domain($team_id, (int) $project->id);
 
         set_flashdata($result === true
-            ? 'Domain verified. Deploy to start serving it.'
+            ? 'Domain verified. It goes live by itself once its DNS points here; checking now.'
             : 'Could not verify the domain: ' . $result);
         redirect('projects/' . $project->id . '/settings');
     }

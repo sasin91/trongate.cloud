@@ -20,7 +20,7 @@ require_once __DIR__ . '/../../services/clients/Kubernetes.php';
  */
 class App_resource_audit {
 
-    /** The kinds of Manifests::app_resources() the web app may list */
+    /** The kinds of Manifests::project_objects() the web app may list */
     const KINDS = [
         ['gateway.networking.k8s.io/v1', 'HTTPRoute'],
         ['traefik.io/v1alpha1', 'Middleware'],

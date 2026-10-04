@@ -7,6 +7,7 @@ require_once APPPATH . 'modules/services/clients/Github.php';
 require_once APPPATH . 'modules/services/clients/Kubernetes.php';
 require_once APPPATH . 'modules/platform/manifests/Trongate_config.php';
 require_once APPPATH . 'modules/platform/manifests/Manifests.php';
+require_once APPPATH . 'modules/platform/manifests/Domain_dns.php';
 require_once __DIR__ . '/Module_reference.php';
 require_once __DIR__ . '/Task_log.php';
 
@@ -65,6 +66,7 @@ class Runtime {
      */
     const PERIODIC_TASKS = [
         'reconcile_deploys' => DEPLOY_RECONCILE_INTERVAL,
+        'schedule_domain_rechecks' => DOMAIN_RECHECK_INTERVAL,
     ];
 
     /** How often the poll loop looks for due periodic tasks */

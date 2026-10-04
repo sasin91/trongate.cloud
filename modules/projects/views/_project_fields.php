@@ -47,7 +47,7 @@ $branches = [];
 <div class="form-group">
     <label for="domain" class="form-label">Custom Domain (optional)</label>
     <input type="text" name="domain" id="domain" class="form-input" placeholder="e.g. app.example.com" value="<?= htmlspecialchars((string) post('domain')) ?>">
-    <p class="form-hint">Point a CNAME record for this domain at <code><?= htmlspecialchars(PLATFORM_APPS_DOMAIN) ?></code>. You can add it later in the project settings.</p>
+    <p class="form-hint">Point a CNAME record for this domain at <code><?= htmlspecialchars(PLATFORM_APPS_DOMAIN) ?></code> (or A/AAAA records for a bare domain, listed in the project settings). You can add it later there.</p>
 </div>
 
 <div class="form-group">

@@ -31,7 +31,9 @@ class Kubernetes extends Client {
         'apps/v1/ReplicaSet' => ['replicasets', true],
         'networking.k8s.io/v1/NetworkPolicy' => ['networkpolicies', true],
         'gateway.networking.k8s.io/v1/HTTPRoute' => ['httproutes', true],
+        'gateway.networking.k8s.io/v1/Gateway' => ['gateways', true],
         'traefik.io/v1alpha1/Middleware' => ['middlewares', true],
+        'cert-manager.io/v1/Certificate' => ['certificates', true],
         'k8s.mariadb.com/v1alpha1/MariaDB' => ['mariadbs', true],
         'k8s.mariadb.com/v1alpha1/Database' => ['databases', true],
         'k8s.mariadb.com/v1alpha1/User' => ['users', true],
@@ -150,7 +152,8 @@ class Kubernetes extends Client {
     }
 
     /**
-     * List objects of a kind, optionally filtered by label selector
+     * List objects of a kind, optionally filtered by label selector. A null
+     * $namespace lists a namespaced kind across all namespaces.
      */
     function list(string $api_version, string $kind, ?string $namespace, string $label_selector = ''): array {
         $path = $this->path($api_version, $kind, $namespace);

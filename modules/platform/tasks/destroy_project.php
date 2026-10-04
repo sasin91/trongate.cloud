@@ -17,7 +17,8 @@
  * partial failure; nothing retries it automatically, the admin MCP does
  * (retry_project_cleanup, Platform_actions::requeue_project_destroy).
  *
- * Removed: HTTPRoute, Middleware, Service and Deployment (the app stops
+ * Removed: custom-domain Gateways and their certificate Secrets, HTTPRoute,
+ * Middleware, Service and Deployment (the app stops
  * serving), the MariaDB Grant and User CRs (cleanupPolicy Delete, so access is
  * revoked), the Database CR, the files PVC and the database Secret. Once all of
  * them are gone, the project's verified custom domain is released.
@@ -53,7 +54,30 @@ return function (Task_log $log) use ($payload, $runtime): int {
     $kube = $runtime->kube();
     $failures = 0;
 
-    foreach (Manifests::app_resources($project_id) as [$api_version, $kind, $name]) {
+    $namespace = Manifests::namespace_name($team_id);
+
+    // Custom-domain Gateways first (traffic), found by label because their names
+    // carry a domain hash; each is ownership-checked like everything else, and
+    // its cert-manager certificate Secret (private key included) goes with it.
+    try {
+        foreach ($kube->list('gateway.networking.k8s.io/v1', 'Gateway', $namespace, Manifests::domain_gateway_selector($project_id)) as $gateway) {
+            $gateway_name = (string) $gateway['metadata']['name'];
+
+            try {
+                Platform_task::delete_owned($kube, 'gateway.networking.k8s.io/v1', 'Gateway', $team_id, $project_id, $gateway_name);
+                Platform_task::delete_domain_tls_secret($kube, $namespace, $gateway_name);
+                $log->info("Deleted Gateway {$gateway_name} and its certificate");
+            } catch (Throwable $e) {
+                $failures++;
+                $log->error("Deleting Gateway {$gateway_name} failed: {$e->getMessage()}");
+            }
+        }
+    } catch (Throwable $e) {
+        $failures++;
+        $log->error("Listing custom-domain Gateways failed: {$e->getMessage()}");
+    }
+
+    foreach (Manifests::project_objects($project_id) as [$api_version, $kind, $name]) {
         try {
             $deleted = Platform_task::delete_owned($kube, $api_version, $kind, $team_id, $project_id, $name);
             // A Secret cannot be read, so "not there" and "not ours" look the same
