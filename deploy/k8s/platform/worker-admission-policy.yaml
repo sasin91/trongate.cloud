@@ -16,11 +16,22 @@
 # competing way to serve it. Hence: one exact (never wildcard) hostname per
 # HTTPS listener, never a platform host or anything under the apps domain;
 # routes from its own namespace only; a certificate Secret from its own
-# namespace; certificates only from the tenant ClusterIssuer, which can only
-# solve HTTP-01 (so it cannot issue for *.trongate.dev, whose DNS-01 solver is
-# the platform issuer's). The one plain HTTP listener allowed is the ACME
+# namespace; no ListenerSets (allowedListeners) and no frontend/backend TLS
+# settings (spec.tls). The one plain HTTP listener allowed is the ACME
 # Gateway's, and the worker's HTTPRoutes may not attach to it: only
 # cert-manager's challenge routes do.
+#
+# Certificates: cert-manager's Gateway support issues for the listener
+# hostnames plus whatever its cert-manager.io/* annotations add (common-name,
+# subject, usages, ...). So the only cert-manager annotation allowed is
+# cert-manager.io/cluster-issuer, naming the tenant ClusterIssuer, and the
+# certificate names exactly the checked listener hostnames. That check is what
+# keeps platform hosts out of tenant certificates: the tenant issuer solves
+# HTTP-01 only, which rules out the *.trongate.dev wildcard, but trongate.cloud
+# and any concrete {slug}.trongate.dev resolve to the same load balancer and
+# would pass HTTP-01. (Belt and braces outside the cluster: CAA records for
+# trongate.cloud and trongate.dev limited to the platform issuers' ACME
+# accounts, see docs/platform-architecture.md.)
 #
 # Not enforced here: which tenant may use which custom domain. The worker
 # writes every tenant, so a compromised worker could already route any domain
@@ -189,16 +200,22 @@ spec:
         (object.spec.gatewayClassName == variables.gateway_class &&
          !has(object.spec.addresses) &&
          !has(object.spec.infrastructure) &&
+         !has(object.spec.allowedListeners) &&
+         !has(object.spec.tls) &&
          (!has(object.metadata.annotations) ||
-          ((!('cert-manager.io/cluster-issuer' in object.metadata.annotations) ||
-            object.metadata.annotations['cert-manager.io/cluster-issuer'] == variables.domain_issuer) &&
-           !('cert-manager.io/issuer' in object.metadata.annotations))) &&
+          (object.metadata.annotations.all(k,
+             !k.contains('cert-manager.io/') || k == 'cert-manager.io/cluster-issuer') &&
+           (!('cert-manager.io/cluster-issuer' in object.metadata.annotations) ||
+            object.metadata.annotations['cert-manager.io/cluster-issuer'] == variables.domain_issuer))) &&
          object.spec.listeners.all(l,
            (!has(l.allowedRoutes) ||
             ((!has(l.allowedRoutes.namespaces) || !has(l.allowedRoutes.namespaces.from) ||
               l.allowedRoutes.namespaces.from == 'Same') &&
              (!has(l.allowedRoutes.kinds) || l.allowedRoutes.kinds.all(k, k.kind == 'HTTPRoute'))))))
-      message: Tenant Gateways must use the platform's class and the tenant issuer, request no addresses, and admit routes from their own namespace only
+      message: >-
+        Tenant Gateways must use the platform's class, request no addresses, ListenerSets or
+        Gateway-level TLS, carry no cert-manager annotation but the tenant cluster-issuer, and admit
+        routes from their own namespace only
     - expression: >-
         request.kind.kind != 'Gateway' ||
         (object.metadata.name == variables.acme_gateway ?
