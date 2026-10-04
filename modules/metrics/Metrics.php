@@ -62,6 +62,28 @@ class Metrics extends Trongate {
         $output .= "# TYPE app_live_projects gauge\n";
         $output .= "app_live_projects {$live}\n";
 
+        $jobs = $this->model->scheduled_jobs();
+
+        $output .= "\n# HELP app_periodic_task_last_run_timestamp_seconds When each periodic worker task last finished\n";
+        $output .= "# TYPE app_periodic_task_last_run_timestamp_seconds gauge\n";
+        foreach ($jobs as $job) {
+            if ($job['last_finished'] !== null) {
+                $output .= "app_periodic_task_last_run_timestamp_seconds{task=\"{$job['script']}\"} " . (int) $job['last_finished'] . "\n";
+            }
+        }
+
+        // The last reconcile_deploys run; recovered > 0 means a GitHub push webhook was missed
+        $reconcile = array_column($jobs, 'last_summary', 'script')['reconcile_deploys'] ?? null;
+        $outcomes = json_decode((string) $reconcile, true)['outcomes'] ?? [];
+
+        $output .= "\n# HELP app_deploy_reconcile_heads Branch heads the last deploy reconcile run checked, by outcome\n";
+        $output .= "# TYPE app_deploy_reconcile_heads gauge\n";
+        foreach (is_array($outcomes) ? $outcomes : [] as $outcome => $count) {
+            if (preg_match('/^[a-z-]+$/', (string) $outcome)) {
+                $output .= "app_deploy_reconcile_heads{outcome=\"{$outcome}\"} " . (int) $count . "\n";
+            }
+        }
+
         return $output;
     }
 }

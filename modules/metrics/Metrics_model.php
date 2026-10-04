@@ -40,4 +40,17 @@ class Metrics_model extends Model {
         SQL;
         return (int) $this->db->query($sql, 'column');
     }
+
+    /**
+     * Periodic worker tasks (Runtime::PERIODIC_TASKS): when each last finished
+     * (unix time) and its last run's summary
+     */
+    function scheduled_jobs(): array {
+        $sql = <<<SQL
+            SELECT script, UNIX_TIMESTAMP(last_finished_at) AS last_finished, last_summary
+            FROM scheduled_jobs
+            ORDER BY script
+        SQL;
+        return $this->db->query($sql, 'array');
+    }
 }
