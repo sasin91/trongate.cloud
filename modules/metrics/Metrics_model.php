@@ -46,7 +46,10 @@ class Metrics_model extends Model {
 
     /**
      * Periodic worker tasks (Runtime::PERIODIC_TASKS): when each last finished
-     * and last failed (unix time) and its last run's summary
+     * and last failed (unix time) and its last run's summary.
+     *
+     * Empty until db/016 is applied: migrations run by hand, and a missing
+     * table must not take the other gauges down with it.
      */
     function scheduled_jobs(): array {
         $sql = <<<SQL
@@ -54,6 +57,11 @@ class Metrics_model extends Model {
             FROM scheduled_jobs
             ORDER BY script
         SQL;
-        return $this->db->query($sql, 'array');
+
+        try {
+            return $this->db->query($sql, 'array');
+        } catch (PDOException) {
+            return [];
+        }
     }
 }
