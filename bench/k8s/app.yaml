@@ -1,0 +1,41 @@
+# Rendered by cluster-run.sh with envsubst: IMAGE, CPU, LOG_LEVEL, SESSION_HANDLER, SESSION_PATH
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+  namespace: bench
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: bench-app}
+  template:
+    metadata:
+      labels: {app: bench-app}
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: app
+          image: ${IMAGE}
+          imagePullPolicy: Always
+          ports: [{name: http, containerPort: 8080}]
+          env:
+            - {name: CADDY_LOG_LEVEL, value: "${LOG_LEVEL}"}
+            - {name: PHP_SESSION_HANDLER, value: "${SESSION_HANDLER}"}
+            - {name: PHP_SESSION_PATH, value: "${SESSION_PATH}"}
+          readinessProbe:
+            httpGet: {path: /raw.php, port: http}
+            periodSeconds: 2
+          # Same requests and memory as Manifests::APP_RESOURCES; the CPU limit is the variable
+          resources:
+            requests: {cpu: 50m, memory: 96Mi}
+            limits: {cpu: "${CPU}", memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL], add: [NET_BIND_SERVICE]}

@@ -23,10 +23,12 @@ class Manifests {
     const SERVICE_PORT = 80;
     const RUN_AS_USER = 1000;
 
-    // ephemeral-storage caps the writable layer so one tenant cannot fill a node's disk
+    // ephemeral-storage caps the writable layer so one tenant cannot fill a node's disk.
+    // A 500m CPU limit halved throughput and CFS throttling added ~55 ms at p99 even for
+    // plain PHP; limits reserve nothing, so 1 CPU costs no capacity.
     const APP_RESOURCES = [
         'requests' => ['cpu' => '50m', 'memory' => '96Mi', 'ephemeral-storage' => '256Mi'],
-        'limits' => ['cpu' => '500m', 'memory' => '256Mi', 'ephemeral-storage' => '1Gi'],
+        'limits' => ['cpu' => '1', 'memory' => '256Mi', 'ephemeral-storage' => '1Gi'],
     ];
 
     const INIT_RESOURCES = [

@@ -159,6 +159,12 @@ return function (Task_log $log) use ($payload, $runtime): int {
 
         file_put_contents($config_file, json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
+        // Railpack's own Caddyfile logs every request at DEBUG; ours is the same at INFO.
+        // Railpack uses a Caddyfile from the repo root, so a repo that ships one keeps it.
+        if (!is_file("{$src}/Caddyfile")) {
+            copy(__DIR__ . '/railpack/Caddyfile', "{$src}/Caddyfile");
+        }
+
         // Railpack's PHP provider only reads RAILPACK_PHP_EXTENSIONS once composer.json
         // parses (it returns no extensions otherwise), and Trongate apps usually ship
         // none. An empty one makes the variable count; the composer step then just

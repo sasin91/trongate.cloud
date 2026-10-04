@@ -1,5 +1,27 @@
 <?php
-session_start();
+// Only visitors that already carry a session cookie open session storage up front.
+// Everyone else (first visits, bots, health checks) gets an empty $_SESSION, and a
+// session is created at the end of the request only if something was written to it.
+// This stops cookieless traffic from creating a session file and a cookie on every hit.
+if (isset($_COOKIE[session_name()])) {
+    session_start();
+} else {
+    $_SESSION = [];
+    // Hold the response so the session cookie can still be sent once we know it is needed
+    ob_start();
+    register_shutdown_function(function (): void {
+        if (empty($_SESSION) || session_status() === PHP_SESSION_ACTIVE) {
+            return;
+        }
+        if (headers_sent($file, $line)) {
+            error_log("Session data not saved: output was flushed early ({$file}:{$line})");
+            return;
+        }
+        $data = $_SESSION;
+        session_start();
+        $_SESSION = array_merge($_SESSION, $data);
+    });
+}
 
 // Config files
 require_once '../config/config.php';
