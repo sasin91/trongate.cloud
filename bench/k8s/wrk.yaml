@@ -36,11 +36,11 @@ spec:
           args:
             - |
               set -e
-              wrk -t1 -c32 -d5s ${LUA_FLAG} -H 'Host: ${HOST_HEADER}' ${URL} >/dev/null
-              for i in 1 2 3; do echo "== run $i"; wrk -t2 -c32 -d20s --latency ${LUA_FLAG} -H 'Host: ${HOST_HEADER}' ${URL}; done
+              wrk -t1 -c48 -d5s ${LUA_FLAG} -H 'Host: ${HOST_HEADER}' ${URL} >/dev/null
+              for i in 1 2 3; do echo "== run $i"; wrk -t3 -c48 -d20s --latency ${LUA_FLAG} -H 'Host: ${HOST_HEADER}' ${URL}; done
           resources:
-            requests: {cpu: "1", memory: 64Mi}
-            limits: {cpu: "2", memory: 256Mi}
+            requests: {cpu: 1500m, memory: 64Mi}
+            limits: {cpu: "3", memory: 256Mi}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities: {drop: [ALL]}

@@ -2,15 +2,15 @@
 # base, php.ini and Caddyfile that Railpack gives customer apps (railpack v0.40.1).
 #   docker buildx build --platform linux/amd64 -f bench/Dockerfile --build-arg SESSION_START=lazy ...
 # SESSION_START=stock keeps Trongate's session_start() on every request; lazy uses
-# app/ignition.lazy.php. PHP_SESSION_HANDLER/PHP_SESSION_PATH pick files or Valkey at runtime.
+# app/ignition.lazy.php. PHP_SESSION_HANDLER/PHP_SESSION_PATH pick files, Valkey (redis) or Memcached at runtime.
 FROM dunglas/frankenphp:php8.4.26-trixie
 
 ARG TRONGATE_REF=cc968cf
 ARG SESSION_START=stock
 
-RUN install-php-extensions pdo_mysql redis \
+RUN install-php-extensions pdo_mysql redis memcached \
     && apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/* \
-    && git clone https://github.com/trongate/trongate-framework.git /app \
+    && cd / && rm -rf /app && git clone https://github.com/trongate/trongate-framework.git /app \
     && git -C /app checkout -q "${TRONGATE_REF}" && rm -rf /app/.git \
     && sed -i "s|define('BASE_URL', '\*\*\*\*');|define('BASE_URL', 'http://localhost/');|; s|define('ENV', 'dev');|define('ENV', 'live');|" /app/config/config.php \
     && grep -q "define('ENV', 'live')" /app/config/config.php \

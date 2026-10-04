@@ -28,12 +28,16 @@ trap cleanup EXIT
 
 kubectl apply -f k8s/base.yaml >/dev/null
 kubectl -n bench rollout status deploy/valkey --timeout=180s >/dev/null
+kubectl -n bench rollout status deploy/memcached --timeout=180s >/dev/null
 
-# app <session_start> <cpu> <log_level> <files|valkey>
+# app <session_start> <cpu> <log_level> <files|valkey|memcached>
 app() {
   export IMAGE="$REGISTRY/bench:$1" CPU="$2" LOG_LEVEL="$3" SESSION_HANDLER=files SESSION_PATH=""
-  if [ "$4" = valkey ]; then SESSION_HANDLER=redis; SESSION_PATH="tcp://valkey.bench.svc:6379?persistent=1"; fi
-  envsubst < k8s/app.yaml | kubectl apply -f - >/dev/null
+  case "$4" in
+    valkey) SESSION_HANDLER=redis; SESSION_PATH="tcp://valkey.bench.svc:6379?persistent=1";;
+    memcached) SESSION_HANDLER=memcached; SESSION_PATH="memcached.bench.svc:11211";;
+  esac
+  envsubst '$IMAGE $CPU $LOG_LEVEL $SESSION_HANDLER $SESSION_PATH' < k8s/app.yaml | kubectl apply -f - >/dev/null
   kubectl -n bench rollout status deploy/app --timeout=300s >/dev/null
   kubectl -n bench exec deploy/valkey -- valkey-cli flushall >/dev/null
 }
@@ -44,7 +48,7 @@ load() {
   NAME="wrk-$(echo "$name" | tr '_.' '--')"
   export NAME URL="$base$2" HOST_HEADER="${5:-app.bench.svc}" LUA_FLAG=""
   [ "$3" = users ] && LUA_FLAG="-s /scripts/users.lua"
-  envsubst < k8s/wrk.yaml | kubectl apply -f - >/dev/null
+  envsubst '$NAME $WRK_IMAGE $URL $LUA_FLAG $HOST_HEADER $ALIAS_IP $ALIAS_HOST' < k8s/wrk.yaml | kubectl apply -f - >/dev/null
   kubectl -n bench wait --for=condition=complete "job/$NAME" --timeout=300s >/dev/null \
     || { echo "$name: wrk job failed"; kubectl -n bench logs "job/$NAME" | tail -5; return 0; }
   kubectl -n bench logs "job/$NAME" > "$OUT/$name.txt"
@@ -63,14 +67,15 @@ load today_0.5cpu_users /bench users
 load today_0.5cpu_nocookie /bench nocookie
 
 # 2. CPU sweep with Caddy at INFO
-for cpu in 500m 1 2; do
+for cpu in 500m 1 2 3; do
   app stock $cpu INFO files
   load info_${cpu}cpu_raw /raw.php nocookie
   load info_${cpu}cpu_users /bench users
 done
 
-# 3. Session matrix at 1 CPU, INFO
-for store in files valkey; do for s in stock lazy; do
+# 3. Session matrix at 1 CPU, INFO. Memcached runs with the extension defaults (locking on,
+#    no persistent connections), which is what an app gets unless it tunes them.
+for store in files valkey memcached; do for s in stock lazy; do
   app $s 1 INFO $store
   load sess_${store}_${s}_nocookie /bench nocookie
   load sess_${store}_${s}_users /bench users
@@ -81,7 +86,7 @@ if [ -n "${GATEWAY_IP:-}" ]; then
   export BENCH_HOST GATEWAY_NAME GATEWAY_NAMESPACE GATEWAY_SECTION ALIAS_IP="$GATEWAY_IP" ALIAS_HOST="$BENCH_HOST"
   kubectl label namespace bench platform.example.com/managed=tenant --overwrite >/dev/null
   kubectl annotate namespace bench "platform.example.com/domains=$BENCH_HOST" --overwrite >/dev/null
-  envsubst < k8s/route.yaml | kubectl apply -f - >/dev/null
+  envsubst '$GATEWAY_NAME $GATEWAY_NAMESPACE $GATEWAY_SECTION $BENCH_HOST' < k8s/route.yaml | kubectl apply -f - >/dev/null
   app stock 1 INFO files; sleep 5
   load gateway_1cpu_raw /raw.php nocookie "https://$BENCH_HOST" "$BENCH_HOST"
   load gateway_1cpu_users /bench users "https://$BENCH_HOST" "$BENCH_HOST"

@@ -58,3 +58,42 @@ metadata:
 spec:
   selector: {app: bench-app}
   ports: [{name: http, port: 80, targetPort: 8080}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: memcached
+  namespace: bench
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: memcached}
+  template:
+    metadata:
+      labels: {app: memcached}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 11211
+        runAsGroup: 11211
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: memcached
+          image: memcached:1.6-alpine
+          args: ["memcached", "-m", "768"]
+          ports: [{containerPort: 11211}]
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {memory: 1Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: memcached
+  namespace: bench
+spec:
+  selector: {app: memcached}
+  ports: [{port: 11211, targetPort: 11211}]
