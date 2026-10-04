@@ -10,7 +10,7 @@
                     <div class="wz-q">
                         <span class="wz-num">1 &rarr;</span>
                         <h1>Let's connect GitHub.</h1>
-                        <p>This team has no GitHub connection yet. Paste a personal access token so we can list your repositories.</p>
+                        <p>GitHub is not connected yet. Paste a personal access token so we can list your repositories.</p>
                     </div>
 
                     <?php $errors = validation_errors('<p>', '</p>'); ?>

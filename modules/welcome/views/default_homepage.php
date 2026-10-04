@@ -8,7 +8,7 @@ $values = [
 ];
 
 $steps = [
-    ['Connect GitHub', 'Name your team and link your GitHub account. Private repositories work.'],
+    ['Connect GitHub', 'Link your GitHub account. Private repositories work.'],
     ['Pick a repository', 'Choose the repo and the branch that should go live.'],
     ['Name it', 'The name becomes your address at name.' . PLATFORM_APPS_DOMAIN . '. Bring your own domain whenever you like.'],
     ['Push', 'Each push builds, passes a health check and goes live. Roll back in a click if needed.'],

@@ -10,12 +10,12 @@
 </head>
 
 <body class="wz-body">
-    <?php $q_current = 3; $q_total = 6; require APPPATH . 'modules/projects/views/_wizard_top.php'; ?>
+    <?php $q_current = 2; $q_total = 5; require APPPATH . 'modules/projects/views/_wizard_top.php'; ?>
 
     <?php
     $form_action = 'onboarding/submit_project';
     $branches_url = 'onboarding/branches';
-    $q_offset = 2;
+    $q_offset = 1;
     require APPPATH . 'modules/projects/views/_project_steps.php';
     ?>
 </body>
