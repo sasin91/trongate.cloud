@@ -153,7 +153,7 @@ trait Platform_actions {
             SELECT
                 p.id, p.team_id, p.label, p.slug, p.type, p.domain, p.verified_domain,
                 p.source_provider, p.source_url, p.source_branch,
-                p.persistent_paths, p.php_extensions, p.always_on,
+                p.persistent_paths, p.php_extensions, p.always_on, p.resource_tier,
                 p.database_server_id, p.current_deployment_id, p.created_at,
                 cd.status AS current_status,
                 cd.commit_sha AS current_commit_sha,
