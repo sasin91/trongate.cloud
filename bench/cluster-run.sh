@@ -1,12 +1,22 @@
 #!/bin/bash
 # Runs the Trongate benchmark in a throwaway "bench" namespace and deletes it afterwards.
 # Needs kubectl for the cluster and the images from bench/push-images.sh.
-#   bench/cluster-run.sh                   # in-cluster: wrk Job -> Service -> app pod
+#   KUBECONFIG=~/.config/trongate-cloud/kubeconfig bench/cluster-run.sh   # in-cluster: wrk Job -> Service -> app pod
 #   GATEWAY_URL=http://<gateway svc>.<ns>.svc GATEWAY_NAME=... GATEWAY_NAMESPACE=... \
 #   GATEWAY_SECTION=... BENCH_HOST=bench.trongate.dev bench/cluster-run.sh   # also via the gateway
 # Results land in bench/results/<UTC timestamp>/ (raw wrk output + summary.csv).
 set -euo pipefail
 cd "$(dirname "$0")"
+
+# Refuse to run against any other cluster: the cleanup below deletes the "bench" namespace.
+# Point kubectl at trongate.cloud, e.g. KUBECONFIG=~/.config/trongate-cloud/kubeconfig.
+EXPECTED_CONTEXT="${BENCH_CONTEXT:-trongate-cloud}"
+context="$(kubectl config current-context 2>/dev/null || true)"
+if [ "$context" != "$EXPECTED_CONTEXT" ]; then
+  echo "kubectl context is '${context:-none}', expected '$EXPECTED_CONTEXT'; set KUBECONFIG or BENCH_CONTEXT" >&2
+  exit 1
+fi
+kubectl() { command kubectl --context "$EXPECTED_CONTEXT" "$@"; }
 REGISTRY="${REGISTRY:-registry.trongate.cloud/platform}"
 export WRK_IMAGE="$REGISTRY/bench-wrk:latest"
 OUT="results/$(date -u +%Y%m%dT%H%M%SZ)"; mkdir -p "$OUT"
@@ -29,7 +39,8 @@ app() {
 # load <case name> <path> <nocookie|users> [url base] [host]
 load() {
   local name="$1" base="${4:-http://app.bench.svc}"
-  export NAME="wrk-$(echo "$name" | tr '_.' '--')" URL="$base$2" HOST_HEADER="${5:-app.bench.svc}" LUA_FLAG=""
+  NAME="wrk-$(echo "$name" | tr '_.' '--')"
+  export NAME URL="$base$2" HOST_HEADER="${5:-app.bench.svc}" LUA_FLAG=""
   [ "$3" = users ] && LUA_FLAG="-s /scripts/users.lua"
   envsubst < k8s/wrk.yaml | kubectl apply -f - >/dev/null
   kubectl -n bench wait --for=condition=complete "job/$NAME" --timeout=300s >/dev/null \
