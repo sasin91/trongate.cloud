@@ -5,38 +5,36 @@
     <base href="<?= BASE_URL ?>">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Create Team - Trongate Cloud</title>
-    <link rel="stylesheet" href="<?= BASE_URL ?>customer-onboarding_module/css/onboarding.css">
+    <title>Name your team - trongate.cloud</title>
+    <link rel="stylesheet" href="<?= BASE_URL ?>projects_module/css/wizard.css">
 </head>
 
-<body>
+<body class="wz-body">
+    <?php $q_current = 1; $q_total = 6; require APPPATH . 'modules/projects/views/_wizard_top.php'; ?>
 
-    <div class="onboarding-card">
-        <div class="onboarding-header">
-            <h1>Create your Team</h1>
-            <p>Start by naming your team where your projects will live.</p>
-        </div>
+    <div class="wz-wrap">
+        <main class="wz-main">
+            <?= form_open('onboarding/submit_team', ['class' => 'wz-stage']) ?>
+                <div class="wz-q">
+                    <span class="wz-num">1 &rarr;</span>
+                    <h1>Welcome aboard. What's your team called?</h1>
+                    <p>Your apps live in a team. You can invite people to it later.</p>
+                </div>
 
-        <?= validation_errors('<div class="error-message">', '</div>') ?>
+                <?php $errors = validation_errors('<p>', '</p>'); ?>
+                <?php if ($errors): ?><div class="wz-errors" role="alert"><?= $errors ?></div><?php endif; ?>
 
-        <?= form_open('onboarding/submit_team') ?>
+                <label class="wz-field">
+                    <span class="wz-sr">Team name</span>
+                    <input type="text" name="name" class="wz-big" placeholder="Acme Studio" value="<?= htmlspecialchars(post('name') ?? '') ?>" required minlength="3" maxlength="50" autofocus>
+                </label>
 
-        <div class="form-group">
-            <label for="name" class="form-label">Team Name</label>
-            <input type="text" name="name" id="name" class="form-input" placeholder="e.g. Acme Corp" value="<?= htmlspecialchars(post('name') ?? '') ?>" required autofocus>
-        </div>
-
-        <div class="steps">
-            <div class="step-dot active"></div>
-            <div class="step-dot"></div>
-            <div class="step-dot"></div>
-        </div>
-
-        <button type="submit" class="btn-primary">
-            <div class="spinner" style="display: none;"></div>
-            Create Team & Continue
-        </button>
-        <?= form_close() ?>
+                <div class="wz-nav">
+                    <button type="submit" class="wz-ok">OK</button>
+                    <span class="wz-enter">press <strong>Enter &#8629;</strong></span>
+                </div>
+            <?= form_close() ?>
+        </main>
     </div>
 
     <script src="<?= BASE_URL ?>customer-onboarding_module/js/onboarding.js"></script>

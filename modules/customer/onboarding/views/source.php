@@ -5,59 +5,47 @@
     <base href="<?= BASE_URL ?>">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Connect Source Control - Trongate Cloud</title>
-    <link rel="stylesheet" href="<?= BASE_URL ?>customer-onboarding_module/css/onboarding.css">
+    <title>Connect GitHub - trongate.cloud</title>
+    <link rel="stylesheet" href="<?= BASE_URL ?>projects_module/css/wizard.css">
 </head>
 
-<body>
+<body class="wz-body">
+    <?php $q_current = 2; $q_total = 6; require APPPATH . 'modules/projects/views/_wizard_top.php'; ?>
 
-    <div class="onboarding-card">
-        <div class="onboarding-header">
-            <h1>🐙 Connect Source Control</h1>
-            <p>Link your GitHub account to deploy from your repositories.</p>
-        </div>
+    <div class="wz-wrap">
+        <main class="wz-main">
+            <?= form_open('onboarding/submit_source', ['class' => 'wz-stage']) ?>
+                <div class="wz-q">
+                    <span class="wz-num">2 &rarr;</span>
+                    <h1>Let's connect GitHub.</h1>
+                    <p>Paste a personal access token so we can list your repositories and set up deploys.</p>
+                </div>
 
-        <?= form_open('onboarding/submit_source', ['class' => 'highlight-errors']) ?>
+                <?php $errors = validation_errors('<p>', '</p>'); ?>
+                <?php if ($errors): ?><div class="wz-errors" role="alert"><?= $errors ?></div><?php endif; ?>
 
-        <?= validation_errors() ?>
+                <input type="hidden" name="provider" value="github">
 
-        <div class="provider-info" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef;">
-            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-                <h3 style="margin: 0; font-size: 1.1rem;">GitHub</h3>
-            </div>
-            <p style="margin: 0 0 10px; color: #666; font-size: 0.9rem;">
-                Connect your GitHub account to deploy from your repositories.
-            </p>
-            <div class="instructions" style="font-size: 0.85rem; color: #555;">
-                <strong>How to get your Personal Access Token:</strong>
-                <ol style="margin: 5px 0 0 20px; padding: 0;">
-                    <li>Go to <a href="https://github.com/settings/tokens" target="_blank" rel="noopener">GitHub Settings &rarr; Tokens</a>.</li>
-                    <li>Click <strong>Generate new token (classic)</strong>.</li>
-                    <li>Select scopes: <code>repo</code> (full access to private repos).</li>
-                    <li>Click <strong>Generate token</strong> and copy it.</li>
-                </ol>
-            </div>
-        </div>
+                <label class="wz-field">
+                    <span class="wz-label">Personal access token</span>
+                    <input type="password" name="token" class="wz-in mono" placeholder="ghp_..." required autocomplete="off" autofocus>
+                </label>
 
-        <input type="hidden" name="provider" value="github">
+                <div class="wz-help">
+                    <strong>Getting a token takes a minute</strong>
+                    <ol>
+                        <li>Open <a href="https://github.com/settings/tokens" target="_blank" rel="noopener">GitHub settings, Tokens (classic)</a>.</li>
+                        <li>Choose <strong>Generate new token (classic)</strong>.</li>
+                        <li>Tick the <code>repo</code> scope, generate, and paste it here.</li>
+                    </ol>
+                </div>
 
-        <div class="form-group">
-            <label for="token" class="form-label">Personal Access Token</label>
-            <input type="password" name="token" id="token" class="form-input" placeholder="Paste your GitHub token" required>
-        </div>
-
-        <div class="steps">
-            <div class="step-dot completed"></div>
-            <div class="step-dot active"></div>
-            <div class="step-dot"></div>
-        </div>
-
-        <button type="submit" class="btn-primary">
-            <div class="spinner" style="display: none;"></div>
-            Connect & Continue
-        </button>
-
-        <?= form_close() ?>
+                <div class="wz-nav">
+                    <button type="submit" class="wz-ok">Connect</button>
+                    <span class="wz-enter">press <strong>Enter &#8629;</strong></span>
+                </div>
+            <?= form_close() ?>
+        </main>
     </div>
 
     <script src="<?= BASE_URL ?>customer-onboarding_module/js/onboarding.js"></script>

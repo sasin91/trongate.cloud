@@ -42,7 +42,7 @@ class Projects extends Trongate {
             'view_module' => 'projects',
             'view_file' => 'create',
             'form' => $this->_project_form_data($team_id),
-            'additional_includes_top' => ['projects_module/css/projects.css'],
+            'additional_includes_top' => ['projects_module/css/wizard.css'],
         ];
         $this->module('templates');
         $this->templates->customer($data);
@@ -110,6 +110,7 @@ class Projects extends Trongate {
             'deployments' => $deployments,
             'can_rollback' => $this->model->rollback_target($project) !== false,
             'live_state' => $this->_live_app_state($project),
+            'database_name' => Manifests::database_name((int) $project->id),
             'additional_includes_top' => [
                 'deployments_module/css/deployments.css',
                 'projects_module/css/projects.css',

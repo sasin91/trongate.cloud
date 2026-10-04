@@ -2,24 +2,32 @@
     navigation: auto;
 }
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@800;900&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap');
 
 :root {
-    --primary: #4f46e5;
-    --primary-hover: #4338ca;
-    --text-main: #111827;
-    --text-muted: #6b7280;
-    --border: #e5e7eb;
-    --bg-app: #f9fafb;
+    /* Navy and periwinkle, after the Trongate framework's colours (not its logo) */
+    --primary: #1d1e6e;
+    --primary-hover: #2c2d8a;
+    --accent: #6966d6;
+    --accent-ink: #4f4cc7;
+    --accent-soft: #ecebfa;
+    --text-main: #1c1d5e;
+    --text-muted: #585c7a;
+    --border: #e3e5f0;
+    --border-strong: #d5d8e6;
+    --bg-app: #f6f7fb;
+    --bg-subtle: #fafafd;
     --white: #ffffff;
-    --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    --card-hover-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    --font-display: 'Archivo', 'Geist', system-ui, sans-serif;
+    --font-mono: 'Geist Mono', ui-monospace, monospace;
+    --card-shadow: none;
+    --card-hover-shadow: 0 12px 24px -16px rgba(29, 30, 110, 0.35);
 }
 
 body {
     background-color: var(--bg-app);
     color: var(--text-main);
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: 'Geist', system-ui, -apple-system, sans-serif;
     line-height: 1.5;
     margin: 0;
     min-height: 100vh;
@@ -97,10 +105,21 @@ header {
     box-shadow: 0 0 0 2px var(--border);
 }
 
+.header-logo-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
 .header-title {
-    font-size: 1.25rem;
+    font-size: 1.125rem;
     font-weight: 600;
-    color: var(--text-main);
+    letter-spacing: -0.01em;
+    color: var(--primary);
+}
+
+.header-title span {
+    color: var(--accent-ink);
 }
 
 .nav-link {
@@ -133,7 +152,7 @@ main {
 .card {
     background-color: var(--white);
     border: 1px solid var(--border);
-    border-radius: 0.75rem;
+    border-radius: 14px;
     padding: 1.5rem;
     box-shadow: var(--card-shadow);
     transition: transform 0.2s, box-shadow 0.2s;

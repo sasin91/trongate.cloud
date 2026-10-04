@@ -62,6 +62,8 @@ trait Project_form {
             source_provider: $provider,
             source_branch: post('repository_branch', true),
             domain: $this->_normalise_domain(post('domain', true)),
+            // The switch posts a hidden 0 then the checkbox's 1; older forms leave it out
+            auto_deploy: !isset($_POST['auto_deploy']) || post('auto_deploy') === '1',
         );
     }
 

@@ -5,43 +5,19 @@
     <base href="<?= BASE_URL ?>">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Create Project - Trongate Cloud</title>
-    <link rel="stylesheet" href="<?= BASE_URL ?>customer-onboarding_module/css/onboarding.css">
-    <script src="<?= BASE_URL ?>js/trongate-mx.min.js"></script>
+    <title>Your first app - trongate.cloud</title>
+    <link rel="stylesheet" href="<?= BASE_URL ?>projects_module/css/wizard.css">
 </head>
 
-<body>
+<body class="wz-body">
+    <?php $q_current = 3; $q_total = 6; require APPPATH . 'modules/projects/views/_wizard_top.php'; ?>
 
-    <div class="onboarding-card">
-        <div class="onboarding-header">
-            <h1>Deploy your first app</h1>
-            <p>Pick a repository. We build it and give it a live URL.</p>
-        </div>
-
-        <?= validation_errors() ?>
-
-        <?= form_open('onboarding/submit_project') ?>
-
-        <?php
-        $branches_url = 'onboarding/branches';
-        require APPPATH . 'modules/projects/views/_project_fields.php';
-        ?>
-
-        <div class="steps">
-            <div class="step-dot completed"></div>
-            <div class="step-dot completed"></div>
-            <div class="step-dot active"></div>
-        </div>
-
-        <button type="submit" class="btn-primary">
-            <div class="spinner" style="display: none;"></div>
-            Create &amp; Deploy
-        </button>
-        <?= form_close() ?>
-    </div>
-
-    <script src="<?= BASE_URL ?>customer-onboarding_module/js/onboarding.js"></script>
-    <script src="<?= BASE_URL ?>customer-onboarding_module/js/project.js"></script>
+    <?php
+    $form_action = 'onboarding/submit_project';
+    $branches_url = 'onboarding/branches';
+    $q_offset = 2;
+    require APPPATH . 'modules/projects/views/_project_steps.php';
+    ?>
 </body>
 
 </html>

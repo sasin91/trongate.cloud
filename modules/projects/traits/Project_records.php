@@ -11,7 +11,7 @@ trait Project_records {
     /**
      * Create a project with a unique slug and a fresh webhook secret.
      */
-    function create_project(int $team_id, string $label, string $type, string $source_url, string $source_provider, string $source_branch = 'main', ?string $domain = null): int|false {
+    function create_project(int $team_id, string $label, string $type, string $source_url, string $source_provider, string $source_branch = 'main', ?string $domain = null, bool $auto_deploy = true): int|false {
         return $this->db->insert([
             'team_id' => $team_id,
             'label' => $label,
@@ -21,6 +21,7 @@ trait Project_records {
             'source_provider' => $source_provider,
             'source_branch' => $source_branch ?: 'main',
             'domain' => $domain,
+            'auto_deploy' => $auto_deploy ? 1 : 0,
             'persistent_paths' => '[]',
             'webhook_secret' => $this->generate_webhook_secret(),
         ], 'project');
