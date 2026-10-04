@@ -26,7 +26,7 @@
 
                 <label class="wz-field">
                     <span class="wz-sr">Team name</span>
-                    <input type="text" name="name" class="wz-big" placeholder="Acme Studio" value="<?= htmlspecialchars(post('name') ?? '') ?>" required minlength="3" maxlength="50" autofocus>
+                    <input type="text" name="name" class="wz-big" placeholder="Acme Studio" value="<?= htmlspecialchars(post('name') ?: ($team_name ?? '')) ?>" required minlength="3" maxlength="50" autofocus>
                 </label>
 
                 <div class="wz-nav">

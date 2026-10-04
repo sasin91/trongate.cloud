@@ -149,7 +149,7 @@ $platform_host = $project->slug . '.' . PLATFORM_APPS_DOMAIN;
                                             <a href="deployments/<?= (int) $deployment->id ?>" class="status-pill status-<?= $e($deployment->status) ?>"><?= $e(str_replace('_', ' ', $deployment->status)) ?></a>
                                             <?php if (!empty($deployment->is_current)): ?><span class="current-tag">live</span><?php endif; ?>
                                         </td>
-                                        <td><code class="ov-sha"><?= $e($short_sha($deployment->commit_sha)) ?></code></td>
+                                        <td><?php if ($deployment->commit_sha): ?><code class="ov-sha"><?= $e($short_sha($deployment->commit_sha)) ?></code><?php endif; ?></td>
                                         <td class="muted"><?= $e(str_replace('_', ' ', $deployment->trigger_type)) ?></td>
                                         <td class="muted"><?= $e($deployment->created_at) ?></td>
                                         <td class="row-actions">

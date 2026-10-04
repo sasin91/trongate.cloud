@@ -36,7 +36,11 @@ class Onboarding extends Trongate {
     // --- Team ---
 
     function team(): void {
-        $this->view('team');
+        // Coming back to this question (browser Back) shows the team they already named
+        $team_id = $this->model->_get_current_team_id();
+        $teams = $team_id === false ? [] : array_column($this->model->get_customer_teams(), 'name', 'id');
+
+        $this->view('team', ['team_name' => $teams[$team_id] ?? '']);
     }
 
     function submit_team(): void {
@@ -49,6 +53,14 @@ class Onboarding extends Trongate {
 
         $customer = $this->_customer_or_redirect();
         $name = post('name', true);
+
+        // Answering again renames the team instead of creating a second one
+        $team_id = $this->model->_get_current_team_id();
+
+        if ($team_id !== false) {
+            $this->model->rename_team($team_id, $name);
+            redirect('onboarding/source');
+        }
 
         $team_id = $this->model->create_team($customer->id, $name);
         $this->model->add_team_member($team_id, $customer->id, 'owner');
