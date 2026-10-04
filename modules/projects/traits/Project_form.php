@@ -103,7 +103,7 @@ trait Project_form {
         }
 
         $client = $this->_provider_client($team_id, $provider);
-        $branches = $client->list_branches($repository);
+        $branches = $client->list_branches($repository, 100);
 
         header('Content-Type: text/html');
         require APPPATH . 'modules/projects/views/_repository_branch_options.php';
