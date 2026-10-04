@@ -40,7 +40,7 @@ class Metrics extends Trongate {
     function _collect_metrics(): string {
         $tasks = $this->model->task_counts();
 
-        $output = "# HELP app_tasks Worker tasks by state\n";
+        $output = "# HELP app_tasks Customer worker tasks by state\n";
         $output .= "# TYPE app_tasks gauge\n";
         foreach (['pending', 'running', 'failed'] as $state) {
             $count = (int) ($tasks[$state] ?? 0);
@@ -69,6 +69,14 @@ class Metrics extends Trongate {
         foreach ($jobs as $job) {
             if ($job['last_finished'] !== null) {
                 $output .= "app_periodic_task_last_run_timestamp_seconds{task=\"{$job['script']}\"} " . (int) $job['last_finished'] . "\n";
+            }
+        }
+
+        $output .= "\n# HELP app_periodic_task_last_failure_timestamp_seconds When each periodic worker task last failed\n";
+        $output .= "# TYPE app_periodic_task_last_failure_timestamp_seconds gauge\n";
+        foreach ($jobs as $job) {
+            if ($job['last_failed'] !== null) {
+                $output .= "app_periodic_task_last_failure_timestamp_seconds{task=\"{$job['script']}\"} " . (int) $job['last_failed'] . "\n";
             }
         }
 

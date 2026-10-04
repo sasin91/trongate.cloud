@@ -31,7 +31,9 @@ require_once __DIR__ . '/Task_log.php';
  * PERIODIC_TASKS are platform-wide tasks (no team) that the poll loop queues
  * on an interval, e.g. reconcile_deploys. They run like any other task, so
  * they share its logging, failure handling and stale recovery. Adding one is
- * a line in PERIODIC_TASKS plus its script.
+ * a line in PERIODIC_TASKS plus its script. The Runtime records when each
+ * last finished and last failed (scheduled_jobs, exposed by /metrics); a
+ * script may add a summary with record_periodic_summary().
  *
  * Each is claimed in scheduled_jobs with one conditional UPDATE, so with more
  * than one worker replica it is still queued once per interval, and never
@@ -68,7 +70,7 @@ class Runtime {
     /** How often the poll loop looks for due periodic tasks */
     const SCHEDULE_CHECK_SECONDS = 30;
 
-    /** Completed periodic task runs (and their logs) are kept this long */
+    /** Finished periodic task runs (and their logs) are kept this long */
     const PERIODIC_RETENTION_DAYS = 7;
 
     /** A shell step (e.g. a customer build) is killed after this long */
@@ -315,11 +317,12 @@ class Runtime {
     }
 
     /**
-     * Save a periodic task's run summary (exposed by /metrics).
+     * Save a periodic task's run summary (exposed by /metrics). Optional: the
+     * Runtime records when the task finished either way.
      */
     function record_periodic_summary(string $script, array $summary): void {
         $stmt = $this->db->prepare(
-            'UPDATE scheduled_jobs SET last_finished_at = NOW(), last_summary = ? WHERE script = ?'
+            'UPDATE scheduled_jobs SET last_summary = ? WHERE script = ?'
         );
         $json = json_encode($summary, JSON_UNESCAPED_SLASHES);
         $stmt->bind_param('ss', $json, $script);
@@ -550,12 +553,12 @@ class Runtime {
         $stmt->execute();
         $stmt->close();
 
-        // Old successful runs only; failed ones stay until someone looks
+        // Failed runs too: scheduled_jobs.last_failed_at keeps the signal
         $stmt = $this->db->prepare(
             'DELETE FROM tasks
              WHERE script = ?
                AND team_id IS NULL
-               AND completed_at < NOW() - INTERVAL ? DAY'
+               AND COALESCE(completed_at, failed_at) < NOW() - INTERVAL ? DAY'
         );
         $retention = self::PERIODIC_RETENTION_DAYS;
         $stmt->bind_param('si', $script, $retention);
@@ -633,6 +636,8 @@ class Runtime {
             $stmt->execute();
             $stmt->close();
 
+            $this->record_periodic_run($task, 'last_finished_at');
+
             // Scripts normally set the final status; a still-open deployment succeeded
             if ($task['deployment_id'] !== null && !$this->deployment_is_terminal($task['deployment_id'])) {
                 $this->set_deployment_status($task['deployment_id'], 'success');
@@ -649,10 +654,28 @@ class Runtime {
             $stmt->execute();
             $stmt->close();
 
+            $this->record_periodic_run($task, 'last_failed_at');
+
             if ($task['deployment_id'] !== null && !$this->deployment_is_terminal($task['deployment_id'])) {
                 $this->set_deployment_status($task['deployment_id'], 'failed');
             }
         });
+    }
+
+    /**
+     * Stamp a periodic (team-less) task's finish or failure in scheduled_jobs.
+     *
+     * @param 'last_finished_at'|'last_failed_at' $column
+     */
+    private function record_periodic_run(array $task, string $column): void {
+        if ($task['team_id'] !== null || !isset(self::PERIODIC_TASKS[$task['script']])) {
+            return;
+        }
+
+        $stmt = $this->db->prepare("UPDATE scheduled_jobs SET {$column} = NOW() WHERE script = ?");
+        $stmt->bind_param('s', $task['script']);
+        $stmt->execute();
+        $stmt->close();
     }
 
     private function deployment_is_terminal(int $deployment_id): bool {

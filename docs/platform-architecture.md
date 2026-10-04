@@ -42,7 +42,7 @@ Done in code:
   - `db/015_domain_verification.sql`: `project.verified_domain` (UNIQUE).
   - `db/016_deploy_reconcile.sql`: `reconcile` deploy trigger, `project.auto_deploy` and `reconciled_at`, `tasks.team_id` nullable for platform-wide tasks, `scheduled_jobs`.
 - **Worker** (`modules/platform/worker`): polls `tasks`, runs `modules/platform/tasks/{script}.php`, logs to `task_logs`, closes the task's deployment. Shell steps get a minimal environment (no `APP_KEY`/`DB_PASSWORD`/tokens) and are killed after 30 minutes (`Runtime::SHELL_TIMEOUT_SECONDS`).
-  - Periodic tasks (`Runtime::PERIODIC_TASKS`, script => interval): the poll loop queues each as a team-less task when due. `scheduled_jobs` holds the claim (one conditional UPDATE, so extra replicas never queue a job twice or while its last run is unfinished) and the last run's summary. Completed runs are pruned after 7 days.
+  - Periodic tasks (`Runtime::PERIODIC_TASKS`, script => interval): the poll loop queues each as a team-less task when due. `scheduled_jobs` holds the claim (one conditional UPDATE, so extra replicas never queue a job twice or while its last run is unfinished), when each job last finished and last failed (recorded by the Runtime) and the last run's summary (optional, from the script). Finished and failed runs are pruned after 7 days.
   - Queues deploys through `Platform_actions` (`Worker_actions` over a mysqli `Worker_db`), so it follows the same rules as the UI.
 - **Task scripts** (`modules/platform/tasks`):
   - `deploy`: resolves the commit (webhook deploys always build the branch head), downloads the tarball, rejects symlinks that leave the tree, writes `railpack.json` (and an empty `composer.json` so `RAILPACK_PHP_EXTENSIONS` applies), builds with `railpack prepare` + `buildctl` on a BuildKit daemon Pod started for this build only, pushes to `PLATFORM_REGISTRY`, places the database, applies `Manifests::tenant` + `Manifests::app` and waits for the rollout.
@@ -67,7 +67,7 @@ Done in code:
   - The `X-Hub-Signature-256` HMAC is checked against a secret derived from the stored seed and `APP_KEY`, so a database leak alone does not reveal it.
   - Answers `ping`.
   - Queues a deploy when a push hits the project's branch, unless the customer turned Deploy on push off in project settings. A replayed push cannot roll an app back, because deploys always build the branch head.
-- **Metrics**: `app_tasks`, `app_deployments`, `app_live_projects`, `app_periodic_task_last_run_timestamp_seconds{task}`, `app_deploy_reconcile_heads{outcome}` (last run; `recovered` > 0 means a push webhook was missed), `app_deploy_reconcile_stuck_heads` (last run; > 0 means a head is not getting deployed, worth an alert).
+- **Metrics**: `app_tasks` (customer tasks only), `app_deployments`, `app_live_projects`, `app_periodic_task_last_run_timestamp_seconds{task}`, `app_periodic_task_last_failure_timestamp_seconds{task}`, `app_deploy_reconcile_heads{outcome}` (last run; `recovered` > 0 means a push webhook was missed), `app_deploy_reconcile_stuck_heads` (last run; > 0 means a head is not getting deployed, worth an alert).
 - **Admin MCP** (`POST /mcp`, `modules/mcp`): one `MCP_SECRET` bearer secret (in the app-only `trongate-cloud-mcp` Secret), tools across all teams. See `docs/mcp.md`.
 - **Cluster manifests** (`deploy/k8s`, see its README):
   - Operators; the shared MariaDB, Valkey and JuiceFS.

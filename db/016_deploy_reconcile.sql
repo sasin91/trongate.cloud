@@ -7,8 +7,9 @@
 --
 -- Periodic tasks (Runtime::PERIODIC_TASKS) are platform-wide, so they run as
 -- tasks rows without a team. scheduled_jobs remembers when each was last
--- queued (the claim that keeps several workers from queueing it twice) and the
--- summary of its last run, which /metrics exposes.
+-- queued (the claim that keeps several workers from queueing it twice), when
+-- it last finished and last failed (set by the Runtime) and the summary of its
+-- last run (set by the task, optional), which /metrics exposes.
 --
 -- project.auto_deploy is the customer's "Deploy on push" switch (project
 -- settings): the webhook and the reconcile job both honour it. On by default,
@@ -31,5 +32,6 @@ CREATE TABLE IF NOT EXISTS scheduled_jobs (
   script VARCHAR(100) PRIMARY KEY COMMENT 'modules/platform/tasks/{script}.php',
   last_queued_at TIMESTAMP NULL,
   last_finished_at TIMESTAMP NULL,
+  last_failed_at TIMESTAMP NULL,
   last_summary JSON NULL
 );
