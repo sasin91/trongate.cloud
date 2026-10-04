@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../../../config/platform.php';
 require_once __DIR__ . '/Trongate_config.php';
+require_once __DIR__ . '/Resource_tiers.php';
 
 /**
  * Kubernetes manifests for tenants and their apps, as arrays ready for Kubernetes::apply_all().
@@ -23,20 +24,27 @@ class Manifests {
     const SERVICE_PORT = 80;
     const RUN_AS_USER = 1000;
 
-    // ephemeral-storage caps the writable layer so one tenant cannot fill a node's disk
-    const APP_RESOURCES = [
-        'requests' => ['cpu' => '50m', 'memory' => '96Mi', 'ephemeral-storage' => '256Mi'],
-        'limits' => ['cpu' => '500m', 'memory' => '256Mi', 'ephemeral-storage' => '1Gi'],
-    ];
+    // The app container's CPU/memory come from its project's rung on the
+    // Resource_tiers ladder. ephemeral-storage is the same for every rung: it caps
+    // the writable layer so one tenant cannot fill a node's disk.
+    const APP_EPHEMERAL_STORAGE = ['requests' => '256Mi', 'limits' => '1Gi'];
 
     const INIT_RESOURCES = [
         'requests' => ['cpu' => '10m', 'memory' => '32Mi', 'ephemeral-storage' => '64Mi'],
         'limits' => ['cpu' => '200m', 'memory' => '128Mi', 'ephemeral-storage' => '256Mi'],
     ];
 
+    // Shared by every project in the team: projects are refused a tier (or a new
+    // project) that would not fit (quota_shortfall). cpu/memory must admit two
+    // pods of the top Resource_tiers rung (_assert_quota_fits_ladder).
+    // requests.memory stays well below the memory the cluster has left for all
+    // tenants (~3.6 GiB of ~11 GiB allocatable), so one team cannot reserve it
+    // all and leave every other team's pods Pending. 2Gi costs a team nothing:
+    // every rung requests 128Mi per 500m of CPU limit, so limits.cpu 8 already
+    // stops a team at 2Gi of memory requests.
     const TENANT_QUOTA = [
         'requests.cpu' => '2',
-        'requests.memory' => '4Gi',
+        'requests.memory' => '2Gi',
         'limits.cpu' => '8',
         'limits.memory' => '8Gi',
         'requests.ephemeral-storage' => '8Gi',
@@ -134,9 +142,22 @@ class Manifests {
     }
 
     /**
+     * The app container's requests/limits for a project's resource tier
+     */
+    static function app_resources(?string $tier): array {
+        $resources = Resource_tiers::resources($tier);
+        $resources['requests']['ephemeral-storage'] = self::APP_EPHEMERAL_STORAGE['requests'];
+        $resources['limits']['ephemeral-storage'] = self::APP_EPHEMERAL_STORAGE['limits'];
+
+        return $resources;
+    }
+
+    /**
      * Tenant namespace with quota, limits and network isolation
      */
     static function tenant(int $team_id): array {
+        self::_assert_quota_fits_ladder();
+
         $namespace = self::namespace_name($team_id);
         $labels = self::_labels(['app.kubernetes.io/part-of' => $namespace]);
 
@@ -163,6 +184,11 @@ class Manifests {
             'spec' => ['hard' => self::TENANT_QUOTA],
         ];
 
+        // Defaults to the default rung; max is exactly the top rung, so nothing in
+        // a tenant namespace can be larger than what the ladder offers
+        $default = self::app_resources(Resource_tiers::DEFAULT_TIER);
+        $top = Resource_tiers::top();
+
         $manifests[] = [
             'apiVersion' => 'v1',
             'kind' => 'LimitRange',
@@ -170,9 +196,9 @@ class Manifests {
             'spec' => [
                 'limits' => [[
                     'type' => 'Container',
-                    'default' => self::APP_RESOURCES['limits'],
-                    'defaultRequest' => self::APP_RESOURCES['requests'],
-                    'max' => ['cpu' => '2', 'memory' => '2Gi', 'ephemeral-storage' => '4Gi'],
+                    'default' => $default['limits'],
+                    'defaultRequest' => $default['requests'],
+                    'max' => ['cpu' => $top['cpu_m'] . 'm', 'memory' => $top['memory_mi'] . 'Mi', 'ephemeral-storage' => '4Gi'],
                 ]],
             ],
         ];
@@ -246,7 +272,7 @@ class Manifests {
     /**
      * Everything one project needs inside its tenant namespace, in apply order
      *
-     * @param array $project    project row (id, team_id, slug, label, type, domain, persistent_paths, always_on)
+     * @param array $project    project row (id, team_id, slug, label, type, domain, persistent_paths, always_on, resource_tier)
      * @param array $deployment deployment row (id, image)
      * @param array $database   database_server row (host, port, operator_name, operator_namespace); optional 'password'
      */
@@ -620,7 +646,7 @@ class Manifests {
                             'periodSeconds' => 3,
                         ],
                         'securityContext' => $app_security,
-                        'resources' => self::APP_RESOURCES,
+                        'resources' => self::app_resources($project['resource_tier'] ?? null),
                     ]],
                     'volumes' => $volumes,
                 ],
@@ -638,6 +664,66 @@ class Manifests {
             'metadata' => self::_metadata($o['name'], $o['namespace'], $labels),
             'spec' => $spec,
         ];
+    }
+
+    /**
+     * The TENANT_QUOTA key a team would exceed if it ran one pod of each of these
+     * tiers, or null when they fit.
+     *
+     * The quota covers the whole team namespace, so every project counts, asleep
+     * ones too (they wake up). A rollout also runs the old and the new pod side by
+     * side (maxSurge 1), so there must be room for one more pod of the largest
+     * tier; one is enough because the worker runs one task at a time. Init
+     * containers are smaller than any rung, so they never decide the fit.
+     *
+     * @param list<string> $tiers one resource tier name per project
+     */
+    static function quota_shortfall(array $tiers): ?string {
+        if (empty($tiers)) {
+            return null;
+        }
+
+        $pods = array_map(fn(string $tier) => Resource_tiers::resources($tier), $tiers);
+        $largest = Resource_tiers::resources(Resource_tiers::largest($tiers));
+        $pods[] = $largest;
+
+        foreach (['requests.cpu', 'limits.cpu', 'requests.memory', 'limits.memory'] as $key) {
+            [$kind, $resource] = explode('.', $key);
+            $parse = $resource === 'cpu' ? self::_millicores(...) : self::_mebibytes(...);
+            $total = array_sum(array_map(fn(array $pod) => $parse($pod[$kind][$resource]), $pods));
+
+            if ($total > $parse(self::TENANT_QUOTA[$key])) {
+                return $key;
+            }
+        }
+
+        if (count($pods) > (int) self::TENANT_QUOTA['pods']) {
+            return 'pods';
+        }
+
+        return null;
+    }
+
+    /**
+     * A team with a single app on the top rung must be able to redeploy it.
+     * Fails loudly when someone grows the ladder past the quota.
+     */
+    static function _assert_quota_fits_ladder(): void {
+        $key = self::quota_shortfall([array_key_last(Resource_tiers::TIERS)]);
+
+        if ($key !== null) {
+            throw new LogicException("TENANT_QUOTA {$key} cannot fit two pods of the top resource tier");
+        }
+    }
+
+    /** "2" or "500m" in millicores */
+    static function _millicores(string $quantity): int {
+        return str_ends_with($quantity, 'm') ? (int) $quantity : (int) round((float) $quantity * 1000);
+    }
+
+    /** "256Mi" or "8Gi" in MiB */
+    static function _mebibytes(string $quantity): int {
+        return str_ends_with($quantity, 'Gi') ? (int) $quantity * 1024 : (int) $quantity;
     }
 
     static function _metadata(string $name, string $namespace, array $labels): array {

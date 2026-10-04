@@ -29,7 +29,7 @@ trait Project_records {
     /**
      * Update a team project's platform settings.
      *
-     * @param array{domain: ?string, persistent_paths: list<string>, php_extensions: string, always_on: bool} $settings
+     * @param array{domain: ?string, persistent_paths: list<string>, php_extensions: string, always_on: bool, resource_tier: string} $settings
      */
     function update_project_settings(int $team_id, int $project_id, array $settings): void {
         $sql = <<<SQL
@@ -38,7 +38,8 @@ trait Project_records {
                 verified_domain = IF(verified_domain <=> :same_domain, verified_domain, NULL),
                 persistent_paths = :persistent_paths,
                 php_extensions = :php_extensions,
-                always_on = :always_on
+                always_on = :always_on,
+                resource_tier = :resource_tier
             WHERE id = :project_id AND team_id = :team_id
         SQL;
         $this->db->query_bind($sql, [
@@ -47,6 +48,7 @@ trait Project_records {
             'persistent_paths' => json_encode($settings['persistent_paths']),
             'php_extensions' => $settings['php_extensions'],
             'always_on' => $settings['always_on'] ? 1 : 0,
+            'resource_tier' => $settings['resource_tier'],
             'project_id' => $project_id,
             'team_id' => $team_id,
         ]);
@@ -65,5 +67,22 @@ trait Project_records {
         $count = $this->db->query_bind($sql, ['domain' => $domain, 'ignore_id' => $ignore_project_id ?? 0], 'column');
 
         return (int) $count > 0;
+    }
+
+    /**
+     * The resource tier of every project in a team, for the tenant quota check
+     * (Manifests::quota_shortfall).
+     *
+     * @return list<string>
+     */
+    function team_resource_tiers(int $team_id, ?int $except_project_id = null): array {
+        $sql = <<<SQL
+            SELECT resource_tier
+            FROM project
+            WHERE team_id = :team_id AND id <> :except_id
+        SQL;
+        $rows = $this->db->query_bind($sql, ['team_id' => $team_id, 'except_id' => $except_project_id ?? 0], 'array');
+
+        return array_map(fn(array $row) => (string) $row['resource_tier'], $rows);
     }
 }

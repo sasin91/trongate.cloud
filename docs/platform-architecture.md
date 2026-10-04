@@ -14,6 +14,7 @@ Trongate.cloud hosts customer Trongate apps on our own k3s cluster. Customers co
 | Cache / sessions | Shared `cache` namespace, Valkey via redis-operator; ACL key prefix per tenant | Sessions here so scale-to-zero doesn't log users out |
 | Uploads | JuiceFS on Hetzner object storage; one StorageClass, subdirectory per tenant, mount-pod sharing | Metadata in the shared MariaDB. Persistent paths mounted via `subPath`, seeded by an init container on first deploy |
 | Scale-to-zero | Sablier as a Traefik middleware on the HTTPRoute | App pods only; shared namespaces stay up |
+| App resources | A small ladder of limit rungs (`Resource_tiers`: small 256Mi/500m, medium 512Mi/1, large 1Gi/2), picked per project; requests derived from the limit (Burstable QoS) | Memory is the binding constraint (2× 8 GB nodes, ~11 GiB allocatable, ~7.4 GiB already requested by the platform before any tenant). Memory requests are 50% of the limit: lower packs more apps but overcommits harder, and when many apps burst at once the node evicts or OOM-kills the pods furthest over their requests. CPU requests are 10% of the limit because CPU over the request only throttles. The tenant quota is shared by every project in the team, so picking a larger rung or adding a project is refused when the team's apps plus one rollout-surge pod of its largest rung would exceed it (`Manifests::quota_shortfall`; the worker rolls out one app at a time). Its `requests.memory` (2Gi, the same point `limits.cpu` 8 stops a team at) is kept well under what the cluster has left for tenants so one team cannot reserve it all; fairness across many teams needs plans or more nodes. The quota itself must admit two top-rung pods, checked when the tenant manifests are built; the LimitRange max is the top rung |
 | Backups | Per-tenant `mariadb-dump` and per-tenant JuiceFS subdirectory via restic; JuiceFS auto metadata backup to the bucket | Kit's assert-non-empty pattern |
 
 ## Watch list — keep it simple, act only if it surfaces
@@ -22,6 +23,7 @@ Trongate.cloud hosts customer Trongate apps on our own k3s cluster. Customers co
 - **Noisy neighbours on shared Valkey.** `maxmemory`/eviction is instance-wide; one tenant can evict others' sessions. If logouts or cache churn show up, split sessions and cache into separate instances.
 - **JuiceFS metadata recovery point.** Chunks written after the last metadata backup are orphaned on restore. If hourly metadata backups prove insufficient, add binlog-based PITR.
 - **MariaDB HA mode.** Prefer async replication + MaxScale over Galera for JuiceFS metadata write patterns (unverified).
+- **Resource tier fit.** The ladder is seeded from the old fixed limits, not measurements. Once tenants run, compare peak memory per app with its rung (move up on OOMKills) and node memory pressure with the 50% request fraction.
 - **Cold starts.** Measure FrankenPHP wake time behind Sablier; tune idle timeouts per plan.
 
 ## Spike — measure before building
@@ -40,6 +42,7 @@ Done in code:
 - **Schema**:
   - `db/014_k3s_platform.sql`: BYO-server tables dropped; generic `tasks`/`task_logs`; project `slug`, `persistent_paths`, `php_extensions`, `webhook_secret` (a seed, see webhooks), `always_on`, `database_server_id`, `current_deployment_id`; image-based deployment statuses (`pending → building → deploying → success | failed | rolled_back`) with `commit_sha`, `image`, `trigger_type`; `database_server` with the `shared-1` seed.
   - `db/015_domain_verification.sql`: `project.verified_domain` (UNIQUE).
+  - `db/016_resource_tiers.sql`: `project.resource_tier` (default `small`, today's limits).
 - **Worker** (`modules/platform/worker`): polls `tasks`, runs `modules/platform/tasks/{script}.php`, logs to `task_logs`, closes the task's deployment. Shell steps get a minimal environment (no `APP_KEY`/`DB_PASSWORD`/tokens) and are killed after 30 minutes (`Runtime::SHELL_TIMEOUT_SECONDS`).
 - **Task scripts** (`modules/platform/tasks`):
   - `deploy`: resolves the commit (webhook deploys always build the branch head), downloads the tarball, rejects symlinks that leave the tree, writes `railpack.json` (and an empty `composer.json` so `RAILPACK_PHP_EXTENSIONS` applies), builds with `railpack prepare` + `buildctl` on a BuildKit daemon Pod started for this build only, pushes to `PLATFORM_REGISTRY`, places the database, applies `Manifests::tenant` + `Manifests::app` and waits for the rollout.
@@ -55,7 +58,7 @@ Done in code:
   - Onboarding: team → GitHub token → first project. The project gets a slug and webhook secret, and its first deploy is queued.
   - Dashboard: the team's projects with their live state from the cluster (running, asleep, starting, crashing, stuck).
   - Project page: live URLs, the current deployment, the app's live state (polled every 5s), deployment history, Deploy and Rollback (to the previous deployment or one you pick).
-  - Project settings: custom domain with DNS verification, persistent paths, extra PHP extensions, always-on, and the GitHub webhook URL and secret.
+  - Project settings: custom domain with DNS verification, persistent paths, extra PHP extensions, always-on, resources (a rung of the tier ladder), and the GitHub webhook URL and secret.
   - Deployment page: logs polled with MX.
   - Team switcher: CSRF-protected.
 - **Custom domains**: platform hosts (`BASE_URL`, `PLATFORM_REGISTRY` and their subdomains) are rejected, and a domain is routed only once its TXT record verifies it. The admission policy also blocks platform hostnames on tenant HTTPRoutes.

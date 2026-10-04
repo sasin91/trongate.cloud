@@ -42,6 +42,16 @@
             <p class="form-hint">By default your app sleeps when idle and wakes on the next request, which takes a few seconds. Keep it always on to skip the wake-up.</p>
         </div>
 
+        <div class="form-group">
+            <label for="resource_tier" class="form-label">Resources</label>
+            <select name="resource_tier" id="resource_tier" class="form-input">
+                <?php foreach ($resource_tiers as $tier => $description): ?>
+                <option value="<?= htmlspecialchars($tier) ?>" <?= $tier === $resource_tier ? 'selected' : '' ?>><?= htmlspecialchars($description) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <p class="form-hint">The most memory and CPU your app may use. If it needs more memory than this, it is restarted.</p>
+        </div>
+
         <div class="form-actions">
             <button type="submit" class="btn-primary">Save settings</button>
             <a href="projects/<?= $project->id ?>" class="btn-secondary">Cancel</a>

@@ -335,6 +335,7 @@ trait Mcp_tools {
             'source_url' => $project->source_url ?? null,
             'source_branch' => $project->source_branch ?? null,
             'always_on' => !empty($project->always_on),
+            'resource_tier' => $project->resource_tier ?? Resource_tiers::DEFAULT_TIER,
             'current_deployment_id' => isset($project->current_deployment_id) ? (int) $project->current_deployment_id : null,
             'current_status' => $project->current_status ?? null,
             'current_commit_sha' => $project->current_commit_sha ?? null,

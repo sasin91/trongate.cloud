@@ -199,6 +199,8 @@ class Projects extends Trongate {
             'persistent_paths' => $is_resubmit ? (string) post('persistent_paths') : implode("\n", $paths),
             'php_extensions' => $is_resubmit ? (string) post('php_extensions', true) : (string) $project->php_extensions,
             'always_on' => $is_resubmit ? (bool) post('always_on') : (bool) $project->always_on,
+            'resource_tier' => $is_resubmit ? (string) post('resource_tier', true) : (string) $project->resource_tier,
+            'resource_tiers' => Resource_tiers::options(),
             'domain_record' => !empty($project->domain) ? $this->model->domain_verification_record((int) $project->id, (string) $project->domain) : null,
             'webhook_url' => BASE_URL . 'webhooks/github/' . $project->id,
             'webhook_secret' => $this->model->ensure_webhook_secret($team_id, (int) $project->id),
@@ -216,6 +218,7 @@ class Projects extends Trongate {
         $this->validation->set_rules('domain', 'Custom Domain', 'max_length[253]|callback__validate_domain');
         $this->validation->set_rules('persistent_paths', 'Persistent Paths', 'max_length[4000]|callback__validate_persistent_paths');
         $this->validation->set_rules('php_extensions', 'PHP Extensions', 'max_length[255]|callback__validate_php_extensions');
+        $this->validation->set_rules('resource_tier', 'Resources', 'required|callback__validate_resource_tier');
 
         if ($this->validation->run() !== true) {
             $this->settings();
@@ -227,6 +230,7 @@ class Projects extends Trongate {
             'persistent_paths' => $this->_parse_persistent_paths((string) post('persistent_paths')),
             'php_extensions' => implode(',', $this->_parse_php_extensions((string) post('php_extensions', true))),
             'always_on' => (bool) post('always_on'),
+            'resource_tier' => (string) post('resource_tier', true),
         ]);
 
         set_flashdata('Settings saved. They take effect on the next deployment.');
@@ -348,6 +352,33 @@ class Projects extends Trongate {
             if (!preg_match('/^[a-z][a-z0-9_]{0,39}$/', $name)) {
                 return "\"{$name}\" is not a valid PHP extension name.";
             }
+        }
+
+        return true;
+    }
+
+    /**
+     * The tier must be on the ladder, and the team's apps must still fit its
+     * quota with it (Manifests::quota_shortfall); otherwise every later rollout
+     * in the team would hang on "exceeded quota". Moving down is always allowed.
+     */
+    function _validate_resource_tier(string $tier): bool|string {
+        if (!Resource_tiers::exists($tier)) {
+            return 'Please choose one of the listed resource sizes.';
+        }
+
+        $team_id = $this->_team_id_or_redirect();
+        $project = $this->_find_or_redirect($team_id, segment(3, 'int'));
+
+        if (Resource_tiers::rank($tier) <= Resource_tiers::rank((string) $project->resource_tier)) {
+            return true;
+        }
+
+        $tiers = $this->model->team_resource_tiers($team_id, (int) $project->id);
+        $tiers[] = $tier;
+
+        if (Manifests::quota_shortfall($tiers) !== null) {
+            return "Your team's apps would not fit in its resources with this size. Choose a smaller size, or make another app smaller first.";
         }
 
         return true;
