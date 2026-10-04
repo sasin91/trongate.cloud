@@ -190,6 +190,7 @@ class Deploy_reconcile {
             SELECT p.id, p.team_id, p.source_url, p.source_branch
             FROM project p
             WHERE p.source_provider = 'github'
+              AND p.deleted_at IS NULL
               AND p.source_url <> ''
               AND p.auto_deploy = 1
               AND p.webhook_secret IS NOT NULL

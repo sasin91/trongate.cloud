@@ -66,6 +66,9 @@ return function (Task_log $log) use ($payload, $runtime): int {
         FROM project
         WHERE team_id = ?
           AND verified_domain IS NOT NULL
+          -- A deleted project keeps verified_domain until destroy_project
+          -- finishes; promoting it would re-apply the app being torn down
+          AND deleted_at IS NULL
           AND (? = 0 OR id = ?)
         ORDER BY id
         SQL;

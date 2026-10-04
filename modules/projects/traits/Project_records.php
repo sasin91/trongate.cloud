@@ -96,8 +96,9 @@ trait Project_records {
     }
 
     /**
-     * The resource tier of every project in a team, for the tenant quota check
-     * (Manifests::quota_shortfall).
+     * The resource tier of every live project in a team, for the tenant quota
+     * check (Manifests::quota_shortfall). Deleted projects keep their row but
+     * no pods, so they do not count.
      *
      * @return list<string>
      */
@@ -106,6 +107,7 @@ trait Project_records {
             SELECT resource_tier
             FROM project
             WHERE team_id = :team_id AND id <> :except_id
+              AND deleted_at IS NULL
         SQL;
         $rows = $this->db->query_bind($sql, ['team_id' => $team_id, 'except_id' => $except_project_id ?? 0], 'array');
 
