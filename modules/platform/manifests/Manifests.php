@@ -37,9 +37,14 @@ class Manifests {
     // Shared by every project in the team: projects are refused a tier (or a new
     // project) that would not fit (quota_shortfall). cpu/memory must admit two
     // pods of the top Resource_tiers rung (_assert_quota_fits_ladder).
+    // requests.memory stays well below the memory the cluster has left for all
+    // tenants (~3.6 GiB of ~11 GiB allocatable), so one team cannot reserve it
+    // all and leave every other team's pods Pending. 2Gi costs a team nothing:
+    // every rung requests 128Mi per 500m of CPU limit, so limits.cpu 8 already
+    // stops a team at 2Gi of memory requests.
     const TENANT_QUOTA = [
         'requests.cpu' => '2',
-        'requests.memory' => '4Gi',
+        'requests.memory' => '2Gi',
         'limits.cpu' => '8',
         'limits.memory' => '8Gi',
         'requests.ephemeral-storage' => '8Gi',
