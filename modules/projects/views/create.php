@@ -1,39 +1,52 @@
-<div class="onboarding-card">
-    <div class="onboarding-header">
-        <h1>New Project</h1>
-        <p>Pick a repository. We build it and give it a live URL.</p>
-    </div>
+<div class="wz-embedded">
+    <?php $q_current = 1; $q_total = $form === false ? 1 : 4; require __DIR__ . '/_wizard_top.php'; ?>
 
     <?= flashdata('<p class="flash">', '</p>') ?>
-    <?= validation_errors() ?>
 
     <?php if ($form === false): ?>
-        <p>This team has not connected GitHub yet. Paste a
-            <a href="https://github.com/settings/tokens" target="_blank" rel="noopener">personal access token</a>
-            with the <code>repo</code> scope to continue.</p>
+        <div class="wz-wrap">
+            <main class="wz-main">
+                <?= form_open('projects/submit_source', ['class' => 'wz-stage']) ?>
+                    <div class="wz-q">
+                        <span class="wz-num">1 &rarr;</span>
+                        <h1>Let's connect GitHub.</h1>
+                        <p>This team has no GitHub connection yet. Paste a personal access token so we can list your repositories.</p>
+                    </div>
 
-        <?= form_open('projects/submit_source') ?>
-        <?= form_hidden('provider', 'github') ?>
-        <div class="form-group">
-            <label for="token" class="form-label">Personal Access Token</label>
-            <input type="password" name="token" id="token" class="form-input" placeholder="Paste your GitHub token" required>
+                    <?php $errors = validation_errors('<p>', '</p>'); ?>
+                    <?php if ($errors): ?><div class="wz-errors" role="alert"><?= $errors ?></div><?php endif; ?>
+
+                    <?= form_hidden('provider', 'github') ?>
+
+                    <label class="wz-field">
+                        <span class="wz-label">Personal access token</span>
+                        <input type="password" name="token" class="wz-in mono" placeholder="ghp_..." required autocomplete="off" autofocus>
+                    </label>
+
+                    <div class="wz-help">
+                        <strong>Getting a token takes a minute</strong>
+                        <ol>
+                            <li>Open <a href="https://github.com/settings/tokens" target="_blank" rel="noopener">GitHub settings, Tokens (classic)</a>.</li>
+                            <li>Choose <strong>Generate new token (classic)</strong>.</li>
+                            <li>Tick the <code>repo</code> scope, generate, and paste it here.</li>
+                        </ol>
+                    </div>
+
+                    <div class="wz-nav">
+                        <button type="submit" class="wz-ok">Connect</button>
+                        <a href="dashboard" class="wz-back">Cancel</a>
+                    </div>
+                <?= form_close() ?>
+            </main>
         </div>
-        <div class="form-actions">
-            <button type="submit" class="btn-primary">Connect GitHub</button>
-            <a href="dashboard" class="btn-secondary">Cancel</a>
-        </div>
-        <?= form_close() ?>
     <?php else: ?>
-        <?= form_open('projects/submit') ?>
         <?php
         extract($form);
+        $form_action = 'projects/submit';
         $branches_url = 'projects/branches';
-        require __DIR__ . '/_project_fields.php';
+        $q_offset = 0;
+        $back_href = 'dashboard';
+        require __DIR__ . '/_project_steps.php';
         ?>
-        <div class="form-actions">
-            <button type="submit" class="btn-primary">Create &amp; Deploy</button>
-            <a href="dashboard" class="btn-secondary">Cancel</a>
-        </div>
-        <?= form_close() ?>
     <?php endif; ?>
 </div>

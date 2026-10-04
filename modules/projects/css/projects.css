@@ -217,3 +217,378 @@ textarea.form-input {
 .btn-danger:hover {
     background: #b91c1c;
 }
+
+/* --- App overview (projects/show, also the landing page's product shot) --- */
+
+.ov {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.ov-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+}
+
+.ov-title {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.ov-title-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.ov-title h1 {
+    margin: 0;
+    font-size: 1.875rem;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+}
+
+.ov-live {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+}
+
+.ov-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 0.9rem;
+    font-size: 0.875rem;
+    color: var(--text-muted);
+}
+
+.ov-meta a {
+    color: var(--accent-ink, var(--primary));
+}
+
+.ov-mono {
+    font-family: var(--font-mono, monospace);
+}
+
+.ov-actions {
+    display: flex;
+    gap: 0.625rem;
+    flex-wrap: wrap;
+}
+
+.ov-actions form {
+    margin: 0;
+}
+
+.ov-actions .btn-primary,
+.ov-actions .btn-secondary {
+    min-height: 44px;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.9375rem;
+    padding: 0 1rem;
+}
+
+.ov-tabs {
+    display: flex;
+    gap: 0.25rem;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+}
+
+.ov-tabs a {
+    padding: 0.75rem 0.875rem;
+    font-size: 0.9375rem;
+    color: var(--text-muted);
+    text-decoration: none;
+    margin-bottom: -1px;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+}
+
+.ov-tabs a[aria-current="page"] {
+    color: var(--text-main);
+    font-weight: 500;
+    border-bottom-color: var(--text-main);
+}
+
+.ov-main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: 1.5rem;
+    align-items: start;
+}
+
+.ov-col {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    min-width: 0;
+}
+
+.ov-card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+}
+
+.ov-card h2 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.ov-pad {
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.ov-pad p {
+    margin: 0;
+}
+
+.ov-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.875rem;
+}
+
+.ov-card-head a,
+.ov-links a {
+    color: var(--accent-ink, var(--primary));
+    text-decoration: none;
+    font-size: 0.875rem;
+}
+
+.ov-links {
+    display: flex;
+    gap: 1rem;
+}
+
+.ov-canvas {
+    padding: 2rem 1.5rem;
+    background: var(--bg-subtle, #fafafd);
+}
+
+.ov-env {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 40px minmax(0, 1.2fr) 40px minmax(0, 1fr);
+    align-items: center;
+}
+
+.ov-node {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.ov-node strong {
+    font-size: 0.9375rem;
+    font-weight: 600;
+}
+
+.ov-node-app {
+    border: 2px solid var(--text-main);
+}
+
+.ov-node-kind {
+    font-family: var(--font-mono, monospace);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+.ov-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.ov-chips span {
+    font-size: 0.75rem;
+    background: #f0f1f7;
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
+}
+
+.ov-link {
+    height: 2px;
+    background: #c8cbdd;
+    margin: 0 6px;
+}
+
+.ov-db-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.ov-link-v {
+    width: 2px;
+    height: 24px;
+    background: #c8cbdd;
+    margin-top: 1rem;
+}
+
+.ov-node-db {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.875rem;
+    min-width: 260px;
+    color: var(--text-muted);
+}
+
+.ov-node-db div {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    color: var(--text-main);
+}
+
+.ov-warn-text {
+    color: #8a5300;
+}
+
+.ov-table-wrap {
+    overflow-x: auto;
+}
+
+.ov-table-wrap .deployments-table th {
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.ov-table-wrap .deployments-table th:first-child,
+.ov-table-wrap .deployments-table td:first-child {
+    padding-left: 1.25rem;
+}
+
+a.status-pill {
+    text-decoration: none;
+}
+
+.ov-sha {
+    font-family: var(--font-mono, monospace);
+    font-size: 0.8125rem;
+    background: #f0f1f7;
+    padding: 2px 6px;
+    border-radius: 5px;
+}
+
+.ov-empty {
+    padding: 1.25rem;
+    margin: 0;
+}
+
+.ov-current {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+}
+
+.ov-domain {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.875rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.875rem;
+    overflow-wrap: anywhere;
+}
+
+.ov-domain:last-child {
+    border-bottom: none;
+}
+
+.ov-domain-hint {
+    margin: 0;
+    padding: 0 1.25rem 1rem;
+    font-size: 0.8125rem;
+}
+
+.ov-badge {
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 3px 8px;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+
+.ov-badge.ok {
+    color: #0f6b40;
+    background: #e3f4ea;
+}
+
+.ov-badge.warn {
+    color: #8a5300;
+    background: #fff1d6;
+}
+
+.ov-settings {
+    margin: 0;
+    padding: 0.25rem 1.25rem;
+}
+
+.ov-settings div {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.875rem;
+}
+
+.ov-settings div:last-child {
+    border-bottom: none;
+}
+
+.ov-settings dd {
+    margin: 0;
+    font-weight: 500;
+}
+
+@media (max-width: 1000px) {
+    .ov-main {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+@media (max-width: 760px) {
+    .ov-env {
+        grid-template-columns: minmax(0, 1fr);
+        row-gap: 0.75rem;
+    }
+
+    .ov-link {
+        display: none;
+    }
+
+    .ov-node-db {
+        min-width: 0;
+        width: 100%;
+        box-sizing: border-box;
+    }
+}

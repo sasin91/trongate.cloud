@@ -7,13 +7,14 @@
     <link rel="stylesheet" href="<?= BASE_URL ?>templates_module/css/customer.css">
     <?= $additional_includes_top ?? '' ?>
     <script src="<?= BASE_URL ?>js/trongate-mx.min.js"></script>
-    <title>Trongate Cloud</title>
+    <title>trongate.cloud</title>
 </head>
 <body>
     <header>
         <div class="header-left">
             <a href="dashboard" class="header-logo-link">
-                <div class="header-title">Trongate Cloud</div>
+                <?php require __DIR__ . '/_mark.php'; ?>
+                <div class="header-title">trongate<span>.cloud</span></div>
             </a>
             <div class="header-separator"></div>
             <?= form_open('switch-team', ['class' => 'team-switcher-form']) ?>

@@ -1,0 +1,687 @@
+/* One-question-at-a-time flow used by onboarding and projects/new */
+
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@800;900&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap');
+
+[hidden] {
+    display: none !important;
+}
+
+:root {
+    --wz-navy: #1d1e6e;
+    --wz-ink: #1c1d5e;
+    --wz-accent: #6966d6;
+    --wz-accent-soft: #ecebfa;
+    --wz-muted: #585c7a;
+    --wz-faint: #666a86;
+    --wz-line: #dfe1ec;
+    --wz-line-strong: #c8cbdd;
+    --wz-bg: #f6f7fb;
+    --wz-display: 'Archivo', 'Geist', system-ui, sans-serif;
+    --wz-mono: 'Geist Mono', ui-monospace, monospace;
+}
+
+.wz-body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--wz-bg);
+    color: var(--wz-ink);
+    font-family: 'Geist', system-ui, -apple-system, sans-serif;
+    line-height: 1.5;
+}
+
+.wz-top {
+    padding: 18px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.wz-top-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.wz-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--wz-navy);
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 18px;
+    letter-spacing: -0.01em;
+}
+
+.wz-brand b {
+    color: #4f4cc7;
+    font-weight: inherit;
+}
+
+.wz-counter {
+    font-family: var(--wz-mono);
+    font-size: 13px;
+    color: var(--wz-faint);
+}
+
+.wz-progress {
+    display: flex;
+    gap: 6px;
+}
+
+.wz-progress span {
+    flex: 1;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--wz-line);
+}
+
+.wz-progress span.done {
+    background: var(--wz-ink);
+}
+
+.wz-progress span.active {
+    background: var(--wz-accent);
+}
+
+.wz-wrap {
+    flex: 1;
+    display: flex;
+    flex-wrap: wrap;
+}
+
+.wz-main {
+    flex: 999 1 560px;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 28px 72px;
+    box-sizing: border-box;
+}
+
+.wz-stage {
+    width: 100%;
+    max-width: 620px;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+}
+
+.wz-step {
+    border: none;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+/* With JS only the active step shows; without it every step stays visible */
+.wz-js .wz-step {
+    display: none;
+}
+
+.wz-js .wz-step.is-active {
+    display: flex;
+}
+
+.wz-q {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.wz-num {
+    font-family: var(--wz-mono);
+    font-size: 14px;
+}
+
+.wz-q h1,
+.wz-q legend {
+    margin: 0;
+    padding: 0;
+    font-family: var(--wz-display);
+    font-weight: 800;
+    font-size: 44px;
+    line-height: 1.04;
+    letter-spacing: -0.035em;
+    color: var(--wz-ink);
+}
+
+.wz-q p {
+    margin: 0;
+    color: var(--wz-muted);
+    font-size: 17px;
+}
+
+.wz-sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+.wz-big {
+    width: 100%;
+    box-sizing: border-box;
+    font: inherit;
+    font-family: var(--wz-display);
+    font-size: 30px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    padding: 10px 2px 12px;
+    border: none;
+    border-bottom: 2px solid var(--wz-line-strong);
+    background: transparent;
+    color: var(--wz-ink);
+    border-radius: 0;
+}
+
+.wz-big::placeholder {
+    color: #a3a7bf;
+}
+
+.wz-big:focus {
+    outline: none;
+    border-bottom-color: var(--wz-ink);
+}
+
+.wz-in {
+    width: 100%;
+    box-sizing: border-box;
+    font: inherit;
+    font-size: 16px;
+    padding: 13px 14px;
+    border: 1px solid #d5d8e6;
+    border-radius: 10px;
+    background: #fff;
+    color: var(--wz-ink);
+}
+
+.wz-in:focus,
+.wz-select:focus {
+    outline: 2px solid var(--wz-ink);
+    outline-offset: 1px;
+}
+
+.wz-in.mono {
+    font-family: var(--wz-mono);
+}
+
+.wz-select {
+    width: 100%;
+    box-sizing: border-box;
+    font-family: var(--wz-mono);
+    font-size: 17px;
+    padding: 14px 16px;
+    border: 1px solid #d5d8e6;
+    border-radius: 12px;
+    background: #fff;
+    color: var(--wz-ink);
+}
+
+.wz-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.wz-label {
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.wz-hint {
+    font-size: 14px;
+    color: var(--wz-muted);
+    line-height: 1.5;
+    margin: 0;
+}
+
+.wz-hint code,
+.wz-help code {
+    font-family: var(--wz-mono);
+    background: #f0f1f7;
+    padding: 1px 5px;
+    border-radius: 4px;
+}
+
+/* Choice cards (radio buttons) */
+.wz-choices {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 360px;
+    overflow-y: auto;
+    padding: 2px;
+}
+
+.wz-choices.row {
+    flex-direction: row;
+    flex-wrap: wrap;
+    max-height: none;
+}
+
+.wz-choice {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 16px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid var(--wz-line);
+    cursor: pointer;
+}
+
+.wz-choices.row .wz-choice {
+    flex: 1 1 220px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 22px;
+}
+
+.wz-choice input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.wz-choice:has(input:checked) {
+    background: #fff;
+    border-color: var(--wz-ink);
+    box-shadow: inset 0 0 0 1px var(--wz-ink);
+}
+
+.wz-choice:has(input:focus-visible) {
+    outline: 2px solid var(--wz-accent);
+    outline-offset: 2px;
+}
+
+.wz-key {
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+    border-radius: 7px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--wz-mono);
+    font-size: 13px;
+    font-weight: 500;
+    background: #fff;
+    color: #3a3d5c;
+    border: 1px solid var(--wz-line);
+}
+
+.wz-choice:has(input:checked) .wz-key {
+    background: var(--wz-ink);
+    color: #fff;
+    border-color: var(--wz-ink);
+}
+
+.wz-choice-text {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.wz-choice-text strong {
+    font-weight: 600;
+    font-size: 17px;
+}
+
+.wz-choice-text small {
+    font-size: 13px;
+    color: var(--wz-muted);
+}
+
+.wz-big-num {
+    font-family: var(--wz-display);
+    font-weight: 800;
+    font-size: 40px;
+    letter-spacing: -0.03em;
+}
+
+/* Switch: a checkbox drawn as a toggle */
+.wz-toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding-top: 22px;
+    border-top: 1px solid var(--wz-line);
+    cursor: pointer;
+}
+
+.wz-toggle-row strong {
+    display: block;
+    font-weight: 600;
+    font-size: 16px;
+}
+
+.wz-toggle-row small {
+    display: block;
+    font-size: 14px;
+    color: var(--wz-muted);
+}
+
+.wz-switch {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: 0 0 auto;
+    width: 52px;
+    height: 30px;
+    border-radius: 999px;
+    background: var(--wz-line-strong);
+    position: relative;
+    cursor: pointer;
+    margin: 0;
+    transition: background 0.15s;
+}
+
+.wz-switch::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+    transition: transform 0.15s;
+}
+
+.wz-switch:checked {
+    background: var(--wz-ink);
+}
+
+.wz-switch:checked::after {
+    transform: translateX(22px);
+}
+
+.wz-switch:focus-visible {
+    outline: 2px solid var(--wz-accent);
+    outline-offset: 2px;
+}
+
+.wz-address {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--wz-mono);
+    font-size: 16px;
+    overflow-wrap: anywhere;
+}
+
+.wz-address::before {
+    content: "";
+    flex: 0 0 auto;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--wz-accent);
+}
+
+.wz-address span {
+    color: var(--wz-muted);
+}
+
+.wz-address b {
+    font-weight: 500;
+    color: var(--wz-ink);
+}
+
+.wz-reveal {
+    align-self: flex-start;
+    font: inherit;
+    background: none;
+    border: 1px dashed #b4b8cf;
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 15px;
+    color: #3a3d5c;
+    cursor: pointer;
+}
+
+.wz-help {
+    background: #fff;
+    border: 1px solid #e3e5f0;
+    border-radius: 12px;
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.wz-help strong {
+    font-size: 15px;
+}
+
+.wz-help ol {
+    margin: 0;
+    padding-left: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    color: #3a3d5c;
+    font-size: 15px;
+}
+
+.wz-help a {
+    color: #4f4cc7;
+}
+
+.wz-errors {
+    background: #fbe5e5;
+    color: #a12c2c;
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 15px;
+}
+
+.wz-errors p {
+    margin: 0;
+}
+
+.wz-nav {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.wz-ok {
+    font: inherit;
+    font-size: 17px;
+    font-weight: 600;
+    padding: 0 26px;
+    min-height: 52px;
+    border-radius: 10px;
+    border: none;
+    color: #fff;
+    background: var(--wz-navy);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.wz-ok:hover {
+    background: #2c2d8a;
+}
+
+.wz-ok:focus-visible,
+.wz-back:focus-visible,
+.wz-reveal:focus-visible {
+    outline: 2px solid var(--wz-accent);
+    outline-offset: 2px;
+}
+
+.wz-ok[disabled] {
+    background: #e3e5f0;
+    color: var(--wz-faint);
+    cursor: not-allowed;
+}
+
+.wz-enter {
+    font-size: 13px;
+    color: var(--wz-faint);
+}
+
+.wz-enter strong {
+    font-weight: 600;
+    color: #3a3d5c;
+}
+
+.wz-back {
+    align-self: flex-start;
+    font: inherit;
+    background: none;
+    border: none;
+    padding: 8px 0;
+    color: var(--wz-faint);
+    font-size: 14px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    text-decoration: none;
+}
+
+.wz-back[hidden] {
+    display: none;
+}
+
+.wz-spinner {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    border-top-color: #fff;
+    animation: wz-spin 0.8s linear infinite;
+}
+
+@keyframes wz-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* "Your app so far" */
+.wz-side {
+    flex: 0 0 400px;
+    padding: 40px 28px 40px 0;
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+}
+
+.wz-sheet {
+    width: 100%;
+    background: #fff;
+    border: 1px solid #e3e5f0;
+    border-radius: 18px;
+    padding: 24px 24px 28px;
+    font-family: var(--wz-mono);
+    font-size: 14px;
+    line-height: 1.95;
+    box-shadow: 0 24px 48px -28px rgba(29, 30, 110, 0.35);
+}
+
+.wz-sheet-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #ecedf5;
+    font-family: 'Geist', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--wz-muted);
+}
+
+.wz-sheet-head span:last-child {
+    font-size: 12px;
+    color: var(--wz-navy);
+    background: var(--wz-accent-soft);
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-weight: 600;
+}
+
+.wz-sheet dl {
+    margin: 0;
+}
+
+.wz-sheet dl div {
+    display: flex;
+    gap: 10px;
+}
+
+.wz-sheet dt {
+    flex: 0 0 104px;
+    color: var(--wz-faint);
+}
+
+.wz-sheet dd {
+    margin: 0;
+    font-weight: 500;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.wz-sheet dd:empty::before {
+    content: "...";
+    color: #b4b8cf;
+    font-weight: 400;
+}
+
+@media (max-width: 980px) {
+    .wz-side {
+        display: none;
+    }
+
+    .wz-q h1,
+    .wz-q legend {
+        font-size: 34px;
+    }
+}
+
+/* Inside the customer template (projects/new) */
+.wz-embedded .wz-main {
+    padding: 24px 0 48px;
+}
+
+.wz-embedded .wz-side {
+    padding: 24px 0;
+}
+
+/* Inside the customer layout the header already carries the brand */
+.wz-embedded .wz-top {
+    position: static;
+    height: auto;
+    background: none;
+    border: 0;
+    padding: 0;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+}
+
+.wz-embedded .wz-brand {
+    display: none;
+}
