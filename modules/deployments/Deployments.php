@@ -15,10 +15,10 @@ class Deployments extends Trongate {
 
     function show(): void {
         $this->_make_sure_allowed();
-        $team_id = $this->_team_id_or_redirect();
+        $project_id = $this->_project_id_or_redirect();
 
-        $deployment = $this->_find_or_redirect($team_id, segment(3, 'int'));
-        $logs = $this->model->deployment_logs($team_id, (int) $deployment->id, 0, 1000);
+        $deployment = $this->_find_or_redirect($project_id, segment(3, 'int'));
+        $logs = $this->model->deployment_logs($project_id, (int) $deployment->id, 0, 1000);
 
         $data = [
             'view_module' => 'deployments',
@@ -39,9 +39,9 @@ class Deployments extends Trongate {
      */
     function logs_partial(): void {
         $this->_make_sure_allowed();
-        $team_id = $this->_team_id_or_redirect();
+        $project_id = $this->_project_id_or_redirect();
 
-        $deployment = $this->model->find_team_deployment($team_id, segment(3, 'int'));
+        $deployment = $this->model->find_project_deployment($project_id, segment(3, 'int'));
 
         if ($deployment === false) {
             http_response_code(404);
@@ -49,7 +49,7 @@ class Deployments extends Trongate {
         }
 
         $last_log_id = max(0, (int) ($_GET['last_log_id'] ?? 0));
-        $logs = $this->model->deployment_logs($team_id, (int) $deployment->id, $last_log_id);
+        $logs = $this->model->deployment_logs($project_id, (int) $deployment->id, $last_log_id);
 
         $this->view('_logs_partial', [
             'deployment' => $deployment,
@@ -60,10 +60,10 @@ class Deployments extends Trongate {
     }
 
     /**
-     * Find a deployment belonging to the team, or redirect to the dashboard
+     * Find a deployment belonging to the project, or redirect to the dashboard
      */
-    function _find_or_redirect(int $team_id, int $deployment_id): object {
-        $deployment = $this->model->find_team_deployment($team_id, $deployment_id);
+    function _find_or_redirect(int $project_id, int $deployment_id): object {
+        $deployment = $this->model->find_project_deployment($project_id, $deployment_id);
 
         if ($deployment === false) {
             redirect('dashboard');

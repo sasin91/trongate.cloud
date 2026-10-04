@@ -4,10 +4,10 @@
  * Reconcile Deploys Task
  *
  * Periodic (Runtime::PERIODIC_TASKS, every DEPLOY_RECONCILE_INTERVAL seconds):
- * queues a deploy for each auto-deploying project whose branch head was never
+ * queues a deploy for each auto-deploying app whose branch head was never
  * built because its GitHub push webhook went missing. See Deploy_reconcile.
  *
- * Payload: {} (platform-wide, no team).
+ * Payload: {} (platform-wide, no project).
  *
  * In scope (see Runtime): $payload, $task, $runtime.
  * Returns a Closure(Task_log): int. The run's summary is saved for /metrics.

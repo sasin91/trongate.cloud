@@ -37,12 +37,12 @@ class App_state {
     const TIMEOUT_SECONDS = 3;
 
     /**
-     * States of all the team's apps
+     * States of all the project's apps
      *
-     * @return array<int, array{state: string, label: string, detail: string}> keyed by project id
+     * @return array<int, array{state: string, label: string, detail: string}> keyed by app id
      */
-    static function for_team(Kubernetes $kube, int $team_id): array {
-        return self::_collect($kube, $team_id, 'app.kubernetes.io/managed-by=' . Manifests::MANAGED_BY);
+    static function for_project(Kubernetes $kube, int $project_id): array {
+        return self::_collect($kube, $project_id, 'app.kubernetes.io/managed-by=' . Manifests::MANAGED_BY);
     }
 
     /**
@@ -50,24 +50,24 @@ class App_state {
      *
      * @return array{state: string, label: string, detail: string}
      */
-    static function for_project(Kubernetes $kube, int $team_id, int $project_id): array {
-        $states = self::_collect($kube, $team_id, 'app.kubernetes.io/name=' . Manifests::app_name($project_id));
+    static function for_app(Kubernetes $kube, int $project_id, int $app_id): array {
+        $states = self::_collect($kube, $project_id, 'app.kubernetes.io/name=' . Manifests::app_name($app_id));
 
-        return $states[$project_id] ?? self::_make('not_running');
+        return $states[$app_id] ?? self::_make('not_running');
     }
 
     /**
      * @return array<int, array{state: string, label: string, detail: string}>
      */
-    static function _collect(Kubernetes $kube, int $team_id, string $selector): array {
+    static function _collect(Kubernetes $kube, int $project_id, string $selector): array {
         $kube = $kube->with_timeout(self::TIMEOUT_SECONDS);
-        $namespace = Manifests::namespace_name($team_id);
+        $namespace = Manifests::namespace_name($project_id);
 
         try {
             $deployments = $kube->list('apps/v1', 'Deployment', $namespace, $selector);
             $pods = $kube->list('v1', 'Pod', $namespace, $selector);
         } catch (Client_Error $e) {
-            // The team's namespace only exists after its first deploy
+            // The project's namespace only exists after its first deploy
             if ($e->getCode() === 404) {
                 return [];
             }
@@ -83,10 +83,10 @@ class App_state {
         $states = [];
         foreach ($deployments as $deployment) {
             $labels = $deployment['metadata']['labels'] ?? [];
-            $project_id = (int) ($labels[Manifests::LABEL_PREFIX . '/project-id'] ?? 0);
+            $app_id = (int) ($labels[Manifests::LABEL_PREFIX . '/project-id'] ?? 0);
 
-            if ($project_id > 0) {
-                $states[$project_id] = self::_state($deployment, $pods_by_app[$labels['app.kubernetes.io/name'] ?? ''] ?? []);
+            if ($app_id > 0) {
+                $states[$app_id] = self::_state($deployment, $pods_by_app[$labels['app.kubernetes.io/name'] ?? ''] ?? []);
             }
         }
 

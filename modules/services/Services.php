@@ -36,11 +36,11 @@ class Services extends Trongate {
     }
 
     /**
-     * Build a client using the team's stored provider token
+     * Build a client using the project's stored provider token
      * @return Github
      */
-    function for_team(int $team_id, string $provider): Client {
-        $secret = $this->secrets->get('team', $team_id, $provider);
+    function for_project(int $project_id, string $provider): Client {
+        $secret = $this->secrets->get('project', $project_id, $provider);
         return $this->make($provider, $secret['token'] ?? '');
     }
 

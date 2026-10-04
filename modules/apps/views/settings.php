@@ -1,6 +1,6 @@
 <div class="content narrow">
     <div class="back-link">
-        <a href="projects/<?= $project->id ?>" class="nav-link">&larr; Back to <?= htmlspecialchars($project->label) ?></a>
+        <a href="apps/<?= $app->id ?>" class="nav-link">&larr; Back to <?= htmlspecialchars($app->label) ?></a>
     </div>
 
     <h1>Settings</h1>
@@ -9,7 +9,7 @@
     <?= validation_errors() ?>
 
     <div class="card settings-card">
-        <?= form_open('projects/' . $project->id . '/settings/submit') ?>
+        <?= form_open('apps/' . $app->id . '/settings/submit') ?>
 
         <div class="form-group">
             <label class="form-label">Address</label>
@@ -57,12 +57,12 @@
                 <input type="checkbox" name="auto_deploy" value="1" <?= $auto_deploy ? 'checked' : '' ?>>
                 Deploy on push
             </label>
-            <p class="form-hint">Pushes to <code><?= htmlspecialchars((string) $project->source_branch) ?></code> deploy automatically once the GitHub webhook below is set up. Turn this off to deploy only when you press Deploy.</p>
+            <p class="form-hint">Pushes to <code><?= htmlspecialchars((string) $app->source_branch) ?></code> deploy automatically once the GitHub webhook below is set up. Turn this off to deploy only when you press Deploy.</p>
         </div>
 
         <div class="form-actions">
             <button type="submit" class="btn-primary">Save settings</button>
-            <a href="projects/<?= $project->id ?>" class="btn-secondary">Cancel</a>
+            <a href="apps/<?= $app->id ?>" class="btn-secondary">Cancel</a>
         </div>
         <?= form_close() ?>
     </div>
@@ -70,16 +70,16 @@
     <?php if ($domain_record !== null): ?>
     <h2>Custom domain</h2>
     <div class="card settings-card">
-        <?php if ((string) $project->verified_domain === (string) $project->domain): ?>
+        <?php if ((string) $app->verified_domain === (string) $app->domain): ?>
         <?php if ($domain_secured): ?>
-        <p><code><?= htmlspecialchars((string) $project->domain) ?></code> is verified, points here and has its HTTPS certificate, so it is served and is the app's base URL.</p>
+        <p><code><?= htmlspecialchars((string) $app->domain) ?></code> is verified, points here and has its HTTPS certificate, so it is served and is the app's base URL.</p>
         <?php elseif ($domain_routed): ?>
-        <p><code><?= htmlspecialchars((string) $project->domain) ?></code> is verified and points here. It becomes the app's base URL once its HTTPS certificate is issued, usually within minutes<?= !empty($project->domain_checked_at) ? ' (checked ' . htmlspecialchars((string) $project->domain_checked_at) . ')' : '' ?>. If that takes longer, check that no CAA record for the domain excludes Let's Encrypt.</p>
-        <?= form_open('projects/' . $project->id . '/verify-domain') ?>
+        <p><code><?= htmlspecialchars((string) $app->domain) ?></code> is verified and points here. It becomes the app's base URL once its HTTPS certificate is issued, usually within minutes<?= !empty($app->domain_checked_at) ? ' (checked ' . htmlspecialchars((string) $app->domain_checked_at) . ')' : '' ?>. If that takes longer, check that no CAA record for the domain excludes Let's Encrypt.</p>
+        <?= form_open('apps/' . $app->id . '/verify-domain') ?>
             <button type="submit" class="btn-secondary">Check again</button>
         <?= form_close() ?>
         <?php else: ?>
-        <p><code><?= htmlspecialchars((string) $project->domain) ?></code> is verified, but its DNS does not point here yet<?= !empty($project->domain_checked_at) ? ' (checked ' . htmlspecialchars((string) $project->domain_checked_at) . ')' : '' ?>. It goes live by itself once it does. Add one of these:</p>
+        <p><code><?= htmlspecialchars((string) $app->domain) ?></code> is verified, but its DNS does not point here yet<?= !empty($app->domain_checked_at) ? ' (checked ' . htmlspecialchars((string) $app->domain_checked_at) . ')' : '' ?>. It goes live by itself once it does. Add one of these:</p>
         <dl class="webhook-details">
             <dt>CNAME</dt>
             <dd><code><?= htmlspecialchars(PLATFORM_APPS_DOMAIN) ?></code> (subdomains such as www or app)</dd>
@@ -89,12 +89,12 @@
             <?php endforeach; ?>
         </dl>
         <p class="form-hint">Use A/AAAA records for a bare domain (example.com) and remove any other A/AAAA records for it.</p>
-        <?= form_open('projects/' . $project->id . '/verify-domain') ?>
+        <?= form_open('apps/' . $app->id . '/verify-domain') ?>
             <button type="submit" class="btn-secondary">Check again</button>
         <?= form_close() ?>
         <?php endif; ?>
         <?php else: ?>
-        <p>To prove you own <code><?= htmlspecialchars((string) $project->domain) ?></code>, add this DNS record, then press Verify. Until then the domain is not served.</p>
+        <p>To prove you own <code><?= htmlspecialchars((string) $app->domain) ?></code>, add this DNS record, then press Verify. Until then the domain is not served.</p>
         <dl class="webhook-details">
             <dt>Type</dt>
             <dd><code>TXT</code></dd>
@@ -103,7 +103,7 @@
             <dt>Value</dt>
             <dd><code><?= htmlspecialchars($domain_record['value']) ?></code></dd>
         </dl>
-        <?= form_open('projects/' . $project->id . '/verify-domain') ?>
+        <?= form_open('apps/' . $app->id . '/verify-domain') ?>
             <button type="submit" class="btn-primary">Verify</button>
         <?= form_close() ?>
         <?php endif; ?>
@@ -123,18 +123,18 @@
             <dt>Events</dt>
             <dd>Just the <code>push</code> event</dd>
         </dl>
-        <p class="form-hint">Pushes to <code><?= htmlspecialchars((string) $project->source_branch) ?></code> then deploy automatically. Keep the secret private: anyone who has it can trigger deployments. If a push notification from GitHub goes missing, we deploy the branch head within about 15 minutes, as long as the webhook is still there.</p>
+        <p class="form-hint">Pushes to <code><?= htmlspecialchars((string) $app->source_branch) ?></code> then deploy automatically. Keep the secret private: anyone who has it can trigger deployments. If a push notification from GitHub goes missing, we deploy the branch head within about 15 minutes, as long as the webhook is still there.</p>
     </div>
 
-    <h2>Delete project</h2>
+    <h2>Delete app</h2>
     <div class="card settings-card danger-card">
         <p>Take the app offline and remove it from your dashboard. Its database and files are kept.</p>
         <?php if ($can_delete): ?>
             <div class="form-actions">
-                <a href="projects/<?= $project->id ?>/delete" class="btn-danger">Delete project&hellip;</a>
+                <a href="apps/<?= $app->id ?>/delete" class="btn-danger">Delete app&hellip;</a>
             </div>
         <?php else: ?>
-            <p class="form-hint">Only team owners and admins can delete a project.</p>
+            <p class="form-hint">Only project owners and admins can delete a app.</p>
         <?php endif; ?>
     </div>
 </div>

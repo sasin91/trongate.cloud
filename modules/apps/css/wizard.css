@@ -1,4 +1,4 @@
-/* One-question-at-a-time flow used by onboarding and projects/new */
+/* One-question-at-a-time flow used by onboarding and apps/new */
 
 @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@800;900&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap');
 
@@ -661,7 +661,7 @@
     }
 }
 
-/* Inside the customer template (projects/new) */
+/* Inside the customer template (apps/new) */
 .wz-embedded .wz-main {
     padding: 24px 0 48px;
 }

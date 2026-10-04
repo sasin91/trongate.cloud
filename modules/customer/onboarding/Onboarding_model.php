@@ -2,7 +2,7 @@
 
 require_once __DIR__ . '/../traits/Current_customer.php';
 require_once APPPATH . 'modules/platform/traits/Platform_actions.php';
-require_once APPPATH . 'modules/projects/traits/Project_records.php';
+require_once APPPATH . 'modules/apps/traits/App_records.php';
 
 /**
  * @property-read Db $db
@@ -10,7 +10,7 @@ require_once APPPATH . 'modules/projects/traits/Project_records.php';
 class Onboarding_model extends Model {
     use Current_customer;
     use Platform_actions;
-    use Project_records;
+    use App_records;
 
     function mark_onboarded(int $customer_id): bool {
         return $this->db->update($customer_id, [
@@ -19,23 +19,23 @@ class Onboarding_model extends Model {
         ], 'customer');
     }
 
-    function create_team(int $customer_id, string $name): int|false {
+    function create_project(int $customer_id, string $name): int|false {
         return $this->db->insert([
             'name' => $name,
             'owner_id' => $customer_id,
-        ], 'team');
+        ], 'project');
     }
 
-    function rename_team(int $team_id, string $name): bool {
-        return (bool) $this->db->update($team_id, ['name' => $name], 'team');
+    function rename_project(int $project_id, string $name): bool {
+        return (bool) $this->db->update($project_id, ['name' => $name], 'project');
     }
 
-    function add_team_member(int $team_id, int $customer_id, string $role = 'owner'): bool {
+    function add_project_member(int $project_id, int $customer_id, string $role = 'owner'): bool {
         return (bool) $this->db->insert([
-            'team_id' => $team_id,
+            'project_id' => $project_id,
             'customer_id' => $customer_id,
             'role' => $role,
             'status' => 'active',
-        ], 'team_member');
+        ], 'project_member');
     }
 }

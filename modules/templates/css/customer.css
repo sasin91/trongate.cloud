@@ -69,11 +69,11 @@ header {
     text-decoration: none;
 }
 
-.team-switcher-form {
+.project-switcher-form {
     margin: 0;
 }
 
-.team-switcher-select {
+.project-switcher-select {
     appearance: none;
     -webkit-appearance: none;
     padding: 0.5rem 2.5rem 0.5rem 1.25rem;
@@ -94,12 +94,12 @@ header {
     text-overflow: ellipsis;
 }
 
-.team-switcher-select:hover {
+.project-switcher-select:hover {
     color: var(--text-main);
     background-color: rgba(0, 0, 0, 0.04);
 }
 
-.team-switcher-select:focus {
+.project-switcher-select:focus {
     outline: none;
     background-color: rgba(0, 0, 0, 0.04);
     box-shadow: 0 0 0 2px var(--border);

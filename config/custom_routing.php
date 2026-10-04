@@ -10,31 +10,31 @@ $routes = [
 
     // Dashboard
     'dashboard' => 'customer',
-    'switch-team' => 'customer/switch_team',
+    'switch-project' => 'customer/switch_project',
 
     // Onboarding
     'onboarding' => 'customer-onboarding',
     'onboarding/branches' => 'customer-onboarding/repository_branch_options',
     'onboarding/(:any)' => 'customer-onboarding/$1',
 
-    // Projects
-    'projects/new' => 'projects/create',
-    'projects/branches' => 'projects/repository_branch_options',
-    'projects/(:num)/deploy' => 'projects/deploy/$1',
-    'projects/(:num)/rollback' => 'projects/rollback/$1',
-    'projects/(:num)/settings' => 'projects/settings/$1',
-    'projects/(:num)/settings/submit' => 'projects/submit_settings/$1',
-    'projects/(:num)/verify-domain' => 'projects/verify_domain/$1',
-    'projects/(:num)/live-state' => 'projects/live_state/$1',
-    'projects/(:num)/delete' => 'projects/delete/$1',
-    'projects/(:num)/delete/submit' => 'projects/submit_delete/$1',
-    'projects/(:num)' => 'projects/show/$1',
+    // Apps
+    'apps/new' => 'apps/create',
+    'apps/branches' => 'apps/repository_branch_options',
+    'apps/(:num)/deploy' => 'apps/deploy/$1',
+    'apps/(:num)/rollback' => 'apps/rollback/$1',
+    'apps/(:num)/settings' => 'apps/settings/$1',
+    'apps/(:num)/settings/submit' => 'apps/submit_settings/$1',
+    'apps/(:num)/verify-domain' => 'apps/verify_domain/$1',
+    'apps/(:num)/live-state' => 'apps/live_state/$1',
+    'apps/(:num)/delete' => 'apps/delete/$1',
+    'apps/(:num)/delete/submit' => 'apps/submit_delete/$1',
+    'apps/(:num)' => 'apps/show/$1',
 
     // Deployments
     'deployments/(:num)' => 'deployments/show/$1',
     'deployments/(:num)/logs' => 'deployments/logs_partial/$1',
 
-    // GitHub push webhooks (public, HMAC-signed per project)
+    // GitHub push webhooks (public, HMAC-signed per app)
     'webhooks/github/(:num)' => 'webhooks/github/$1',
 
     // Admin MCP endpoint (modules/mcp), MCP_SECRET bearer auth

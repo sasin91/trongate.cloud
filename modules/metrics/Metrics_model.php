@@ -6,7 +6,7 @@
 class Metrics_model extends Model {
 
     /**
-     * Customer (team) worker task counts keyed by state (pending, running, failed).
+     * Customer (project) worker task counts keyed by state (pending, running, failed).
      * Periodic tasks have their own gauges, so a recurring failure there does
      * not pile up here.
      */
@@ -17,7 +17,7 @@ class Metrics_model extends Model {
                 SUM(started_at IS NOT NULL AND completed_at IS NULL AND failed_at IS NULL) AS running,
                 SUM(failed_at IS NOT NULL) AS failed
             FROM tasks
-            WHERE team_id IS NOT NULL
+            WHERE project_id IS NOT NULL
         SQL;
         return $this->db->query($sql, 'array')[0] ?? [];
     }
@@ -35,11 +35,11 @@ class Metrics_model extends Model {
     }
 
     /**
-     * Number of projects currently live (have a current deployment)
+     * Number of apps currently live (have a current deployment)
      */
-    function live_project_count(): int {
+    function live_app_count(): int {
         $sql = <<<SQL
-            SELECT COUNT(*) FROM project WHERE current_deployment_id IS NOT NULL AND deleted_at IS NULL
+            SELECT COUNT(*) FROM app WHERE current_deployment_id IS NOT NULL AND deleted_at IS NULL
         SQL;
         return (int) $this->db->query($sql, 'column');
     }

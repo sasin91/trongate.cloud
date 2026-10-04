@@ -17,10 +17,10 @@
                 <div class="header-title">trongate<span>.cloud</span></div>
             </a>
             <div class="header-separator"></div>
-            <?= form_open('switch-team', ['class' => 'team-switcher-form']) ?>
-                <select name="team_id" onchange="this.form.submit()" class="form-select team-switcher-select">
-                    <?php foreach($teams as $team): ?>
-                        <option value="<?= $team->id ?>" <?= ($team->id == $current_team_id) ? 'selected' : '' ?>><?= htmlspecialchars($team->name) ?></option>
+            <?= form_open('switch-project', ['class' => 'project-switcher-form']) ?>
+                <select name="project_id" onchange="this.form.submit()" class="form-select project-switcher-select">
+                    <?php foreach($projects as $project): ?>
+                        <option value="<?= $project->id ?>" <?= ($project->id == $current_project_id) ? 'selected' : '' ?>><?= htmlspecialchars($project->name) ?></option>
                     <?php endforeach; ?>
                 </select>
             <?= form_close() ?>

@@ -1,41 +1,41 @@
 <?php
 /**
  * App overview: header, environment map, deployments and side cards.
- * Shared by projects/show and the landing page's product shot.
+ * Shared by apps/show and the landing page's product shot.
  *
- * Expects: $project, $urls, $current (deployment|false), $deployments, $can_rollback,
+ * Expects: $app, $urls, $current (deployment|false), $deployments, $can_rollback,
  * $live_state (array|null), $database_name, and optionally $preview (true: no forms, no polling).
  */
 $preview = $preview ?? false;
 $e = fn($value) => htmlspecialchars((string) $value);
 $short_sha = fn(?string $sha) => $sha ? substr($sha, 0, 7) : '';
 $is_finished = fn(object $d) => in_array($d->status, ['success', 'failed', 'rolled_back'], true);
-$repository = preg_replace('#^https?://(www\.)?github\.com/#', '', (string) $project->source_url);
-$auto_deploy = !isset($project->auto_deploy) || !empty($project->auto_deploy);
+$repository = preg_replace('#^https?://(www\.)?github\.com/#', '', (string) $app->source_url);
+$auto_deploy = !isset($app->auto_deploy) || !empty($app->auto_deploy);
 
 // The custom domain's progress: verify ownership, point DNS here, get a certificate
-$domain = (string) ($project->domain ?? '');
+$domain = (string) ($app->domain ?? '');
 $domain_state = null;
 if ($domain !== '') {
-    if ((string) ($project->verified_domain ?? '') !== $domain) {
+    if ((string) ($app->verified_domain ?? '') !== $domain) {
         $domain_state = ['label' => 'Needs verifying', 'class' => 'warn', 'hint' => 'Add the TXT record from settings to prove you own it.'];
-    } elseif (empty($project->domain_pointed_at)) {
+    } elseif (empty($app->domain_pointed_at)) {
         $domain_state = ['label' => 'Waiting for DNS', 'class' => 'warn', 'hint' => 'Point a CNAME at ' . PLATFORM_APPS_DOMAIN . '. It goes live by itself once it resolves.'];
-    } elseif (empty($project->domain_secured_at)) {
+    } elseif (empty($app->domain_secured_at)) {
         $domain_state = ['label' => 'Issuing certificate', 'class' => 'warn', 'hint' => 'It points here. HTTPS switches on once the certificate is issued.'];
     } else {
         $domain_state = ['label' => 'HTTPS', 'class' => 'ok', 'hint' => ''];
     }
 }
 $domain_count = $domain === '' ? 1 : 2;
-$platform_host = $project->slug . '.' . PLATFORM_APPS_DOMAIN;
+$platform_host = $app->slug . '.' . PLATFORM_APPS_DOMAIN;
 ?>
 <div class="ov">
     <div class="ov-head">
         <div class="ov-title">
             <div class="ov-title-row">
-                <h1><?= $e($project->label) ?></h1>
-                <span class="ov-live" id="live-state"<?php if (!$preview && $live_state !== null): ?> mx-get="projects/<?= (int) $project->id ?>/live-state" mx-trigger="every 5s"<?php endif; ?>>
+                <h1><?= $e($app->label) ?></h1>
+                <span class="ov-live" id="live-state"<?php if (!$preview && $live_state !== null): ?> mx-get="apps/<?= (int) $app->id ?>/live-state" mx-trigger="every 5s"<?php endif; ?>>
                     <?php if ($live_state !== null): ?>
                         <?php require __DIR__ . '/_live_state.php'; ?>
                     <?php else: ?>
@@ -45,7 +45,7 @@ $platform_host = $project->slug . '.' . PLATFORM_APPS_DOMAIN;
             </div>
             <div class="ov-meta">
                 <a href="<?= $e($urls[count($urls) - 1]) ?>" target="_blank" rel="noopener" class="ov-mono"><?= $e(preg_replace('#^https://#', '', $urls[count($urls) - 1])) ?></a>
-                <span><?= $e($repository) ?> &middot; <?= $e($project->source_branch) ?></span>
+                <span><?= $e($repository) ?> &middot; <?= $e($app->source_branch) ?></span>
                 <span><?= $auto_deploy ? 'Deploys on push' : 'Manual deploys' ?></span>
             </div>
         </div>
@@ -55,11 +55,11 @@ $platform_host = $project->slug . '.' . PLATFORM_APPS_DOMAIN;
                 <span class="btn-primary">Deploy now</span>
             <?php else: ?>
                 <?php if ($can_rollback): ?>
-                    <?= form_open('projects/' . $project->id . '/rollback', ['onsubmit' => "return confirm('Roll back to the previous successful deployment?')"]) ?>
+                    <?= form_open('apps/' . $app->id . '/rollback', ['onsubmit' => "return confirm('Roll back to the previous successful deployment?')"]) ?>
                         <button type="submit" class="btn-secondary">Roll back</button>
                     <?= form_close() ?>
                 <?php endif; ?>
-                <?= form_open('projects/' . $project->id . '/deploy') ?>
+                <?= form_open('apps/' . $app->id . '/deploy') ?>
                     <button type="submit" class="btn-primary">Deploy now</button>
                 <?= form_close() ?>
             <?php endif; ?>
@@ -67,9 +67,9 @@ $platform_host = $project->slug . '.' . PLATFORM_APPS_DOMAIN;
     </div>
 
     <nav class="ov-tabs" aria-label="App sections">
-        <a href="projects/<?= (int) $project->id ?>" aria-current="page">Overview</a>
-        <a href="projects/<?= (int) $project->id ?>#deployments">Deployments</a>
-        <a href="projects/<?= (int) $project->id ?>/settings">Settings</a>
+        <a href="apps/<?= (int) $app->id ?>" aria-current="page">Overview</a>
+        <a href="apps/<?= (int) $app->id ?>#deployments">Deployments</a>
+        <a href="apps/<?= (int) $app->id ?>/settings">Settings</a>
     </nav>
 
     <?php if (!$preview): ?>
@@ -88,15 +88,15 @@ $platform_host = $project->slug . '.' . PLATFORM_APPS_DOMAIN;
                         <div class="ov-node">
                             <span class="ov-node-kind">Source</span>
                             <strong><?= $e($repository) ?></strong>
-                            <span class="muted">Branch <?= $e($project->source_branch) ?><?= $auto_deploy ? ' &middot; push to deploy' : '' ?></span>
+                            <span class="muted">Branch <?= $e($app->source_branch) ?><?= $auto_deploy ? ' &middot; push to deploy' : '' ?></span>
                         </div>
                         <div class="ov-link" aria-hidden="true"></div>
                         <div class="ov-node ov-node-app">
                             <span class="ov-node-kind">App</span>
-                            <strong><?= $e($project->label) ?></strong>
+                            <strong><?= $e($app->label) ?></strong>
                             <div class="ov-chips">
-                                <span><?= !empty($project->always_on) ? 'Always on' : 'Sleeps when idle' ?></span>
-                                <span><?= $e(['trongate_v2' => 'Trongate v2', 'trongate_v1' => 'Trongate v1'][$project->type] ?? $project->type) ?></span>
+                                <span><?= !empty($app->always_on) ? 'Always on' : 'Sleeps when idle' ?></span>
+                                <span><?= $e(['trongate_v2' => 'Trongate v2', 'trongate_v1' => 'Trongate v1'][$app->type] ?? $app->type) ?></span>
                             </div>
                         </div>
                         <div class="ov-link" aria-hidden="true"></div>
@@ -154,7 +154,7 @@ $platform_host = $project->slug . '.' . PLATFORM_APPS_DOMAIN;
                                         <td class="muted"><?= $e($deployment->created_at) ?></td>
                                         <td class="row-actions">
                                             <?php if (!$preview && empty($deployment->is_current) && $is_finished($deployment) && $deployment->status !== 'failed' && !empty($deployment->image)): ?>
-                                                <?= form_open('projects/' . $project->id . '/rollback', ['onsubmit' => "return confirm('Roll back to deployment #" . (int) $deployment->id . "?')"]) ?>
+                                                <?= form_open('apps/' . $app->id . '/rollback', ['onsubmit' => "return confirm('Roll back to deployment #" . (int) $deployment->id . "?')"]) ?>
                                                     <?= form_hidden('deployment_id', (string) $deployment->id) ?>
                                                     <button type="submit" class="btn-link">Roll back to this</button>
                                                 <?= form_close() ?>
@@ -181,8 +181,8 @@ $platform_host = $project->slug . '.' . PLATFORM_APPS_DOMAIN;
                     </p>
                     <p class="ov-links">
                         <a href="deployments/<?= (int) $current->id ?>">Build log</a>
-                        <?php if ($current->commit_sha && str_starts_with((string) $project->source_url, 'https://github.com/')): ?>
-                            <a href="<?= $e(rtrim((string) $project->source_url, '/') . '/commit/' . $current->commit_sha) ?>" target="_blank" rel="noopener">View on GitHub</a>
+                        <?php if ($current->commit_sha && str_starts_with((string) $app->source_url, 'https://github.com/')): ?>
+                            <a href="<?= $e(rtrim((string) $app->source_url, '/') . '/commit/' . $current->commit_sha) ?>" target="_blank" rel="noopener">View on GitHub</a>
                         <?php endif; ?>
                     </p>
                 <?php endif; ?>
@@ -191,7 +191,7 @@ $platform_host = $project->slug . '.' . PLATFORM_APPS_DOMAIN;
             <section class="ov-card" aria-labelledby="dom-h">
                 <div class="ov-card-head">
                     <h2 id="dom-h">Domains</h2>
-                    <a href="projects/<?= (int) $project->id ?>/settings"><?= $domain === '' ? 'Add domain' : 'Manage' ?></a>
+                    <a href="apps/<?= (int) $app->id ?>/settings"><?= $domain === '' ? 'Add domain' : 'Manage' ?></a>
                 </div>
                 <div class="ov-domain">
                     <span class="ov-mono"><?= $e($platform_host) ?></span>
@@ -211,11 +211,11 @@ $platform_host = $project->slug . '.' . PLATFORM_APPS_DOMAIN;
             <section class="ov-card" aria-labelledby="set-h">
                 <div class="ov-card-head">
                     <h2 id="set-h">Quick settings</h2>
-                    <a href="projects/<?= (int) $project->id ?>/settings">Edit</a>
+                    <a href="apps/<?= (int) $app->id ?>/settings">Edit</a>
                 </div>
                 <dl class="ov-settings">
                     <div><dt>Deploy on push</dt><dd><?= $auto_deploy ? 'On' : 'Off' ?></dd></div>
-                    <div><dt>Always on</dt><dd><?= !empty($project->always_on) ? 'On' : 'Off' ?></dd></div>
+                    <div><dt>Always on</dt><dd><?= !empty($app->always_on) ? 'On' : 'Off' ?></dd></div>
                 </dl>
             </section>
         </div>

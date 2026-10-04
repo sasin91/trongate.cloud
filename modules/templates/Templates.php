@@ -49,10 +49,10 @@ class Templates extends Trongate {
      * @return void
      */
     public function customer(array $data): void {
-        // Fetch team data for header selector
+        // Fetch project data for header selector
         $this->module('customer');
-        $data['teams'] = $this->customer->model->get_customer_teams();
-        $data['current_team_id'] = $this->customer->model->_get_current_team_id();
+        $data['projects'] = $this->customer->model->get_customer_projects();
+        $data['current_project_id'] = $this->customer->model->_get_current_project_id();
 
         $this->display('customer', $data);
     }

@@ -21,21 +21,21 @@ class Customer extends Trongate {
     function index(): void {
         $this->_make_sure_allowed();
 
-        $team_id = $this->_team_id_or_redirect();
-        $projects = $this->model->team_projects($team_id);
-        $live_states = $this->_live_app_states($team_id);
+        $project_id = $this->_project_id_or_redirect();
+        $apps = $this->model->project_apps($project_id);
+        $live_states = $this->_live_app_states($project_id);
 
-        foreach ($projects as $project) {
-            $project->live_state = $this->_live_state_of($live_states, $project);
+        foreach ($apps as $app) {
+            $app->live_state = $this->_live_state_of($live_states, $app);
         }
 
         $data = [
             'view_module' => 'customer',
             'view_file' => 'index',
-            'projects' => $projects,
+            'apps' => $apps,
             'additional_includes_top' => [
                 'deployments_module/css/deployments.css',
-                'projects_module/css/projects.css',
+                'apps_module/css/apps.css',
             ],
         ];
         $this->module('templates');
@@ -73,7 +73,7 @@ class Customer extends Trongate {
         return true;
     }
 
-    function switch_team(): void {
+    function switch_project(): void {
         $this->_make_sure_allowed();
 
         if (REQUEST_TYPE !== 'POST') {
@@ -84,10 +84,10 @@ class Customer extends Trongate {
         // No rules: run() only enforces the CSRF token from form_close()
         $this->validation->run();
 
-        $team_id = (int) post('team_id');
+        $project_id = (int) post('project_id');
 
-        if ($team_id > 0) {
-            $this->model->set_current_team($team_id);
+        if ($project_id > 0) {
+            $this->model->set_current_project($project_id);
         }
 
         // Redirect back to referrer (same site only) or dashboard

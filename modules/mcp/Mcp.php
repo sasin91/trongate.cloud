@@ -179,7 +179,7 @@ class Mcp extends Trongate {
                 'title' => 'Trongate Cloud',
                 'version' => self::SERVER_VERSION,
             ],
-            'instructions' => 'Admin access to Trongate Cloud across all teams: list projects and deployments, read build logs, '
+            'instructions' => 'Admin access to Trongate Cloud across all projects: list apps and deployments, read build logs, '
                 . 'deploy and roll back. Deploying and rolling back change production; confirm with the user first.',
         ];
     }

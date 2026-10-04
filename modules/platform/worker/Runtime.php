@@ -29,7 +29,7 @@ require_once __DIR__ . '/Task_log.php';
  *
  * ## Periodic tasks
  *
- * PERIODIC_TASKS are platform-wide tasks (no team) that the poll loop queues
+ * PERIODIC_TASKS are platform-wide tasks (no project) that the poll loop queues
  * on an interval, e.g. reconcile_deploys. They run like any other task, so
  * they share its logging, failure handling and stale recovery. Adding one is
  * a line in PERIODIC_TASKS plus its script. The Runtime records when each
@@ -158,7 +158,7 @@ class Runtime {
 
     /**
      * Resolve a module reference to its value.
-     * Example: secrets:team,12,github
+     * Example: secrets:project,12,github
      */
     function resolve_reference(string $ref): mixed {
         return $this->module_ref->resolve($ref);
@@ -274,7 +274,7 @@ class Runtime {
      *
      * $extra may set commit_sha, image and completed_at. Terminal statuses get
      * completed_at = NOW() unless given. On success the deployment becomes the
-     * project's current deployment.
+     * app's current deployment.
      */
     function set_deployment_status(int $id, string $status, array $extra = []): void {
         if (!in_array($status, self::DEPLOYMENT_STATUSES, true)) {
@@ -307,8 +307,8 @@ class Runtime {
 
         if ($status === 'success') {
             $stmt = $this->db->prepare(
-                'UPDATE project p
-                 JOIN deployment d ON d.project_id = p.id
+                'UPDATE app p
+                 JOIN deployment d ON d.app_id = p.id
                  SET p.current_deployment_id = d.id
                  WHERE d.id = ?'
             );
@@ -385,7 +385,7 @@ class Runtime {
                 continue;
             }
 
-            $this->log(sprintf('Picked task #%d (team_id=%s, script=%s)', $task['id'], $task['team_id'] ?? '-', $task['script']));
+            $this->log(sprintf('Picked task #%d (project_id=%s, script=%s)', $task['id'], $task['project_id'] ?? '-', $task['script']));
             $this->execute($task);
         }
 
@@ -478,8 +478,8 @@ class Runtime {
         }
 
         $task['id'] = (int) $task['id'];
-        $task['team_id'] = $task['team_id'] === null ? null : (int) $task['team_id'];
         $task['project_id'] = $task['project_id'] === null ? null : (int) $task['project_id'];
+        $task['app_id'] = $task['app_id'] === null ? null : (int) $task['app_id'];
         $task['deployment_id'] = $task['deployment_id'] === null ? null : (int) $task['deployment_id'];
 
         return $task;
@@ -550,7 +550,7 @@ class Runtime {
             return false;
         }
 
-        $stmt = $this->db->prepare("INSERT INTO tasks (team_id, script, payload) VALUES (NULL, ?, '{}')");
+        $stmt = $this->db->prepare("INSERT INTO tasks (project_id, script, payload) VALUES (NULL, ?, '{}')");
         $stmt->bind_param('s', $script);
         $stmt->execute();
         $stmt->close();
@@ -559,7 +559,7 @@ class Runtime {
         $stmt = $this->db->prepare(
             'DELETE FROM tasks
              WHERE script = ?
-               AND team_id IS NULL
+               AND project_id IS NULL
                AND COALESCE(completed_at, failed_at) < NOW() - INTERVAL ? DAY'
         );
         $retention = self::PERIODIC_RETENTION_DAYS;
@@ -665,12 +665,12 @@ class Runtime {
     }
 
     /**
-     * Stamp a periodic (team-less) task's finish or failure in scheduled_jobs.
+     * Stamp a periodic (project-less) task's finish or failure in scheduled_jobs.
      *
      * @param 'last_finished_at'|'last_failed_at' $column
      */
     private function record_periodic_run(array $task, string $column): void {
-        if ($task['team_id'] !== null || !isset(self::PERIODIC_TASKS[$task['script']])) {
+        if ($task['project_id'] !== null || !isset(self::PERIODIC_TASKS[$task['script']])) {
             return;
         }
 

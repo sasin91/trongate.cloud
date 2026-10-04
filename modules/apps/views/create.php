@@ -6,11 +6,11 @@
     <?php if ($form === false): ?>
         <div class="wz-wrap">
             <main class="wz-main">
-                <?= form_open('projects/submit_source', ['class' => 'wz-stage']) ?>
+                <?= form_open('apps/submit_source', ['class' => 'wz-stage']) ?>
                     <div class="wz-q">
                         <span class="wz-num">1 &rarr;</span>
                         <h1>Let's connect GitHub.</h1>
-                        <p>This team has no GitHub connection yet. Paste a personal access token so we can list your repositories.</p>
+                        <p>This project has no GitHub connection yet. Paste a personal access token so we can list your repositories.</p>
                     </div>
 
                     <?php $errors = validation_errors('<p>', '</p>'); ?>
@@ -42,11 +42,11 @@
     <?php else: ?>
         <?php
         extract($form);
-        $form_action = 'projects/submit';
-        $branches_url = 'projects/branches';
+        $form_action = 'apps/submit';
+        $branches_url = 'apps/branches';
         $q_offset = 0;
         $back_href = 'dashboard';
-        require __DIR__ . '/_project_steps.php';
+        require __DIR__ . '/_app_steps.php';
         ?>
     <?php endif; ?>
 </div>

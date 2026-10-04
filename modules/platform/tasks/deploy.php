@@ -3,11 +3,11 @@
 /**
  * Deploy Task
  *
- * Builds a project's GitHub repository with Railpack (FrankenPHP image) on
- * a BuildKit daemon started for this build only, pushes it to PLATFORM_REGISTRY and rolls it out to the team's
+ * Builds a app's GitHub repository with Railpack (FrankenPHP image) on
+ * a BuildKit daemon started for this build only, pushes it to PLATFORM_REGISTRY and rolls it out to the project's
  * tenant namespace.
  *
- * Payload: {deployment_id, project_id, team_id, commit_sha?}
+ * Payload: {deployment_id, app_id, project_id, commit_sha?}
  *
  * In scope (see Runtime): $payload, $task, $runtime.
  * Returns a Closure(Task_log): int. Tokens and passwords are never logged.
@@ -17,35 +17,35 @@ require_once __DIR__ . '/lib/Platform_task.php';
 
 return function (Task_log $log) use ($payload, $runtime): int {
     $db = $runtime->db();
-    $team_id = (int) $payload['team_id'];
     $project_id = (int) $payload['project_id'];
+    $app_id = (int) $payload['app_id'];
     $deployment_id = (int) $payload['deployment_id'];
 
-    $project = Platform_task::project($db, $team_id, $project_id);
-    $deployment = Platform_task::deployment($db, $project_id, $deployment_id);
+    $app = Platform_task::app($db, $project_id, $app_id);
+    $deployment = Platform_task::deployment($db, $app_id, $deployment_id);
 
     $runtime->set_deployment_status($deployment_id, 'building');
 
     // --- Source --------------------------------------------------------------
 
-    $provider = (string) ($project['source_provider'] ?? '');
-    $source_url = rtrim((string) ($project['source_url'] ?? ''), '/');
-    $branch = (string) ($project['source_branch'] ?: 'main');
+    $provider = (string) ($app['source_provider'] ?? '');
+    $source_url = rtrim((string) ($app['source_url'] ?? ''), '/');
+    $branch = (string) ($app['source_branch'] ?: 'main');
 
     if ($provider !== 'github') {
         throw new RuntimeException("Unsupported source provider: {$provider}");
     }
 
     if (!preg_match('#^https://github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(\.git)?$#', $source_url, $match)) {
-        throw new RuntimeException('Project has no valid GitHub repository URL');
+        throw new RuntimeException('App has no valid GitHub repository URL');
     }
 
     $repo = $match[1];
-    $secret = $runtime->resolve_reference("secrets:team,{$team_id},github");
+    $secret = $runtime->resolve_reference("secrets:project,{$project_id},github");
     $token = is_array($secret) ? (string) ($secret['token'] ?? '') : '';
 
     if ($token === '') {
-        throw new RuntimeException('The team has no GitHub token; reconnect GitHub');
+        throw new RuntimeException('The project has no GitHub token; reconnect GitHub');
     }
 
     $github = new Github($token);
@@ -165,14 +165,14 @@ return function (Task_log $log) use ($payload, $runtime): int {
         // none. An empty one makes the variable count; the composer step then just
         // writes an empty vendor/.
         if (!is_file("{$src}/composer.json")) {
-            $composer = ['name' => 'trongate-cloud/app', 'type' => 'project', 'require' => new stdClass()];
+            $composer = ['name' => 'trongate-cloud/app', 'type' => 'app', 'require' => new stdClass()];
             file_put_contents("{$src}/composer.json", json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         }
 
-        // Trongate's database class uses PDO; project extras come from settings
+        // Trongate's database class uses PDO; app extras come from settings
         $extensions = ['pdo_mysql'];
 
-        foreach (preg_split('/[\s,]+/', strtolower((string) ($project['php_extensions'] ?? ''))) ?: [] as $extension) {
+        foreach (preg_split('/[\s,]+/', strtolower((string) ($app['php_extensions'] ?? ''))) ?: [] as $extension) {
             if (preg_match('/^[a-z0-9_]{1,40}$/', $extension) && !in_array($extension, $extensions, true)) {
                 $extensions[] = $extension;
             }
@@ -193,8 +193,8 @@ return function (Task_log $log) use ($payload, $runtime): int {
         // --- Build + push ----------------------------------------------------
 
         $registry = rtrim(PLATFORM_REGISTRY, '/');
-        $image = "{$registry}/p{$project_id}:{$short_sha}-{$deployment_id}";
-        $cache_ref = "{$registry}/p{$project_id}:buildcache";
+        $image = "{$registry}/p{$app_id}:{$short_sha}-{$deployment_id}";
+        $cache_ref = "{$registry}/p{$app_id}:buildcache";
         // The frontend must match the railpack CLI that wrote the plan (Dockerfile.worker sets both)
         $railpack_version = getenv('RAILPACK_VERSION') ?: '';
         $frontend = getenv('RAILPACK_FRONTEND')
@@ -227,7 +227,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
                 . ' --opt source=' . $q($frontend)
                 . ' --local context=' . $q($src)
                 . ' --local dockerfile=' . $q($plan_dir)
-                . ' --opt build-arg:cache-key=' . $q("p{$project_id}")
+                . ' --opt build-arg:cache-key=' . $q("p{$app_id}")
                 . ' --opt build-arg:secrets-hash=' . $q(hash('sha256', json_encode($build_env)))
                 . ' ' . implode(' ', $secret_flags)
                 . ' --import-cache ' . $q("type=registry,ref={$cache_ref}")
@@ -256,15 +256,15 @@ return function (Task_log $log) use ($payload, $runtime): int {
 
     // --- Roll out --------------------------------------------------------------
 
-    $database = Platform_task::database_server($db, $project, $log);
-    Platform_task::apply($runtime, $log, $project, $deployment, $database);
+    $database = Platform_task::database_server($db, $app, $log);
+    Platform_task::apply($runtime, $log, $app, $deployment, $database);
 
-    if (!Platform_task::wait_for_rollout($runtime, $log, $project)) {
+    if (!Platform_task::wait_for_rollout($runtime, $log, $app)) {
         return 1;
     }
 
     $runtime->set_deployment_status($deployment_id, 'success');
-    $log->info('Live at ' . Trongate_config::base_url($project));
+    $log->info('Live at ' . Trongate_config::base_url($app));
 
     return 0;
 };

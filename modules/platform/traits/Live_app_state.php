@@ -9,13 +9,13 @@ require_once APPPATH . 'modules/platform/live/App_state.php';
 trait Live_app_state {
 
     /**
-     * States of the team's apps by project id, or null when the cluster cannot be read
+     * States of the project's apps by app id, or null when the cluster cannot be read
      *
      * @return array<int, array{state: string, label: string, detail: string}>|null
      */
-    function _live_app_states(int $team_id): ?array {
+    function _live_app_states(int $project_id): ?array {
         try {
-            return App_state::for_team(Kubernetes::from_env(), $team_id);
+            return App_state::for_project(Kubernetes::from_env(), $project_id);
         } catch (Throwable $e) {
             return null;
         }
@@ -26,29 +26,29 @@ trait Live_app_state {
      *
      * @return array{state: string, label: string, detail: string}|null
      */
-    function _live_app_state(object $project): ?array {
-        if (empty($project->current_deployment_id)) {
+    function _live_app_state(object $app): ?array {
+        if (empty($app->current_deployment_id)) {
             return null;
         }
 
         try {
-            return App_state::for_project(Kubernetes::from_env(), (int) $project->team_id, (int) $project->id);
+            return App_state::for_app(Kubernetes::from_env(), (int) $app->project_id, (int) $app->id);
         } catch (Throwable $e) {
             return null;
         }
     }
 
     /**
-     * A project's entry in _live_app_states(): null when unknown or never deployed
+     * A app's entry in _live_app_states(): null when unknown or never deployed
      *
      * @param array<int, array{state: string, label: string, detail: string}>|null $states
      * @return array{state: string, label: string, detail: string}|null
      */
-    function _live_state_of(?array $states, object $project): ?array {
-        if ($states === null || empty($project->current_deployment_id)) {
+    function _live_state_of(?array $states, object $app): ?array {
+        if ($states === null || empty($app->current_deployment_id)) {
             return null;
         }
 
-        return $states[(int) $project->id] ?? App_state::_make('not_running');
+        return $states[(int) $app->id] ?? App_state::_make('not_running');
     }
 }

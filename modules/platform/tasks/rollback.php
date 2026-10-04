@@ -3,10 +3,10 @@
 /**
  * Rollback Task
  *
- * Re-applies a project's app manifests with an earlier, already-built image.
+ * Re-applies a app's app manifests with an earlier, already-built image.
  * The rollback deployment row (trigger rollback) already carries that image.
  *
- * Payload: {deployment_id, project_id, team_id, target_deployment_id, image}
+ * Payload: {deployment_id, app_id, project_id, target_deployment_id, image}
  *
  * On success the rollback deployment becomes current and the deployment it
  * replaced is marked rolled_back (it can still be rolled back to later).
@@ -16,13 +16,13 @@ require_once __DIR__ . '/lib/Platform_task.php';
 
 return function (Task_log $log) use ($payload, $runtime): int {
     $db = $runtime->db();
-    $team_id = (int) $payload['team_id'];
     $project_id = (int) $payload['project_id'];
+    $app_id = (int) $payload['app_id'];
     $deployment_id = (int) $payload['deployment_id'];
 
-    $project = Platform_task::project($db, $team_id, $project_id);
-    $deployment = Platform_task::deployment($db, $project_id, $deployment_id);
-    $previous_id = (int) ($project['current_deployment_id'] ?? 0);
+    $app = Platform_task::app($db, $project_id, $app_id);
+    $deployment = Platform_task::deployment($db, $app_id, $deployment_id);
+    $previous_id = (int) ($app['current_deployment_id'] ?? 0);
 
     $image = (string) ($deployment['image'] ?: ($payload['image'] ?? ''));
 
@@ -36,10 +36,10 @@ return function (Task_log $log) use ($payload, $runtime): int {
     $runtime->set_deployment_status($deployment_id, 'deploying', ['image' => $image]);
     $deployment['image'] = $image;
 
-    $database = Platform_task::database_server($db, $project, $log);
-    Platform_task::apply($runtime, $log, $project, $deployment, $database);
+    $database = Platform_task::database_server($db, $app, $log);
+    Platform_task::apply($runtime, $log, $app, $deployment, $database);
 
-    if (!Platform_task::wait_for_rollout($runtime, $log, $project)) {
+    if (!Platform_task::wait_for_rollout($runtime, $log, $app)) {
         return 1;
     }
 
@@ -48,10 +48,10 @@ return function (Task_log $log) use ($payload, $runtime): int {
     if ($previous_id > 0 && $previous_id !== $deployment_id) {
         $previous = Platform_task::row(
             $db,
-            'SELECT status, completed_at FROM deployment WHERE id = ? AND project_id = ?',
+            'SELECT status, completed_at FROM deployment WHERE id = ? AND app_id = ?',
             'ii',
             $previous_id,
-            $project_id
+            $app_id
         );
 
         if ($previous !== null && $previous['status'] === 'success') {
@@ -61,7 +61,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
         }
     }
 
-    $log->info('Live at ' . Trongate_config::base_url($project));
+    $log->info('Live at ' . Trongate_config::base_url($app));
 
     return 0;
 };

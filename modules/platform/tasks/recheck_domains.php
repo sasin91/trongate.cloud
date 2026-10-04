@@ -21,19 +21,19 @@
  * promotion that was skipped (a deploy in progress) or failed (a rollout
  * timeout).
  *
- * Payload: {team_id, project_id?}. With project_id: that project. Without:
- * every project of the team with a verified domain.
+ * Payload: {project_id, app_id?}. With app_id: that app. Without:
+ * every app of the project with a verified domain.
  *
- * Queued by Platform_actions::verify_project_domain (verifying a domain, or
+ * Queued by Platform_actions::verify_app_domain (verifying a domain, or
  * pressing Verify again on a verified one).
  *
  * Periodic: schedule_domain_rechecks (Runtime::PERIODIC_TASKS, every
- * DOMAIN_RECHECK_INTERVAL seconds) queues one per team with a verified domain,
+ * DOMAIN_RECHECK_INTERVAL seconds) queues one per project with a verified domain,
  * so a domain goes live soon after its DNS change propagates and a domain that
  * moved away is noticed.
  *
  * Lessons kept from Scaleweb's CRM (hostname-gate.ts, domain-promotion.ts):
- * - Promotion re-applies the image of the project's current (successful)
+ * - Promotion re-applies the image of the app's current (successful)
  *   deployment. It never builds or deploys: a DNS edit at a registrar must not
  *   be able to ship new code.
  * - Promotion only ever adds a domain. Demotion, after $demote_after_failures
@@ -41,8 +41,8 @@
  *   domain_secured_at; the cluster is left alone and the next deploy stops
  *   routing the domain. A few flaky lookups
  *   must never take a live domain off the internet.
- * - Projects are checked and promoted one by one, and a failure is logged and
- *   skipped, so one broken domain never holds up another project's.
+ * - Apps are checked and promoted one by one, and a failure is logged and
+ *   skipped, so one broken domain never holds up another app's.
  */
 
 require_once __DIR__ . '/lib/Platform_task.php';
@@ -54,40 +54,40 @@ return function (Task_log $log) use ($payload, $runtime): int {
     $certificate_wait_seconds = 180;
 
     $db = $runtime->db();
-    $team_id = (int) ($payload['team_id'] ?? 0);
     $project_id = (int) ($payload['project_id'] ?? 0);
+    $app_id = (int) ($payload['app_id'] ?? 0);
 
-    if ($team_id <= 0) {
-        throw new InvalidArgumentException('recheck_domains needs team_id');
+    if ($project_id <= 0) {
+        throw new InvalidArgumentException('recheck_domains needs project_id');
     }
 
     $sql = <<<SQL
         SELECT id
-        FROM project
-        WHERE team_id = ?
+        FROM app
+        WHERE project_id = ?
           AND verified_domain IS NOT NULL
-          -- A deleted project keeps verified_domain until destroy_project
+          -- A deleted app keeps verified_domain until destroy_app
           -- finishes; promoting it would re-apply the app being torn down
           AND deleted_at IS NULL
           AND (? = 0 OR id = ?)
         ORDER BY id
         SQL;
 
-    $project_ids = array_column(Platform_task::rows($db, $sql, 'iii', $team_id, $project_id, $project_id), 'id');
+    $app_ids = array_column(Platform_task::rows($db, $sql, 'iii', $project_id, $app_id, $app_id), 'id');
 
-    if (!$project_ids) {
+    if (!$app_ids) {
         $log->info('No verified custom domains to check');
         return 0;
     }
 
     /**
-     * Re-apply a project whose domain points here but is not routed yet.
+     * Re-apply a app whose domain points here but is not routed yet.
      * Returns false only when the re-apply itself failed. (A closure, not a
      * function: the worker includes this file once per task.)
      */
-    $promote = function (int $id, string $domain) use ($runtime, $log, $team_id): bool {
+    $promote = function (int $id, string $domain) use ($runtime, $log, $project_id): bool {
         $db = $runtime->db();
-        $project = Platform_task::project($db, $team_id, $id);
+        $app = Platform_task::app($db, $project_id, $id);
 
         // A deploy or rollback that is queued or running routes the domain itself
         // (Platform_task::apply re-reads the gate), and re-applying the current
@@ -95,7 +95,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
         $sql = <<<SQL
             SELECT COUNT(*) AS busy
             FROM tasks
-            WHERE project_id = ?
+            WHERE app_id = ?
               AND script IN ('deploy', 'rollback')
               AND completed_at IS NULL
               AND failed_at IS NULL
@@ -106,25 +106,25 @@ return function (Task_log $log) use ($payload, $runtime): int {
             return true;
         }
 
-        $current_id = (int) ($project['current_deployment_id'] ?? 0);
-        $deployment = $current_id > 0 ? Platform_task::row($db, 'SELECT * FROM deployment WHERE id = ? AND project_id = ?', 'ii', $current_id, $id) : null;
+        $current_id = (int) ($app['current_deployment_id'] ?? 0);
+        $deployment = $current_id > 0 ? Platform_task::row($db, 'SELECT * FROM deployment WHERE id = ? AND app_id = ?', 'ii', $current_id, $id) : null;
 
         if ($deployment === null || empty($deployment['image'])) {
-            $log->info("{$domain} points here; it goes live with the project's first deploy");
+            $log->info("{$domain} points here; it goes live with the app's first deploy");
             return true;
         }
 
         $log->info("Promoting {$domain}: re-applying deployment #{$current_id} ({$deployment['image']})");
 
-        $database = Platform_task::database_server($db, $project, $log);
-        Platform_task::apply($runtime, $log, $project, $deployment, $database);
+        $database = Platform_task::database_server($db, $app, $log);
+        Platform_task::apply($runtime, $log, $app, $deployment, $database);
 
         // BASE_URL changed, so the pods roll; the old ones serve until the new ones are ready
-        if (!Platform_task::wait_for_rollout($runtime, $log, $project)) {
+        if (!Platform_task::wait_for_rollout($runtime, $log, $app)) {
             return false;
         }
 
-        $log->info('Applied; the app\'s base URL is ' . Trongate_config::base_url($project));
+        $log->info('Applied; the app\'s base URL is ' . Trongate_config::base_url($app));
 
         return true;
     };
@@ -133,8 +133,8 @@ return function (Task_log $log) use ($payload, $runtime): int {
      * Whether the custom domain's Certificate (cert-manager creates it from the
      * domain's Gateway) is Ready, waiting up to $wait seconds. Logs why not.
      */
-    $certificate_ready = function (int $id, string $domain, int $wait) use ($runtime, $log, $team_id): bool {
-        $namespace = Manifests::namespace_name($team_id);
+    $certificate_ready = function (int $id, string $domain, int $wait) use ($runtime, $log, $project_id): bool {
+        $namespace = Manifests::namespace_name($project_id);
         $name = Manifests::domain_tls_secret(Manifests::domain_gateway_name($id, $domain));
         $deadline = time() + $wait;
 
@@ -164,11 +164,11 @@ return function (Task_log $log) use ($payload, $runtime): int {
 
     $failed = 0;
 
-    foreach ($project_ids as $id) {
+    foreach ($app_ids as $id) {
         try {
-            $project = Platform_task::project($db, $team_id, (int) $id);
-            $domain = (string) $project['verified_domain'];
-            $was_pointed = !empty($project['domain_pointed_at']);
+            $app = Platform_task::app($db, $project_id, (int) $id);
+            $domain = (string) $app['verified_domain'];
+            $was_pointed = !empty($app['domain_pointed_at']);
             $check = Domain_dns::check($domain);
 
             if (!$check['points']) {
@@ -176,7 +176,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
                 // incremented count. WHERE verified_domain: a domain that was
                 // changed meanwhile keeps its fresh state.
                 $sql = <<<SQL
-                    UPDATE project
+                    UPDATE app
                     SET domain_dns_failures = LEAST(domain_dns_failures + 1, 255),
                         domain_pointed_at = IF(domain_dns_failures >= ?, NULL, domain_pointed_at),
                         domain_secured_at = IF(domain_pointed_at IS NULL, NULL, domain_secured_at),
@@ -185,7 +185,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
                     SQL;
                 Platform_task::execute($db, $sql, 'iis', $demote_after_failures, (int) $id, $domain);
 
-                $failures = (int) (Platform_task::row($db, 'SELECT domain_dns_failures FROM project WHERE id = ?', 'i', (int) $id)['domain_dns_failures'] ?? 0);
+                $failures = (int) (Platform_task::row($db, 'SELECT domain_dns_failures FROM app WHERE id = ?', 'i', (int) $id)['domain_dns_failures'] ?? 0);
 
                 if ($was_pointed && $failures >= $demote_after_failures) {
                     $log->warn("{$domain}: {$check['detail']} ({$failures} checks in a row). No longer routed from the next deploy on.");
@@ -197,7 +197,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
             }
 
             $sql = <<<SQL
-                UPDATE project
+                UPDATE app
                 SET domain_dns_failures = 0,
                     domain_pointed_at = COALESCE(domain_pointed_at, NOW()),
                     domain_checked_at = NOW()
@@ -206,11 +206,11 @@ return function (Task_log $log) use ($payload, $runtime): int {
             Platform_task::execute($db, $sql, 'is', (int) $id, $domain);
             $log->info("{$domain}: {$check['detail']}");
 
-            $namespace = Manifests::namespace_name($team_id);
-            $app = Manifests::app_name((int) $id);
+            $namespace = Manifests::namespace_name($project_id);
+            $app_name = Manifests::app_name((int) $id);
 
             // Step 1: routing
-            $route = $runtime->kube()->get('gateway.networking.k8s.io/v1', 'HTTPRoute', $namespace, $app);
+            $route = $runtime->kube()->get('gateway.networking.k8s.io/v1', 'HTTPRoute', $namespace, $app_name);
             $promoted = false;
 
             if ($route === null || !in_array($domain, $route['spec']['hostnames'] ?? [], true)) {
@@ -220,7 +220,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
                 }
 
                 // Left to a deploy (in progress, or the first one): nothing to wait for yet
-                $route = $runtime->kube()->get('gateway.networking.k8s.io/v1', 'HTTPRoute', $namespace, $app);
+                $route = $runtime->kube()->get('gateway.networking.k8s.io/v1', 'HTTPRoute', $namespace, $app_name);
 
                 if ($route === null || !in_array($domain, $route['spec']['hostnames'] ?? [], true)) {
                     continue;
@@ -230,33 +230,33 @@ return function (Task_log $log) use ($payload, $runtime): int {
             }
 
             // Step 2: BASE_URL, once the certificate is issued
-            $project = Platform_task::project($db, $team_id, (int) $id);
+            $app = Platform_task::app($db, $project_id, (int) $id);
 
-            if (empty($project['domain_secured_at'])) {
+            if (empty($app['domain_secured_at'])) {
                 if (!$certificate_ready((int) $id, $domain, $promoted ? $certificate_wait_seconds : 0)) {
                     continue;
                 }
 
                 $sql = <<<SQL
-                    UPDATE project
+                    UPDATE app
                     SET domain_secured_at = NOW()
                     WHERE id = ? AND verified_domain = ? AND domain_pointed_at IS NOT NULL AND domain_secured_at IS NULL
                     SQL;
                 Platform_task::execute($db, $sql, 'is', (int) $id, $domain);
                 $log->info("{$domain}: HTTPS certificate issued");
-                $project = Platform_task::project($db, $team_id, (int) $id);
+                $app = Platform_task::app($db, $project_id, (int) $id);
             }
 
             // No Deployment yet: the first deploy applies the right BASE_URL
-            $deployment = $runtime->kube()->get('apps/v1', 'Deployment', $namespace, $app);
+            $deployment = $runtime->kube()->get('apps/v1', 'Deployment', $namespace, $app_name);
             $live_base_url = (string) ($deployment['spec']['template']['metadata']['annotations'][Manifests::LABEL_PREFIX . '/base-url'] ?? '');
 
-            if ($deployment !== null && $live_base_url !== Trongate_config::base_url($project) && !$promote((int) $id, $domain)) {
+            if ($deployment !== null && $live_base_url !== Trongate_config::base_url($app) && !$promote((int) $id, $domain)) {
                 $failed++;
             }
         } catch (Throwable $e) {
             $failed++;
-            $log->error("Project #{$id}: {$e->getMessage()}");
+            $log->error("App #{$id}: {$e->getMessage()}");
         }
     }
 

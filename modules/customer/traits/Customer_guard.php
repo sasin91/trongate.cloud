@@ -46,15 +46,15 @@ trait Customer_guard {
     }
 
     /**
-     * Get the current team ID or redirect to team creation
+     * Get the current project ID or redirect to project creation
      */
-    function _team_id_or_redirect(): int {
-        $team_id = $this->model->_get_current_team_id();
+    function _project_id_or_redirect(): int {
+        $project_id = $this->model->_get_current_project_id();
 
-        if ($team_id === false) {
-            redirect('onboarding/team');
+        if ($project_id === false) {
+            redirect('onboarding/project');
         }
 
-        return $team_id;
+        return $project_id;
     }
 }

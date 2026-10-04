@@ -18,11 +18,11 @@
     max-width: 760px;
 }
 
-.project-header {
+.app-header {
     margin-bottom: 2rem;
 }
 
-.project-title {
+.app-title {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
@@ -30,44 +30,44 @@
     flex-wrap: wrap;
 }
 
-.project-title h2 {
+.app-title h2 {
     margin: 0 0 0.25rem 0;
 }
 
-.project-title p {
+.app-title p {
     margin: 0;
     font-size: 0.875rem;
 }
 
-.project-actions {
+.app-actions {
     display: flex;
     gap: 0.5rem;
     align-items: center;
     flex-wrap: wrap;
 }
 
-.project-actions form {
+.app-actions form {
     margin: 0;
 }
 
-.project-urls {
+.app-urls {
     list-style: none;
     padding: 0;
     margin: 1rem 0;
 }
 
-.project-urls li {
+.app-urls li {
     margin-bottom: 0.25rem;
     word-break: break-all;
 }
 
-.project-urls a {
+.app-urls a {
     color: var(--primary);
     text-decoration: none;
     font-weight: 500;
 }
 
-.project-current {
+.app-current {
     display: flex;
     align-items: center;
     gap: 0.75rem;
@@ -75,7 +75,7 @@
     font-size: 0.875rem;
 }
 
-.project-live {
+.app-live {
     display: flex;
     align-items: center;
     gap: 0.75rem;
@@ -218,7 +218,7 @@ textarea.form-input {
     background: #b91c1c;
 }
 
-/* --- App overview (projects/show, also the landing page's product shot) --- */
+/* --- App overview (apps/show, also the landing page's product shot) --- */
 
 .ov {
     display: flex;

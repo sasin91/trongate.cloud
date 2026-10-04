@@ -3,12 +3,12 @@
 /**
  * The resource tier ladder: the only place an app container's CPU/memory is decided.
  *
- * A project picks a rung (project.resource_tier, see db/016); the rung sets the
+ * A app picks a rung (app.resource_tier, see db/016); the rung sets the
  * container's limits and the requests are derived from them at a fixed fraction,
  * so every app is Burstable QoS. A few legible rungs ("512 MB") instead of free
  * numbers keep capacity planning and the tenant quota easy to reason about.
  *
- * Framework-free: loaded by the worker (Manifests) and the projects module.
+ * Framework-free: loaded by the worker (Manifests) and the apps module.
  */
 class Resource_tiers {
 
