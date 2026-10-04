@@ -308,7 +308,9 @@ class Deploy_reconcile {
                 return 'no-webhook';
             }
         } catch (Client_Error $e) {
-            if ($e->getCode() === 403 || $e->getCode() === 404) {
+            $rate_limited = stripos($e->getMessage(), 'rate limit') !== false;
+
+            if ($e->getCode() === 404 || ($e->getCode() === 403 && !$rate_limited)) {
                 $this->log->warn("Project #{$project_id}: the team's GitHub token may not read {$repo}'s webhooks; not deploying " . substr($sha, 0, 7));
                 return 'webhook-unverifiable';
             }
