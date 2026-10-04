@@ -13,12 +13,16 @@
 -- project.auto_deploy is the customer's "Deploy on push" switch (project
 -- settings): the webhook and the reconcile job both honour it. On by default,
 -- as pushes deployed before it existed.
+--
+-- project.reconciled_at is when reconcile_deploys last checked the project;
+-- past its per-run cap it checks the longest-unchecked projects first.
 
 ALTER TABLE deployment
   MODIFY trigger_type ENUM('manual', 'webhook', 'mcp', 'rollback', 'reconcile') NOT NULL DEFAULT 'manual';
 
 ALTER TABLE project
-  ADD COLUMN auto_deploy TINYINT(1) NOT NULL DEFAULT 1 AFTER always_on;
+  ADD COLUMN auto_deploy TINYINT(1) NOT NULL DEFAULT 1 AFTER always_on,
+  ADD COLUMN reconciled_at TIMESTAMP NULL COMMENT 'Last deploy reconcile check';
 
 ALTER TABLE tasks
   MODIFY team_id INT NULL COMMENT 'NULL for platform-wide periodic tasks';

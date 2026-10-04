@@ -55,7 +55,7 @@ class Deploy_reconcile {
      */
     const STUCK_OUTCOMES = ['deploy-active', 'queue-failed', 'webhook-unverifiable'];
 
-    /** Most projects checked per run, most recently deployed first */
+    /** Most projects checked per run, longest unchecked first (project.reconciled_at) */
     const MAX_PROJECTS_PER_RUN = 200;
 
     /** Pause between GitHub API calls */
@@ -114,7 +114,7 @@ class Deploy_reconcile {
         $stuck = 0;
 
         if (count($projects) > self::MAX_PROJECTS_PER_RUN) {
-            $this->log->warn(sprintf('More than %d auto-deploying projects; checking the most recently deployed', self::MAX_PROJECTS_PER_RUN));
+            $this->log->warn(sprintf('More than %d auto-deploying projects; checking those checked longest ago', self::MAX_PROJECTS_PER_RUN));
             $projects = array_slice($projects, 0, self::MAX_PROJECTS_PER_RUN);
         }
 
@@ -127,6 +127,7 @@ class Deploy_reconcile {
                 $outcome = 'error';
             }
 
+            $this->mark_checked((int) $project['id']);
             $outcomes[$outcome]++;
 
             if (in_array($outcome, self::STUCK_OUTCOMES, true) && $this->head_age !== null && $this->head_age > self::STUCK_HEAD_AGE_SECONDS) {
@@ -156,6 +157,10 @@ class Deploy_reconcile {
     /**
      * Projects with Deploy on push on whose webhook has deployed before; a
      * brand-new project's first deploy is queued by onboarding, not here.
+     *
+     * Longest unchecked first, so past MAX_PROJECTS_PER_RUN the cap rotates.
+     * Ordering by recent deployments would cut exactly the projects that lost
+     * a push, since a lost push leaves no deployment behind.
      */
     function projects(): array {
         $sql = <<<SQL
@@ -171,7 +176,7 @@ class Deploy_reconcile {
                   WHERE d.project_id = p.id
                     AND d.trigger_type = 'webhook'
               )
-            ORDER BY (SELECT MAX(d.id) FROM deployment d WHERE d.project_id = p.id) DESC
+            ORDER BY p.reconciled_at IS NOT NULL, p.reconciled_at, p.id
             LIMIT ?
             SQL;
 
@@ -183,6 +188,16 @@ class Deploy_reconcile {
         $stmt->close();
 
         return $rows;
+    }
+
+    /**
+     * Remember that the project was checked, for the rotation in projects().
+     */
+    function mark_checked(int $project_id): void {
+        $stmt = $this->db->prepare('UPDATE project SET reconciled_at = NOW() WHERE id = ?');
+        $stmt->bind_param('i', $project_id);
+        $stmt->execute();
+        $stmt->close();
     }
 
     /**
