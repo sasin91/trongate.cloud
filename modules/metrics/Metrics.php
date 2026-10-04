@@ -73,8 +73,8 @@ class Metrics extends Trongate {
         }
 
         // The last reconcile_deploys run; recovered > 0 means a GitHub push webhook was missed
-        $reconcile = array_column($jobs, 'last_summary', 'script')['reconcile_deploys'] ?? null;
-        $outcomes = json_decode((string) $reconcile, true)['outcomes'] ?? [];
+        $reconcile = json_decode((string) (array_column($jobs, 'last_summary', 'script')['reconcile_deploys'] ?? ''), true);
+        $outcomes = is_array($reconcile) ? ($reconcile['outcomes'] ?? []) : [];
 
         $output .= "\n# HELP app_deploy_reconcile_heads Branch heads the last deploy reconcile run checked, by outcome\n";
         $output .= "# TYPE app_deploy_reconcile_heads gauge\n";
@@ -82,6 +82,13 @@ class Metrics extends Trongate {
             if (preg_match('/^[a-z-]+$/', (string) $outcome)) {
                 $output .= "app_deploy_reconcile_heads{outcome=\"{$outcome}\"} " . (int) $count . "\n";
             }
+        }
+
+        // Heads undeployed over 15 minutes that nothing will deploy (Deploy_reconcile::STUCK_OUTCOMES)
+        if (is_array($reconcile)) {
+            $output .= "\n# HELP app_deploy_reconcile_stuck_heads Branch heads the last deploy reconcile run found stuck undeployed\n";
+            $output .= "# TYPE app_deploy_reconcile_stuck_heads gauge\n";
+            $output .= 'app_deploy_reconcile_stuck_heads ' . (int) ($reconcile['stuck'] ?? 0) . "\n";
         }
 
         return $output;

@@ -29,6 +29,10 @@ require_once __DIR__ . '/../../worker/Worker_actions.php';
  *   so the one-queued-deploy rule never replaces someone's commit; the next
  *   run picks the head up.
  *
+ * A head still undeployed STUCK_HEAD_AGE_SECONDS after its commit for a
+ * reason nobody will fix on their own (STUCK_OUTCOMES, e.g. a deployment
+ * that never finishes) is counted as stuck: app_deploy_reconcile_stuck_heads.
+ *
  * Deploys go through Platform_actions::queue_deploy like the UI, webhooks and
  * MCP. GitHub calls use the team's stored token (as deploy.php does), one per
  * repository branch, spaced by GITHUB_DELAY_MS; a rate-limited or rejected
@@ -40,6 +44,16 @@ class Deploy_reconcile {
 
     /** Leave a head this young to its own webhook */
     const MIN_HEAD_AGE_SECONDS = 300;
+
+    /** Undeployed this long (and not on purpose) counts as stuck */
+    const STUCK_HEAD_AGE_SECONDS = 900;
+
+    /**
+     * Outcomes where the head is undeployed and nothing will deploy it.
+     * too-recent is a webhook in flight, head-failed and no-webhook are on
+     * purpose; none of them is a lost push.
+     */
+    const STUCK_OUTCOMES = ['deploy-active', 'queue-failed', 'webhook-unverifiable'];
 
     /** Most projects checked per run, most recently deployed first */
     const MAX_PROJECTS_PER_RUN = 200;
@@ -79,6 +93,9 @@ class Deploy_reconcile {
 
     private int $github_calls = 0;
 
+    /** Seconds since the commit of the head the last reconcile() compared, if known */
+    private ?int $head_age = null;
+
     function __construct(Runtime $runtime, Task_log $log) {
         $this->runtime = $runtime;
         $this->db = $runtime->db();
@@ -89,11 +106,12 @@ class Deploy_reconcile {
     /**
      * Check every auto-deploying project once.
      *
-     * @return array{scanned: int, github_calls: int, outcomes: array<string, int>}
+     * @return array{scanned: int, github_calls: int, stuck: int, outcomes: array<string, int>}
      */
     function run(): array {
         $projects = $this->projects();
         $outcomes = array_fill_keys(self::OUTCOMES, 0);
+        $stuck = 0;
 
         if (count($projects) > self::MAX_PROJECTS_PER_RUN) {
             $this->log->warn(sprintf('More than %d auto-deploying projects; checking the most recently deployed', self::MAX_PROJECTS_PER_RUN));
@@ -110,11 +128,17 @@ class Deploy_reconcile {
             }
 
             $outcomes[$outcome]++;
+
+            if (in_array($outcome, self::STUCK_OUTCOMES, true) && $this->head_age !== null && $this->head_age > self::STUCK_HEAD_AGE_SECONDS) {
+                $stuck++;
+                $this->log->warn(sprintf('Project #%d: branch head undeployed for %d min (%s)', $project['id'], intdiv($this->head_age, 60), $outcome));
+            }
         }
 
         $summary = [
             'scanned' => count($projects),
             'github_calls' => $this->github_calls,
+            'stuck' => $stuck,
             'outcomes' => $outcomes,
         ];
 
@@ -168,18 +192,7 @@ class Deploy_reconcile {
         $project_id = (int) $project['id'];
         $team_id = (int) $project['team_id'];
         $branch = (string) ($project['source_branch'] ?: 'main');
-
-        // No GitHub call while a deploy is queued or running: it builds the head
-        $active = Platform_task::row(
-            $this->db,
-            "SELECT id FROM deployment WHERE project_id = ? AND status IN ('pending', 'building', 'deploying') LIMIT 1",
-            'i',
-            $project_id
-        );
-
-        if ($active !== null) {
-            return 'deploy-active';
-        }
+        $this->head_age = null;
 
         if (!preg_match('#^https://github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(\.git)?/?$#', (string) $project['source_url'], $match)) {
             throw new RuntimeException('No valid GitHub repository URL');
@@ -215,10 +228,23 @@ class Deploy_reconcile {
         }
 
         // No committer date: no way to tell a fresh push from a lost one, so wait
-        $age = $head['committed_at'] === null ? null : time() - $head['committed_at'];
+        $age = $this->head_age = $head['committed_at'] === null ? null : time() - $head['committed_at'];
 
         if ($age === null || $age < self::MIN_HEAD_AGE_SECONDS) {
             return 'too-recent';
+        }
+
+        // Checked only once the head is known to be undeployed, so a deployment
+        // that never finishes shows up as a stuck head instead of hiding it
+        $active = Platform_task::row(
+            $this->db,
+            "SELECT id FROM deployment WHERE project_id = ? AND status IN ('pending', 'building', 'deploying') LIMIT 1",
+            'i',
+            $project_id
+        );
+
+        if ($active !== null) {
+            return 'deploy-active';
         }
 
         // The customer may have removed the webhook to stop push deploys
