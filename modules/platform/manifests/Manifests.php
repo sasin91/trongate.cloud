@@ -514,6 +514,14 @@ class Manifests {
             'seccompProfile' => ['type' => 'RuntimeDefault'],
         ];
 
+        // The FrankenPHP binary carries the cap_net_bind_service file capability.
+        // With every capability dropped and no privilege escalation, exec of such
+        // a binary fails ("exec: frankenphp: Operation not permitted"), even on a
+        // port above 1024. Keeping just this one in the bounding set fixes it and
+        // is still allowed by restricted Pod Security.
+        $app_security = $container_security;
+        $app_security['capabilities']['add'] = ['NET_BIND_SERVICE'];
+
         $app_dir = self::APP_DIR;
         $config_script = "set -eu\ncp {$app_dir}/config/config.php /work/config.php\n"
             . Trongate_config::patch_script(['BASE_URL' => $o['base_url'], 'ENV' => 'prod'], '/work/config.php');
@@ -611,7 +619,7 @@ class Manifests {
                             'initialDelaySeconds' => 1,
                             'periodSeconds' => 3,
                         ],
-                        'securityContext' => $container_security,
+                        'securityContext' => $app_security,
                         'resources' => self::APP_RESOURCES,
                     ]],
                     'volumes' => $volumes,

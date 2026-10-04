@@ -62,6 +62,10 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
+              # FrankenPHP carries the cap_net_bind_service file capability; with
+              # it outside the bounding set, exec fails ("Operation not
+              # permitted") even on 8080. Restricted Pod Security allows this one.
+              add: ["NET_BIND_SERVICE"]
           volumeMounts:
             - name: tmp
               mountPath: /tmp
