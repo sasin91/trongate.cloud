@@ -97,16 +97,17 @@ Never commit a filled-in file before it is encrypted.
 | `juicefs-secret` | `files` | `name`, `metaurl`, `storage`, `bucket`, `access-key`, `secret-key`, `format-options` | Hetzner Object Storage credentials |
 | `trongate-cloud-env` | `trongate-cloud` | `APP_KEY`, `DB_PASSWORD` | shared by app and worker, see below |
 | `trongate-cloud-mcp` | `trongate-cloud` | `MCP_SECRET` | app only (optional; without it MCP is disabled) |
+| `trongate-cloud-github` | `trongate-cloud` | `GITHUB_APP_SLUG`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_WEBHOOK_SECRET`, `GITHUB_APP_PRIVATE_KEY` | the GitHub App, app and worker; see `docs/github-app.md` |
 | `registry-push` | `trongate-cloud` | `.dockerconfigjson` | push credentials for `PLATFORM_REGISTRY`, mounted into the worker |
 
 `trongate-cloud-env`:
 
 - `APP_KEY`: `php -r "echo base64_encode(sodium_crypto_secretbox_keygen());"`.
-  Encrypts stored provider tokens and derives every tenant database password,
-  GitHub webhook secret and domain verification token. The app and the worker
-  must share it; rotating it makes stored tokens unreadable, rotates tenant DB
-  passwords on their next deploy, and changes every webhook secret (customers
-  must update them in GitHub).
+  Encrypts stored GitHub sign-in tokens, signs the GitHub sign-in state and
+  derives every tenant database password and domain verification token. The
+  app and the worker must share it; rotating it makes stored tokens unreadable
+  (customers connect GitHub again) and rotates tenant DB passwords on their
+  next deploy.
 - `DB_PASSWORD`: password of the MariaDB user `tcloud` (`platform/database.yaml`
   points the User CR at this key).
 

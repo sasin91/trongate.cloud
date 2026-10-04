@@ -37,3 +37,15 @@ defined('DEPLOY_RECONCILE_INTERVAL') || define('DEPLOY_RECONCILE_INTERVAL', gete
 // Seconds between schedule_domain_rechecks runs: the worker queues recheck_domains
 // for every project with a verified custom domain (the DNS gate and promotion). 0 turns it off.
 defined('DOMAIN_RECHECK_INTERVAL') || define('DOMAIN_RECHECK_INTERVAL', getenv('DOMAIN_RECHECK_INTERVAL') !== false ? (int) getenv('DOMAIN_RECHECK_INTERVAL') : 600);
+
+// The trongate.cloud GitHub App (docs/github-app.md). One App does both jobs:
+// its OAuth client signs customers in and lists the repositories they may
+// pick; its installation tokens let the worker read those repositories, and
+// its webhook (POST webhooks/github, signed with the webhook secret) delivers
+// pushes. The private key is the App's PEM (literal "\n" sequences are
+// accepted, for one-line .env files); only the worker needs it.
+defined('GITHUB_APP_SLUG') || define('GITHUB_APP_SLUG', getenv('GITHUB_APP_SLUG') ?: '');
+defined('GITHUB_APP_CLIENT_ID') || define('GITHUB_APP_CLIENT_ID', getenv('GITHUB_APP_CLIENT_ID') ?: '');
+defined('GITHUB_APP_CLIENT_SECRET') || define('GITHUB_APP_CLIENT_SECRET', getenv('GITHUB_APP_CLIENT_SECRET') ?: '');
+defined('GITHUB_APP_PRIVATE_KEY') || define('GITHUB_APP_PRIVATE_KEY', str_replace('\n', "\n", getenv('GITHUB_APP_PRIVATE_KEY') ?: ''));
+defined('GITHUB_APP_WEBHOOK_SECRET') || define('GITHUB_APP_WEBHOOK_SECRET', getenv('GITHUB_APP_WEBHOOK_SECRET') ?: '');

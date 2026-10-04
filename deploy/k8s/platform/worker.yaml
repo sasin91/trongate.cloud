@@ -42,6 +42,10 @@ spec:
                 name: trongate-cloud
             - secretRef:
                 name: trongate-cloud-env
+            # The GitHub App (installation tokens for builds); docs/github-app.md
+            - secretRef:
+                name: trongate-cloud-github
+                optional: true
           resources:
             requests:
               cpu: 100m

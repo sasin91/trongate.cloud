@@ -7,6 +7,7 @@ parameters:
         - modules/customer
         - modules/deployments
         - modules/encryption
+        - modules/github_auth
         - modules/mcp
         - modules/metrics
         - modules/platform
@@ -33,6 +34,11 @@ parameters:
         - ENV
         - BASE_URL
         - APP_KEY
+        - GITHUB_APP_SLUG
+        - GITHUB_APP_CLIENT_ID
+        - GITHUB_APP_CLIENT_SECRET
+        - GITHUB_APP_PRIVATE_KEY
+        - GITHUB_APP_WEBHOOK_SECRET
     ignoreErrors:
         # Task scripts are included by Runtime and receive $payload, $task, $runtime
         -

@@ -5,7 +5,8 @@ require_once APPPATH . 'modules/services/traits/Provider_clients.php';
 require_once APPPATH . 'modules/apps/traits/App_form.php';
 
 /**
- * Onboarding: GitHub token -> first app (which queues its first deploy).
+ * Onboarding: connect GitHub (sign in through the GitHub App, install it) ->
+ * first app (which queues its first deploy).
  * The first project is created with the app and named after it; it can be renamed later.
  *
  * @property-read Trongate_tokens $trongate_tokens
@@ -39,26 +40,10 @@ class Onboarding extends Trongate {
         redirect('onboarding/app');
     }
 
-    // --- Source Control (GitHub) ---
+    // --- Source Control (GitHub, modules/github_auth) ---
 
     function source(): void {
-        $this->view('source');
-    }
-
-    function submit_source(): void {
-        $customer = $this->_customer_or_redirect();
-
-        $this->validation->set_rules('provider', 'Source Control Provider', 'required|callback__validate_source_provider');
-        $this->validation->set_rules('token', 'Personal Access Token', 'required|min_length[10]|callback__validate_github_token');
-
-        if ($this->validation->run() === false) {
-            $this->source();
-            return;
-        }
-
-        $this->secrets->save('customer', (int) $customer->id, post('provider', true), ['token' => post('token', true)]);
-
-        redirect('onboarding/app');
+        $this->view('source', ['connect_url' => 'auth/github?then=onboarding/app']);
     }
 
     // --- App ---

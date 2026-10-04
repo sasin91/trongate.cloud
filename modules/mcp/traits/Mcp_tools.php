@@ -218,7 +218,7 @@ trait Mcp_tools {
         return $summary + [
             'persistent_paths' => Manifests::persistent_paths((array) $app),
             'php_extensions' => (string) ($app->php_extensions ?? ''),
-            'webhook_configured' => !empty($app->webhook_secret),
+            'auto_deploy' => (bool) ($app->auto_deploy ?? false),
             'current_deployment' => $current,
         ];
     }

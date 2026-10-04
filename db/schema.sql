@@ -87,16 +87,20 @@ CREATE TABLE password_resets (
 -- Customers, projects, members
 -- ---------------------------------------------------------------------------
 
--- A customer signs in through the login module (user level 2)
+-- A customer signs in through the login module (user level 2) with a password,
+-- or with GitHub (modules/github_auth). GitHub sign-ups have no password.
 CREATE TABLE customer (
   id INT PRIMARY KEY AUTO_INCREMENT,
   trongate_user_id INT NOT NULL,
-  email VARCHAR(65) DEFAULT NULL,
+  email VARCHAR(255) DEFAULT NULL,
   password VARCHAR(60) DEFAULT NULL,
+  github_user_id BIGINT UNSIGNED NULL,
+  github_login VARCHAR(39) NULL,
   active TINYINT(1) NOT NULL DEFAULT 0,
   onboarded_at TIMESTAMP NULL DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY unique_email (email),
+  UNIQUE KEY unique_github_user (github_user_id),
   CONSTRAINT fk_customer_user FOREIGN KEY (trongate_user_id) REFERENCES trongate_users (id)
 );
 
@@ -124,7 +128,8 @@ CREATE TABLE project_member (
   CONSTRAINT fk_project_member_customer FOREIGN KEY (customer_id) REFERENCES customer (id)
 );
 
--- Encrypted with APP_KEY. A customer's GitHub token: (module 'customer', customer id, service 'github').
+-- Encrypted with APP_KEY. A customer's GitHub user access token, from signing in
+-- with the GitHub App: (module 'customer', customer id, service 'github').
 CREATE TABLE secrets (
   id INT PRIMARY KEY AUTO_INCREMENT,
   module VARCHAR(50) NOT NULL,
@@ -173,12 +178,11 @@ CREATE TABLE app (
   domain_dns_failures TINYINT UNSIGNED NOT NULL DEFAULT 0,
   domain_checked_at TIMESTAMP NULL DEFAULT NULL,
 
-  -- Source; builds fetch it with source_customer_id's GitHub token (whoever picked the repository)
+  -- Source: a repository the GitHub App is installed on. Builds read it with an
+  -- installation token; the App's webhook delivers its pushes.
   source_url VARCHAR(500) NULL,
   source_branch VARCHAR(100) DEFAULT 'main',
   source_provider VARCHAR(100) NULL,
-  source_customer_id INT NULL,
-  webhook_secret CHAR(64) NULL,
   auto_deploy TINYINT(1) NOT NULL DEFAULT 1,
   reconciled_at TIMESTAMP NULL DEFAULT NULL COMMENT 'Last deploy reconcile check',
 
@@ -196,7 +200,6 @@ CREATE TABLE app (
   UNIQUE KEY unique_verified_domain (verified_domain),
   KEY idx_project_deleted (project_id, deleted_at),
   CONSTRAINT fk_app_project FOREIGN KEY (project_id) REFERENCES project (id),
-  CONSTRAINT fk_app_source_customer FOREIGN KEY (source_customer_id) REFERENCES customer (id),
   CONSTRAINT fk_app_database_server FOREIGN KEY (database_server_id) REFERENCES database_server (id)
 );
 

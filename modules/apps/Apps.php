@@ -33,8 +33,8 @@ class Apps extends Trongate {
     private ?object $app_to_delete = null;
 
     /**
-     * projects/{id}/apps/new: the new-app questions, or the GitHub question first
-     * when the customer has not connected GitHub yet.
+     * projects/{id}/apps/new: the new-app questions, or Connect GitHub first
+     * when the customer has not connected it yet.
      */
     function create(): void {
         $this->_make_sure_allowed();
@@ -75,28 +75,6 @@ class Apps extends Trongate {
         $deployment_id = $this->_queue_first_deploy((int) $customer->id, $app_id);
 
         redirect($deployment_id === false ? 'apps/' . $app_id : 'deployments/' . $deployment_id);
-    }
-
-    /**
-     * Connect GitHub for a customer who has not yet (e.g. a member added to
-     * someone else's project). The token is the customer's, for every project.
-     */
-    function submit_source(): void {
-        $this->_make_sure_allowed();
-        $project = $this->_member_project_or_redirect(segment(3, 'int'));
-        $customer = $this->_customer_or_redirect();
-
-        $this->validation->set_rules('provider', 'Source Control Provider', 'required|callback__validate_source_provider');
-        $this->validation->set_rules('token', 'Personal Access Token', 'required|min_length[10]|callback__validate_github_token');
-
-        if ($this->validation->run() !== true) {
-            $this->create();
-            return;
-        }
-
-        $this->secrets->save('customer', (int) $customer->id, post('provider', true), ['token' => post('token', true)]);
-
-        redirect('projects/' . $project->id . '/apps/new');
     }
 
     function show(): void {
@@ -216,8 +194,6 @@ class Apps extends Trongate {
             'domain_routed' => Manifests::custom_domains((array) $app) !== [],
             'domain_secured' => Manifests::secured_domains((array) $app) !== [],
             'ingress_addresses' => Domain_dns::ingress_addresses(),
-            'webhook_url' => BASE_URL . 'webhooks/github/' . $app->id,
-            'webhook_secret' => $this->model->ensure_webhook_secret((int) $app->project_id, (int) $app->id),
             'can_delete' => $this->_is_owner($app),
             'crumbs' => $this->_app_crumbs($app),
             'additional_includes_top' => ['apps_module/css/apps.css'],

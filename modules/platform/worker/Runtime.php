@@ -4,6 +4,7 @@
 require_once APPPATH . 'modules/encryption/Encryptor.php';
 require_once APPPATH . 'modules/services/clients/Client.php';
 require_once APPPATH . 'modules/services/clients/Github.php';
+require_once APPPATH . 'modules/services/clients/Github_app.php';
 require_once APPPATH . 'modules/services/clients/Kubernetes.php';
 require_once APPPATH . 'modules/platform/manifests/Trongate_config.php';
 require_once APPPATH . 'modules/platform/manifests/Manifests.php';

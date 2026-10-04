@@ -52,8 +52,8 @@
     <?php if ($deployment->status === 'success' && !in_array($deployment->trigger_type, ['webhook', 'reconcile'], true)): ?>
         <div class="card" style="margin-top: 1.5rem; background: #f0f9ff; border: 1px solid #0284c7;">
             <h4 style="margin-top: 0; color: #0284c7;">Deploy on every push</h4>
-            <p>Add a GitHub webhook and pushes to your branch deploy automatically.</p>
-            <a href="apps/<?= $deployment->app_id ?>/settings" class="btn-create">Set up webhook</a>
+            <p>Pushes to your branch now deploy automatically through the trongate.cloud GitHub app. You can turn that off in the app's settings.</p>
+            <a href="apps/<?= $deployment->app_id ?>/settings" class="btn-create">App settings</a>
         </div>
     <?php endif; ?>
 </div>

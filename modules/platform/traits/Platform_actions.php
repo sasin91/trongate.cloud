@@ -241,7 +241,7 @@ trait Platform_actions {
 
     /**
      * The project's apps with their current deployment's state.
-     * Leaves out webhook_secret so the rows are safe to return to API clients.
+     * Lists columns explicitly so the rows are safe to return to API clients.
      */
     function project_apps(int $project_id): array {
         $sql = <<<SQL
@@ -264,7 +264,7 @@ trait Platform_actions {
     }
 
     /**
-     * An app row (including the webhook_secret seed) with its project's
+     * An app row with its project's
      * namespace, if it belongs to the project and neither is deleted. Every
      * action on an app starts here.
      */
@@ -477,42 +477,6 @@ trait Platform_actions {
         }
     }
 
-    /**
-     * 64 random hex chars stored in app.webhook_secret. This is only a seed:
-     * the secret GitHub signs with is webhook_signing_secret(), so a database leak
-     * alone does not reveal it.
-     */
-    function generate_webhook_secret(): string {
-        return bin2hex(random_bytes(32));
-    }
-
-    /**
-     * The secret GitHub signs webhooks with (X-Hub-Signature-256): an HMAC of the
-     * stored seed keyed with APP_KEY. Rotating APP_KEY changes every webhook secret.
-     */
-    function webhook_signing_secret(int $app_id, string $seed): string {
-        if (APP_KEY === '') {
-            throw new RuntimeException('APP_KEY is required to derive webhook secrets');
-        }
-
-        return hash_hmac('sha256', "webhook:{$app_id}:{$seed}", APP_KEY);
-    }
-
-    /**
-     * The app's webhook signing secret, generating and saving a seed if missing.
-     */
-    function ensure_webhook_secret(int $project_id, int $app_id): string {
-        $app = $this->_app_or_fail($project_id, $app_id);
-        $seed = (string) ($app->webhook_secret ?? '');
-
-        if ($seed === '') {
-            $seed = $this->generate_webhook_secret();
-            $this->db->update($app_id, ['webhook_secret' => $seed], 'app');
-        }
-
-        return $this->webhook_signing_secret($app_id, $seed);
-    }
-
     // -------------------------------------------------------------------------
     // Projects and members
     // -------------------------------------------------------------------------
@@ -590,7 +554,7 @@ trait Platform_actions {
 
     /**
      * An app (not deleted) in a project the customer is a member of:
-     * the app row (webhook_secret seed included) plus project_name, namespace,
+     * the app row plus project_name, namespace,
      * and member_role. Pass (int) $app->project_id on to the
      * other actions.
      */

@@ -67,14 +67,12 @@ class Platform_task {
     }
 
     /**
-     * The app row plus its project's namespace and owner_id (project_owner_id),
-     * and the customer whose GitHub token fetches its source (token_customer_id);
+     * The app row plus its project's namespace and owner_id (project_owner_id);
      * fails unless it belongs to the project and neither is deleted
      */
     static function app(mysqli $db, int $project_id, int $app_id): array {
         $sql = <<<SQL
-            SELECT a.*, p.namespace, p.owner_id AS project_owner_id,
-                COALESCE(a.source_customer_id, p.owner_id) AS token_customer_id
+            SELECT a.*, p.namespace, p.owner_id AS project_owner_id
             FROM app a
             JOIN project p ON p.id = a.project_id
             WHERE a.id = ? AND a.project_id = ? AND a.deleted_at IS NULL AND p.deleted_at IS NULL
@@ -104,18 +102,14 @@ class Platform_task {
     }
 
     /**
-     * The GitHub token of the app's project owner (secrets module 'customer',
-     * saved when they connected GitHub), or '' when there is none. Every member
-     * deploys the project's apps with the owner's token.
+     * A GitHub client that can read one repository (owner/name): an
+     * installation token of the trongate.cloud GitHub App, so builds do not
+     * depend on whoever added the app staying signed in.
+     *
+     * @throws Client_Error 404 when the App is not installed on the repository
      */
-    static function github_token(Runtime $runtime, int $owner_id): string {
-        if ($owner_id <= 0) {
-            return '';
-        }
-
-        $secret = $runtime->resolve_reference("secrets:customer,{$owner_id},github");
-
-        return is_array($secret) ? (string) ($secret['token'] ?? '') : '';
+    static function github_client(string $repo): Github {
+        return new Github(Github_app::from_env()->repository_token($repo));
     }
 
     /**

@@ -47,7 +47,7 @@
                 <input type="checkbox" name="auto_deploy" value="1" <?= $auto_deploy ? 'checked' : '' ?>>
                 Deploy on push
             </label>
-            <p class="form-hint">Pushes to <code><?= htmlspecialchars((string) $app->source_branch) ?></code> deploy automatically once the GitHub webhook below is set up. Turn this off to deploy only when you press Deploy.</p>
+            <p class="form-hint">Pushes to <code><?= htmlspecialchars((string) $app->source_branch) ?></code> deploy automatically through the trongate.cloud GitHub app. Turn this off to deploy only when you press Deploy.</p>
         </div>
 
         <div class="form-actions">
@@ -99,22 +99,6 @@
         <?php endif; ?>
     </div>
     <?php endif; ?>
-
-    <h2>Deploy on push</h2>
-    <div class="card settings-card">
-        <p>In your GitHub repository, open <strong>Settings &rarr; Webhooks &rarr; Add webhook</strong> and enter:</p>
-        <dl class="webhook-details">
-            <dt>Payload URL</dt>
-            <dd><code><?= htmlspecialchars($webhook_url) ?></code></dd>
-            <dt>Content type</dt>
-            <dd><code>application/json</code></dd>
-            <dt>Secret</dt>
-            <dd><code><?= htmlspecialchars($webhook_secret) ?></code></dd>
-            <dt>Events</dt>
-            <dd>Just the <code>push</code> event</dd>
-        </dl>
-        <p class="form-hint">Pushes to <code><?= htmlspecialchars((string) $app->source_branch) ?></code> then deploy automatically. Keep the secret private: anyone who has it can trigger deployments. If a push notification from GitHub goes missing, we deploy the branch head within about 15 minutes, as long as the webhook is still there.</p>
-    </div>
 
     <h2>Delete app</h2>
     <div class="card settings-card danger-card">

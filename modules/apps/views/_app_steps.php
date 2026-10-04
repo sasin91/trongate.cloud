@@ -3,7 +3,7 @@
  * New-app questions, one at a time: repository, branch, name, Trongate version.
  * Shared by onboarding/app and projects/{id}/apps/new.
  *
- * Expects: $provider, $repositories, $app_types, $branches_url (returns <option>s),
+ * Expects: $provider, $repositories, $install_url, $app_types, $branches_url (returns <option>s),
  * $form_action, $q_offset (questions answered before this page), $q_total,
  * $back_href (optional link for the first question's Back).
  */
@@ -41,7 +41,7 @@ $errors = validation_errors('<p>', '</p>');
                 <?php endif; ?>
                 <div class="wz-choices" data-repositories>
                     <?php if (empty($repositories)): ?>
-                        <p class="wz-hint">We could not find any repositories for this GitHub token.</p>
+                        <p class="wz-hint">The trongate.cloud GitHub app cannot read any of your repositories yet. <a href="<?= $e($install_url) ?>">Install it on GitHub</a> and pick the repositories to deploy.</p>
                     <?php endif; ?>
                     <?php foreach (array_values($repositories) as $i => $repo): ?>
                         <label class="wz-choice" data-name="<?= $e(strtolower($repo['full_name'])) ?>">

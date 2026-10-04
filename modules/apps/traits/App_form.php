@@ -5,8 +5,8 @@ require_once APPPATH . 'modules/platform/manifests/Manifests.php';
 /**
  * New-app form shared by onboarding and the apps module:
  * repository picker data, validation rules/callbacks and app creation.
- * Repositories come from the current customer's GitHub token; the app goes
- * into the project the controller authorized.
+ * Repositories are those the customer's GitHub sign-in can see on the GitHub
+ * App's installations; the app goes into the project the controller authorized.
  *
  * The using controller must also use Customer_guard and Provider_clients, and
  * its model must use Current_customer, Platform_actions and App_records.
@@ -25,7 +25,9 @@ trait App_form {
     private int $editing_app_id = 0;
 
     /**
-     * View data for the repository picker, or false when the customer has not connected a source provider yet.
+     * View data for the repository picker, or false when the customer has not
+     * connected GitHub yet (or their sign-in has expired). No repositories
+     * means the GitHub App is not installed where they can see it yet.
      */
     function _app_form_data(int $customer_id): array|false {
         $provider = $this->_customer_provider($customer_id, 'source');
@@ -34,16 +36,34 @@ trait App_form {
             return false;
         }
 
+        $client = $this->_provider_client($customer_id, $provider);
+
+        // Its sign-in expired and could not be renewed (Services::for_customer forgot it)
+        if ($this->_customer_provider($customer_id, 'source') === false) {
+            return false;
+        }
+
+        try {
+            $repositories = $client->list_repositories();
+        } catch (Client_Error $e) {
+            if ($e->getCode() === 401) {
+                return false;
+            }
+
+            throw $e;
+        }
+
         return [
             'provider' => $provider,
-            'repositories' => $this->_provider_client($customer_id, $provider)->list_repositories(),
+            'repositories' => $repositories,
+            'install_url' => $this->services->github_app()->install_url(),
             'app_types' => self::APP_TYPES,
         ];
     }
 
     function _set_app_rules(): void {
         $this->validation->set_rules('provider', 'Source Control Provider', 'required|callback__validate_source_provider');
-        $this->validation->set_rules('repository', 'Repository', 'required|max_length[200]|callback__validate_repository');
+        $this->validation->set_rules('repository', 'Repository', 'required|max_length[200]|callback__validate_pickable_repository');
         $this->validation->set_rules('repository_branch', 'Branch', 'required|max_length[100]|callback__validate_branch');
         $this->validation->set_rules('label', 'App Name', 'required|min_length[3]|max_length[50]');
         $this->validation->set_rules('domain', 'Custom Domain', 'max_length[253]|callback__validate_domain');
@@ -61,7 +81,6 @@ trait App_form {
 
         return $this->model->create_app(
             project_id: $project_id,
-            source_customer_id: $customer_id,
             label: post('label', true),
             type: post('type', true),
             source_url: $client->url(post('repository', true)),
@@ -146,6 +165,33 @@ trait App_form {
         }
 
         return true;
+    }
+
+    /**
+     * A repository the customer can see on one of the GitHub App's installations
+     */
+    function _validate_pickable_repository(string $repository): bool|string {
+        $valid = $this->_validate_repository($repository);
+
+        if ($valid !== true) {
+            return $valid;
+        }
+
+        $provider = (string) post('provider', true);
+
+        if ($this->_validate_source_provider($provider) !== true) {
+            return 'Please choose a repository.';
+        }
+
+        $customer = $this->_customer_or_redirect();
+
+        try {
+            $pickable = $this->_provider_client((int) $customer->id, $provider)->can_pick($repository);
+        } catch (Client_Error $e) {
+            return 'We could not reach GitHub to check this repository. Please try again.';
+        }
+
+        return $pickable ? true : 'The trongate.cloud GitHub App cannot read this repository. Install it there first.';
     }
 
     function _validate_branch(string $branch): bool|string {
