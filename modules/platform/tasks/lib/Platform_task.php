@@ -463,7 +463,7 @@ class Platform_task {
             if ($phase === 'Failed' || $phase === 'Succeeded') {
                 // The caller's finally deletes the pod, and its log with it
                 self::log_buildkitd($runtime, $log, $id, $kind);
-                throw new RuntimeException("Build daemon {$name} stopped ({$phase})" . self::_container_state($pod));
+                throw new RuntimeException("Build daemon {$name} stopped ({$phase})" . self::_pod_state($pod));
             }
 
             foreach ($pod['status']['conditions'] ?? [] as $condition) {
@@ -478,16 +478,17 @@ class Platform_task {
 
         self::log_buildkitd($runtime, $log, $id, $kind);
         throw new RuntimeException("Build daemon {$name} was not ready within " . self::BUILDKITD_READY_SECONDS . 's'
-            . self::_container_state($pod));
+            . self::_pod_state($pod));
     }
 
     /**
      * ": reason (message)" of a pod's first container that is waiting or has
      * terminated, e.g. CreateContainerError when the node rejects its
-     * securityContext; "" when there is none. A container that never started
-     * has no log, so this is the only trace of why.
+     * securityContext, or ": not scheduled (message)" for a pod no node took
+     * (resources, taints); "" when there is none. Neither case leaves a
+     * container log, so this is the only trace of why.
      */
-    static function _container_state(?array $pod): string {
+    static function _pod_state(?array $pod): string {
         foreach ($pod['status']['containerStatuses'] ?? [] as $status) {
             $state = $status['state']['waiting'] ?? $status['state']['terminated'] ?? null;
 
@@ -495,6 +496,14 @@ class Platform_task {
                 $message = trim((string) ($state['message'] ?? ''));
 
                 return ': ' . $state['reason'] . ($message !== '' ? " ({$message})" : '');
+            }
+        }
+
+        foreach ($pod['status']['conditions'] ?? [] as $condition) {
+            if (($condition['type'] ?? '') === 'PodScheduled' && ($condition['status'] ?? '') === 'False') {
+                $message = trim((string) ($condition['message'] ?? ''));
+
+                return ': not scheduled' . ($message !== '' ? " ({$message})" : '');
             }
         }
 
