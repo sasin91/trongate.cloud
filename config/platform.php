@@ -49,3 +49,13 @@ defined('GITHUB_APP_CLIENT_ID') || define('GITHUB_APP_CLIENT_ID', getenv('GITHUB
 defined('GITHUB_APP_CLIENT_SECRET') || define('GITHUB_APP_CLIENT_SECRET', getenv('GITHUB_APP_CLIENT_SECRET') ?: '');
 defined('GITHUB_APP_PRIVATE_KEY') || define('GITHUB_APP_PRIVATE_KEY', str_replace('\n', "\n", getenv('GITHUB_APP_PRIVATE_KEY') ?: ''));
 defined('GITHUB_APP_WEBHOOK_SECRET') || define('GITHUB_APP_WEBHOOK_SECRET', getenv('GITHUB_APP_WEBHOOK_SECRET') ?: '');
+
+// Shared Valkey (deploy/k8s/cache) that customer apps keep their PHP sessions in,
+// so a redeploy or a scale-to-zero wake-up does not log their visitors out. The
+// worker signs in as VALKEY_WORKER_USER to create one ACL user per app
+// (Manifests::sessions_ini); only the worker needs the password. Without it, apps
+// keep PHP's default file sessions inside the pod.
+defined('VALKEY_HOST') || define('VALKEY_HOST', getenv('VALKEY_HOST') ?: 'valkey.cache.svc.cluster.local');
+defined('VALKEY_PORT') || define('VALKEY_PORT', (int) (getenv('VALKEY_PORT') ?: 6379));
+defined('VALKEY_WORKER_USER') || define('VALKEY_WORKER_USER', getenv('VALKEY_WORKER_USER') ?: 'trongate-cloud');
+defined('VALKEY_WORKER_PASSWORD') || define('VALKEY_WORKER_PASSWORD', getenv('VALKEY_WORKER_PASSWORD') ?: '');

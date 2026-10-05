@@ -62,6 +62,20 @@ class Manifests {
         'services.nodeports' => '0',
     ];
 
+    // PHP sessions of customer apps live in the shared Valkey (deploy/k8s/cache),
+    // so redeploys and scale-to-zero wake-ups keep visitors signed in. Each app
+    // signs in as its own ACL user (session_user()) that only reaches keys
+    // under its own prefix. The ini file sorts after Railpack's conf.d/php.ini,
+    // so it wins over the image's (and a repo's own php.ini) session settings.
+    const SESSIONS_INI_PATH = '/usr/local/etc/php/conf.d/zz-trongate-cloud-sessions.ini';
+    // Key commands and connection basics only. SCAN and RANDOMKEY take no key,
+    // so key patterns would not stop them listing other apps' session ids;
+    // FUNCTION would reach server-wide Lua libraries.
+    const SESSION_ACL_COMMANDS = [
+        '-@all', '+@connection', '+@read', '+@write', '+@keyspace', '+@transaction',
+        '-@dangerous', '-scan', '-randomkey', '-function',
+    ];
+
     const FILES_SIZE = '10Gi';
     const MAX_USER_CONNECTIONS = 20;
     const SABLIER_SESSION = '15m';
@@ -235,6 +249,70 @@ class Manifests {
         }
 
         return substr(hash_hmac('sha256', 'database:' . self::database_name($app_id), $key), 0, 48);
+    }
+
+    /**
+     * The app's Valkey ACL user; its session keys start with session_key_prefix()
+     */
+    static function session_user(int $app_id): string {
+        return "tc_p{$app_id}";
+    }
+
+    static function session_key_prefix(int $app_id): string {
+        return "tc_p{$app_id}:";
+    }
+
+    /**
+     * Stable per-app Valkey password derived from APP_KEY, like database_password()
+     */
+    static function session_password(int $app_id): string {
+        $key = defined('APP_KEY') ? (string) constant('APP_KEY') : (string) getenv('APP_KEY');
+
+        if ($key === '') {
+            throw new RuntimeException('APP_KEY is required to derive session passwords');
+        }
+
+        return substr(hash_hmac('sha256', 'sessions:' . self::session_user($app_id), $key), 0, 48);
+    }
+
+    /**
+     * Arguments for "ACL SETUSER {session_user}": replaces whatever the user had
+     *
+     * @return list<string>
+     */
+    static function session_acl(int $app_id, string $password): array {
+        return array_merge(
+            ['reset', 'on', '>' . $password, '~' . self::session_key_prefix($app_id) . '*', 'resetchannels'],
+            self::SESSION_ACL_COMMANDS
+        );
+    }
+
+    /**
+     * php.ini that keeps the app's sessions in Valkey (phpredis session handler).
+     * persistent=1 reuses the connection across requests; without it every
+     * request reconnects and throughput collapses (benchmarks 2026-10-04).
+     *
+     * @param array{host: string, port: int, password: string} $sessions
+     */
+    static function sessions_ini(int $app_id, array $sessions): string {
+        $user = self::session_user($app_id);
+        $password = $sessions['password'];
+
+        foreach ([$sessions['host'], $user, $password] as $value) {
+            if (!preg_match('/^[A-Za-z0-9._-]+$/', $value)) {
+                throw new InvalidArgumentException('Unsafe value for the sessions save_path');
+            }
+        }
+
+        $save_path = "tcp://{$sessions['host']}:" . (int) $sessions['port']
+            . '?persistent=1&timeout=2&read_timeout=2'
+            . '&prefix=' . self::session_key_prefix($app_id) . 'sess:'
+            . "&auth[]={$user}&auth[]={$password}";
+
+        return "; Managed by trongate.cloud: PHP sessions in the shared Valkey, so redeploys\n"
+            . "; and wake-ups from sleep keep visitors signed in.\n"
+            . "session.save_handler = redis\n"
+            . "session.save_path = \"{$save_path}\"\n";
     }
 
     /**
@@ -490,7 +568,12 @@ class Manifests {
      * @param array $deployment deployment row (id, image)
      * @param array $database   database_server row (host, port, operator_name, operator_namespace); optional 'password'
      */
-    static function app(array $app, array $deployment, array $database): array {
+    /**
+     * @param array{host: string, port: int, password: string}|null $sessions Valkey
+     *        for PHP sessions (Platform_task::ensure_session_user); null keeps
+     *        PHP's file sessions inside the pod
+     */
+    static function app(array $app, array $deployment, array $database, ?array $sessions = null): array {
         $app_id = (int) $app['id'];
         $namespace = self::namespace_name($app);
         $name = self::app_name($app_id);
@@ -517,6 +600,8 @@ class Manifests {
             'database' => $db_name,
         ], (string) ($app['type'] ?? 'trongate_v2'));
 
+        $sessions_ini = $sessions !== null ? self::sessions_ini($app_id, $sessions) : '';
+
         $base_url = Trongate_config::base_url($app);
         $mariadb_ref = [
             'name' => $database['operator_name'],
@@ -533,7 +618,7 @@ class Manifests {
             'stringData' => [
                 'database.php' => $database_php,
                 'password' => $password,
-            ],
+            ] + ($sessions_ini !== '' ? ['sessions.ini' => $sessions_ini] : []),
         ];
 
         $manifests[] = [
@@ -600,7 +685,8 @@ class Manifests {
             'paths' => $paths,
             'always_on' => $always_on,
             'base_url' => $base_url,
-            'config_hash' => substr(hash('sha256', $database_php . $base_url . json_encode($paths)), 0, 16),
+            'sessions' => $sessions_ini !== '',
+            'config_hash' => substr(hash('sha256', $database_php . $sessions_ini . $base_url . json_encode($paths)), 0, 16),
         ]);
 
         $manifests[] = [
@@ -854,11 +940,30 @@ class Manifests {
             ]],
         ];
 
+        $config_mounts = [['name' => 'config', 'mountPath' => '/work']];
+
+        if ($o['sessions']) {
+            // Images built before the redis extension was added (a rollback)
+            // cannot load the redis save handler; they get an empty ini and
+            // keep file sessions instead of failing every session_start().
+            $volumes[] = ['name' => 'sessions', 'secret' => [
+                'secretName' => $o['secret_name'],
+                'items' => [['key' => 'sessions.ini', 'path' => 'sessions.ini']],
+            ]];
+            $config_mounts[] = ['name' => 'sessions', 'mountPath' => '/sessions', 'readOnly' => true];
+            $config_script .= "if php -r 'exit(extension_loaded(\"redis\") ? 0 : 1);' 2>/dev/null; then\n"
+                . "  cp /sessions/sessions.ini /work/sessions.ini\n"
+                . "else\n"
+                . "  echo 'No redis extension in this image; PHP sessions stay in the pod' >&2\n"
+                . "  : > /work/sessions.ini\n"
+                . "fi\n";
+        }
+
         $init_containers = [[
             'name' => 'config',
             'image' => $o['image'],
             'command' => ['sh', '-c', $config_script],
-            'volumeMounts' => [['name' => 'config', 'mountPath' => '/work']],
+            'volumeMounts' => $config_mounts,
             'securityContext' => $container_security,
             'resources' => self::INIT_RESOURCES,
         ]];
@@ -868,6 +973,10 @@ class Manifests {
             ['name' => 'database', 'mountPath' => "{$app_dir}/config/database.php", 'subPath' => 'database.php', 'readOnly' => true],
             ['name' => 'tmp', 'mountPath' => '/tmp'],
         ];
+
+        if ($o['sessions']) {
+            $mounts[] = ['name' => 'config', 'mountPath' => self::SESSIONS_INI_PATH, 'subPath' => 'sessions.ini', 'readOnly' => true];
+        }
 
         if ($o['paths']) {
             $volumes[] = ['name' => 'files', 'persistentVolumeClaim' => ['claimName' => $o['pvc_name']]];

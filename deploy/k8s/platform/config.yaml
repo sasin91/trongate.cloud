@@ -28,6 +28,10 @@ data:
   PLATFORM_INGRESS_IPV6: 2a01:4f8:c01e:2396::1
   SABLIER_URL: http://sablier.sablier.svc.cluster.local:10000
   FILES_STORAGE_CLASS: tenant-files
+  # Shared Valkey for customer app sessions; the worker's password is in trongate-cloud-valkey
+  VALKEY_HOST: valkey.cache.svc.cluster.local
+  VALKEY_PORT: "6379"
+  VALKEY_WORKER_USER: trongate-cloud
   # Seconds between missed-webhook checks (worker reconcile_deploys task); 0 = off
   DEPLOY_RECONCILE_INTERVAL: "600"
   # Seconds between custom-domain DNS rechecks (worker schedule_domain_rechecks task); 0 = off

@@ -6,6 +6,7 @@ require_once APPPATH . 'modules/services/clients/Client.php';
 require_once APPPATH . 'modules/services/clients/Github.php';
 require_once APPPATH . 'modules/services/clients/Github_app.php';
 require_once APPPATH . 'modules/services/clients/Kubernetes.php';
+require_once APPPATH . 'modules/services/clients/Valkey.php';
 require_once APPPATH . 'modules/platform/manifests/Trongate_config.php';
 require_once APPPATH . 'modules/platform/manifests/Manifests.php';
 require_once APPPATH . 'modules/platform/manifests/Domain_dns.php';
@@ -100,6 +101,7 @@ class Runtime {
     private Module_reference $module_ref;
 
     private ?Kubernetes $kube = null;
+    private ?Valkey $valkey = null;
 
     private int $next_schedule_check = 0;
 
@@ -155,6 +157,18 @@ class Runtime {
      */
     function kube(): Kubernetes {
         return $this->kube ??= Kubernetes::from_env();
+    }
+
+    /**
+     * Admin connection to the shared Valkey (customer app sessions), or null
+     * when the worker has no Valkey credentials (Valkey::configured()).
+     */
+    function valkey(): ?Valkey {
+        if (!Valkey::configured()) {
+            return null;
+        }
+
+        return $this->valkey ??= Valkey::from_env();
     }
 
     /**

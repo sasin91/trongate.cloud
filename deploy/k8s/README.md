@@ -92,12 +92,13 @@ Never commit a filled-in file before it is encrypted.
 |---|---|---|---|
 | `mariadb-shared-1` | `databases` | `root-password` | `openssl rand -hex 32` |
 | `mariadb-platform` | `trongate-cloud` | `root-password` | root of the platform MariaDB; `openssl rand -hex 32` |
-| `valkey-acl` | `cache` | `users.acl` | default user off; admin password `openssl rand -hex 32` |
+| `valkey-acl` | `cache` | `users.acl` | default user off; admin and worker (`trongate-cloud`) passwords `openssl rand -hex 32` |
 | `juicefs-meta` | `files` | `password` | MariaDB user `juicefs`; must match the password in `juicefs-secret.metaurl` |
 | `juicefs-secret` | `files` | `name`, `metaurl`, `storage`, `bucket`, `access-key`, `secret-key`, `format-options` | Hetzner Object Storage credentials |
 | `trongate-cloud-env` | `trongate-cloud` | `APP_KEY`, `DB_PASSWORD` | shared by app and worker, see below |
 | `trongate-cloud-mcp` | `trongate-cloud` | `MCP_SECRET` | app only (optional; without it MCP is disabled) |
 | `trongate-cloud-github` | `trongate-cloud` | `GITHUB_APP_SLUG`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_WEBHOOK_SECRET`, `GITHUB_APP_PRIVATE_KEY` | the GitHub App, app and worker; see `docs/github-app.md` |
+| `trongate-cloud-valkey` | `trongate-cloud` | `VALKEY_WORKER_PASSWORD` | worker only; the `trongate-cloud` user's password in `valkey-acl`. Without it customer apps keep file sessions in the pod |
 | `registry-push` | `trongate-cloud` | `.dockerconfigjson` | push credentials for `PLATFORM_REGISTRY`, mounted into the worker |
 
 `trongate-cloud-env`:
@@ -178,7 +179,6 @@ local `.env`; copy those values into the encrypted `trongate-cloud-env` and
   TODO), and the CEL expressions in `platform/worker-admission-policy.yaml`.
 - Image pull credentials for `PLATFORM_REGISTRY` in tenant namespaces (or a
   registry that nodes can pull from anonymously / via k3s `registries.yaml`).
-- Per-tenant Valkey ACL users (`cache/valkey.yaml` TODO).
 - MariaDB replication + MaxScale (`databases/mariadb.yaml` TODO).
 - Verify cross-namespace `mariaDbRef` from tenant namespaces with the operator
   version in use.
