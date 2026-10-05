@@ -84,10 +84,10 @@ class Runtime {
 
     /**
      * The only worker environment variables shell steps inherit. Secrets
-     * (APP_KEY, DB_PASSWORD, KUBE_TOKEN, ...) stay out of tar/railpack/buildctl,
+     * (APP_KEY, DB_PASSWORD, KUBE_TOKEN, ...) stay out of tar/buildctl,
      * which handle untrusted repositories. Scripts export what else they need.
      */
-    const SHELL_ENV = ['PATH', 'HOME', 'TMPDIR', 'LANG', 'DOCKER_CONFIG', 'RAILPACK_VERSION', 'RAILPACK_FRONTEND'];
+    const SHELL_ENV = ['PATH', 'HOME', 'TMPDIR', 'LANG', 'DOCKER_CONFIG'];
 
     const TASKS_DIR = __DIR__ . '/../tasks';
 

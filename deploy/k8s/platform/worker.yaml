@@ -1,4 +1,4 @@
-# Task worker (modules/platform/worker/server.php): builds with Railpack on
+# Task worker (modules/platform/worker/server.php): builds with buildctl on
 # a per-build buildkitd and applies tenant manifests. Keep replicas: 1 —
 # a starting worker fails tasks older than 300s while builds may run 1800s.
 apiVersion: apps/v1
@@ -63,7 +63,7 @@ spec:
             capabilities:
               drop: ["ALL"]
           volumeMounts:
-            # Source checkouts and Railpack plans (/tmp/tc-build/{deployment})
+            # Source checkouts and generated Dockerfiles (/tmp/tc-build/{deployment})
             - name: tmp
               mountPath: /tmp
             # Push credentials for PLATFORM_REGISTRY; buildctl forwards them to buildkitd

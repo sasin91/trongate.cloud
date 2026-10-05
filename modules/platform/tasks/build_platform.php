@@ -12,6 +12,12 @@
  *   :main-{commit time, YYYYmmddHHMMSS UTC}-{short sha}   (Flux picks the newest)
  *   :{short sha}                                         (what bin/push-images.sh tags)
  *
+ * Before those it builds docker/app-base, the base of every customer app, and
+ * pushes it as PLATFORM_APP_BASE_IMAGE (and :{short sha}). Deploys use it as
+ * soon as it is pushed. It is built with SOURCE_DATE_EPOCH=0 and no revision
+ * label, so a commit that leaves it unchanged pushes the same digest and the
+ * apps' build caches stay valid.
+ *
  * Nothing is rolled out here. Flux image automation in the infra repository
  * (ImagePolicy on the worker image, which is pushed last, so both exist) commits
  * the new tag to the trongate-cloud Kustomization and Flux rolls out both
@@ -101,7 +107,7 @@ return function (Task_log $log) use ($task, $runtime): int {
             throw new RuntimeException('Extracting the repository failed');
         }
 
-        foreach (['Dockerfile', 'Dockerfile.worker'] as $dockerfile) {
+        foreach (['docker/app-base/Dockerfile', 'Dockerfile', 'Dockerfile.worker'] as $dockerfile) {
             if (!is_file("{$src}/{$dockerfile}")) {
                 throw new RuntimeException("{$dockerfile} not found in {$repo}");
             }
@@ -110,28 +116,31 @@ return function (Task_log $log) use ($task, $runtime): int {
         $own_buildkitd = BUILDKIT_HOST === '';
         $buildkit_host = $own_buildkitd ? Platform_task::start_buildkitd($runtime, $log, $task_id, 'p') : BUILDKIT_HOST;
 
-        // Web app first, worker last: Flux follows the worker image, so once its
-        // tag exists the app's does too
-        $images = ['trongate-cloud' => 'Dockerfile', 'trongate-cloud-worker' => 'Dockerfile.worker'];
+        // The app base first (deploys and nothing else use it), then the web
+        // app, the worker last: Flux follows the worker image, so once its tag
+        // exists the others do too
+        $scripts = ['app-base' => Platform_task::app_base_build(
+            $buildkit_host,
+            $src,
+            [Platform_task::image_repository(PLATFORM_APP_BASE_IMAGE) . ":{$short_sha}"]
+        )];
 
-        foreach ($images as $image => $dockerfile) {
+        foreach (['trongate-cloud' => 'Dockerfile', 'trongate-cloud-worker' => 'Dockerfile.worker'] as $image => $dockerfile) {
             $ref = "{$registry}/{$image}";
-            $log->info("Building image {$ref}:{$tag}");
+            $scripts[$image] = Platform_task::buildctl_build(
+                $buildkit_host,
+                $src,
+                $src,
+                $dockerfile,
+                ["{$ref}:{$tag}", "{$ref}:{$short_sha}"],
+                "{$ref}:buildcache",
+                ["label:org.opencontainers.image.revision={$commit_sha}"]
+            );
+        }
 
-            $script = implode("\n", [
-                'set -eu',
-                'buildctl --addr ' . $q($buildkit_host) . ' build'
-                    . ' --progress=plain'
-                    . ' --frontend=dockerfile.v0'
-                    . ' --local context=' . $q($src)
-                    . ' --local dockerfile=' . $q($src)
-                    . ' --opt filename=' . $q($dockerfile)
-                    . ' --opt platform=linux/amd64'
-                    . ' --opt ' . $q("label:org.opencontainers.image.revision={$commit_sha}")
-                    . ' --import-cache ' . $q("type=registry,ref={$ref}:buildcache")
-                    . ' --export-cache ' . $q("type=registry,ref={$ref}:buildcache,mode=max,ignore-error=true")
-                    . ' --output ' . $q("type=image,\"name={$ref}:{$tag},{$ref}:{$short_sha}\",push=true"),
-            ]) . "\n";
+        foreach ($scripts as $image => $build) {
+            $log->info("Building image {$image}");
+            $script = 'set -eu' . "\n" . $build . "\n";
 
             if ($runtime->shell($script, $log) !== 0) {
                 if ($own_buildkitd) {

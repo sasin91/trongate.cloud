@@ -177,10 +177,12 @@ A push to `main` of this repository deploys it, built by the platform itself:
    repository) matches `PLATFORM_SOURCE_REPOSITORY` / `PLATFORM_SOURCE_BRANCH`
    (`platform/config.yaml`) and queues a `build_platform` task, at most one
    waiting at a time.
-2. The worker builds the head of `main`: `Dockerfile`, then
-   `Dockerfile.worker`, linux/amd64, on a throwaway `buildkitd-p{task}` Pod
-   (the same per-build daemon and push credential as customer builds), and
-   pushes both to `PLATFORM_IMAGES_REGISTRY` as
+2. The worker builds the head of `main`: `docker/app-base/Dockerfile`,
+   `Dockerfile`, then `Dockerfile.worker`, linux/amd64, on a throwaway
+   `buildkitd-p{task}` Pod (the same per-build daemon and push credential as
+   customer builds). The app base, which every customer app is built `FROM`,
+   goes to `PLATFORM_APP_BASE_IMAGE` (`app-base:php8.4`) and is used by the
+   next deploy; the other two go to `PLATFORM_IMAGES_REGISTRY` as
    `:main-{commit time UTC, YYYYmmddHHMMSS}-{short sha}` and `:{short sha}`.
 3. Flux image automation in the infra repository (ImageRepository and
    ImagePolicy on `trongate-cloud-worker`, newest `main-*` tag) commits that

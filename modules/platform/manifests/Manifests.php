@@ -30,7 +30,7 @@ class Manifests {
      */
     const NAMESPACE_PATTERN = '/^project-[1-9][0-9]{0,9}$/';
 
-    // Railpack's FrankenPHP Caddyfile serves ":{$PORT:80}" from /app (or RAILPACK_PHP_ROOT_DIR).
+    // The app base image's Caddyfile (docker/app-base) serves ":{$PORT}" from /app/public.
     // We set PORT because restricted pods run as non-root and cannot bind :80.
     const APP_DIR = '/app';
     const APP_PORT = 8080;
@@ -65,8 +65,8 @@ class Manifests {
     // PHP sessions of customer apps live in the shared Valkey (deploy/k8s/cache),
     // so redeploys and scale-to-zero wake-ups keep visitors signed in. Each app
     // signs in as its own ACL user (session_user()) that only reaches keys
-    // under its own prefix. The ini file sorts after Railpack's conf.d/php.ini,
-    // so it wins over the image's (and a repo's own php.ini) session settings.
+    // under its own prefix. The ini file sorts after the image's other conf.d
+    // files, so it wins over their session settings.
     const SESSIONS_INI_PATH = '/usr/local/etc/php/conf.d/zz-trongate-cloud-sessions.ini';
     // Key commands and connection basics only. SCAN and RANDOMKEY take no key,
     // so key patterns would not stop them listing other apps' session ids;
@@ -867,7 +867,7 @@ class Manifests {
      *
      * The nodes run SELinux enforcing (openSUSE Leap Micro). Under the default
      * container_t, runc inside the pod may not mount a new devpts, so every
-     * container BuildKit starts (Railpack's frontend first) dies with
+     * container BuildKit starts (each RUN step) dies with
      * "error mounting devpts ... permission denied" and buildctl only says
      * "exit code: 1". container_engine_t is container-selinux's type for a
      * container engine inside a container: it allows those mounts and is

@@ -493,9 +493,9 @@ class Platform_task {
     }
 
     /**
-     * Copy the end of the build daemon's log into the task log. A gateway
-     * frontend (Railpack's) that exits only shows "exit code: 1" in buildctl;
-     * its own error is in the daemon's log, which goes with the pod in
+     * Copy the end of the build daemon's log into the task log. When the
+     * daemon itself fails (a container it cannot start), buildctl may only
+     * show "exit code: 1"; the error is in the daemon's log, which goes with the pod in
      * stop_buildkitd. Call it on a failed build, before stop_buildkitd
      * (start_buildkitd already does when the daemon never becomes ready).
      * Never throws.
@@ -531,6 +531,87 @@ class Platform_task {
         } catch (Throwable $e) {
             $log->warn("Could not delete build daemon {$name}: {$e->getMessage()}");
         }
+    }
+
+    /**
+     * The buildctl command that builds a Dockerfile for linux/amd64 and pushes it
+     * as $names, with a registry cache at $cache_ref; $opts are extra frontend
+     * options (build args, labels).
+     */
+    static function buildctl_build(string $host, string $context, string $dockerfile_dir, string $filename, array $names, string $cache_ref, array $opts = []): string {
+        $q = fn(string $value) => Trongate_config::sh_quote($value);
+
+        return 'buildctl --addr ' . $q($host) . ' build'
+            . ' --progress=plain'
+            . ' --frontend=dockerfile.v0'
+            . ' --local context=' . $q($context)
+            . ' --local dockerfile=' . $q($dockerfile_dir)
+            . ' --opt filename=' . $q($filename)
+            . ' --opt platform=linux/amd64'
+            . implode('', array_map(fn(string $opt) => ' --opt ' . $q($opt), $opts))
+            . ' --import-cache ' . $q("type=registry,ref={$cache_ref}")
+            . ' --export-cache ' . $q("type=registry,ref={$cache_ref},mode=max,ignore-error=true")
+            . ' --output ' . $q('type=image,"name=' . implode(',', $names) . '",push=true');
+    }
+
+    /**
+     * An image reference without its tag
+     */
+    static function image_repository(string $ref): string {
+        return preg_replace('/:[^:\/]+$/', '', $ref);
+    }
+
+    /**
+     * The buildctl command that builds docker/app-base from $context (a checkout
+     * of this repository) and pushes it as PLATFORM_APP_BASE_IMAGE (and $extra_names).
+     * SOURCE_DATE_EPOCH=0 and no revision label: an unchanged base keeps its
+     * digest, so the apps' build caches stay valid.
+     */
+    static function app_base_build(string $host, string $context, array $extra_names = []): string {
+        $repository = self::image_repository(PLATFORM_APP_BASE_IMAGE);
+
+        return self::buildctl_build(
+            $host,
+            $context,
+            $context,
+            'docker/app-base/Dockerfile',
+            [PLATFORM_APP_BASE_IMAGE, ...$extra_names],
+            "{$repository}:buildcache",
+            ['build-arg:SOURCE_DATE_EPOCH=0']
+        );
+    }
+
+    /**
+     * Make sure PLATFORM_APP_BASE_IMAGE can be pulled before an app is built on
+     * it. build_platform normally pushes it, but the worker that runs a platform
+     * build is the previous release, which may not know about the base yet (the
+     * first rollout of it), and a registry can lose it. When it is missing, it
+     * is built from the copy of docker/app-base in this worker's image.
+     */
+    static function ensure_app_base(Runtime $runtime, Task_log $log, string $host, string $work): bool {
+        $q = fn(string $value) => Trongate_config::sh_quote($value);
+        $probe = "{$work}/base-probe";
+
+        if (!is_dir($probe) && !mkdir($probe, 0700, true)) {
+            throw new RuntimeException('Could not create the build directory');
+        }
+
+        file_put_contents("{$probe}/Dockerfile", 'FROM ' . PLATFORM_APP_BASE_IMAGE . "\n");
+
+        // Resolving the FROM is all this does: no output, nothing pushed
+        $resolve = 'buildctl --addr ' . $q($host) . ' build --progress=plain'
+            . ' --frontend=dockerfile.v0'
+            . ' --local context=' . $q($probe)
+            . ' --local dockerfile=' . $q($probe)
+            . ' --opt platform=linux/amd64 >/dev/null 2>&1';
+
+        if ($runtime->shell($resolve, $log) === 0) {
+            return true;
+        }
+
+        $log->warn('App base image ' . PLATFORM_APP_BASE_IMAGE . ' is not in the registry; building it first');
+
+        return $runtime->shell(self::app_base_build($host, dirname(__DIR__, 4)) . "\n", $log) === 0;
     }
 
     /**
