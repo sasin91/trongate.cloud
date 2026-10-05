@@ -366,33 +366,43 @@ class Platform_task {
         }
 
         foreach ($pods as $pod) {
-            $pod_name = $pod['metadata']['name'] ?? '?';
-            $statuses = array_merge(
-                $pod['status']['initContainerStatuses'] ?? [],
-                $pod['status']['containerStatuses'] ?? []
-            );
+            self::log_pod_state($log, $pod);
+        }
+    }
 
-            foreach ($statuses as $status) {
-                $state = $status['state'] ?? [];
-                $detail = $state['waiting'] ?? $state['terminated'] ?? null;
+    /**
+     * Log why a pod is not running: each container that is waiting or has
+     * failed (e.g. CreateContainerError when a node rejects its
+     * securityContext), and a PodScheduled=False condition (no node fits).
+     * Neither leaves a container log, so this is often the only trace.
+     */
+    static function log_pod_state(Task_log $log, ?array $pod): void {
+        $pod_name = $pod['metadata']['name'] ?? '?';
+        $statuses = array_merge(
+            $pod['status']['initContainerStatuses'] ?? [],
+            $pod['status']['containerStatuses'] ?? []
+        );
 
-                if ($detail === null || ($detail['reason'] ?? '') === 'Completed') {
-                    continue;
-                }
+        foreach ($statuses as $status) {
+            $state = $status['state'] ?? [];
+            $detail = $state['waiting'] ?? $state['terminated'] ?? null;
 
-                $log->error(sprintf(
-                    '%s/%s: %s %s',
-                    $pod_name,
-                    $status['name'] ?? '?',
-                    $detail['reason'] ?? 'Unknown',
-                    $detail['message'] ?? ''
-                ));
+            if ($detail === null || ($detail['reason'] ?? '') === 'Completed') {
+                continue;
             }
 
-            foreach ($pod['status']['conditions'] ?? [] as $condition) {
-                if (($condition['type'] ?? '') === 'PodScheduled' && ($condition['status'] ?? '') === 'False') {
-                    $log->error("{$pod_name}: not scheduled: " . ($condition['message'] ?? ''));
-                }
+            $log->error(sprintf(
+                '%s/%s: %s %s',
+                $pod_name,
+                $status['name'] ?? '?',
+                $detail['reason'] ?? 'Unknown',
+                $detail['message'] ?? ''
+            ));
+        }
+
+        foreach ($pod['status']['conditions'] ?? [] as $condition) {
+            if (($condition['type'] ?? '') === 'PodScheduled' && ($condition['status'] ?? '') === 'False') {
+                $log->error("{$pod_name}: not scheduled: " . ($condition['message'] ?? ''));
             }
         }
     }
@@ -462,8 +472,9 @@ class Platform_task {
 
             if ($phase === 'Failed' || $phase === 'Succeeded') {
                 // The caller's finally deletes the pod, and its log with it
+                self::log_pod_state($log, $pod);
                 self::log_buildkitd($runtime, $log, $id, $kind);
-                throw new RuntimeException("Build daemon {$name} stopped ({$phase})" . self::_container_state($pod));
+                throw new RuntimeException("Build daemon {$name} stopped ({$phase})");
             }
 
             foreach ($pod['status']['conditions'] ?? [] as $condition) {
@@ -476,29 +487,9 @@ class Platform_task {
             sleep(2);
         }
 
+        self::log_pod_state($log, $pod);
         self::log_buildkitd($runtime, $log, $id, $kind);
-        throw new RuntimeException("Build daemon {$name} was not ready within " . self::BUILDKITD_READY_SECONDS . 's'
-            . self::_container_state($pod));
-    }
-
-    /**
-     * ": reason (message)" of a pod's first container that is waiting or has
-     * terminated, e.g. CreateContainerError when the node rejects its
-     * securityContext; "" when there is none. A container that never started
-     * has no log, so this is the only trace of why.
-     */
-    static function _container_state(?array $pod): string {
-        foreach ($pod['status']['containerStatuses'] ?? [] as $status) {
-            $state = $status['state']['waiting'] ?? $status['state']['terminated'] ?? null;
-
-            if (is_array($state) && ($state['reason'] ?? '') !== '') {
-                $message = trim((string) ($state['message'] ?? ''));
-
-                return ': ' . $state['reason'] . ($message !== '' ? " ({$message})" : '');
-            }
-        }
-
-        return '';
+        throw new RuntimeException("Build daemon {$name} was not ready within " . self::BUILDKITD_READY_SECONDS . 's');
     }
 
     /**
