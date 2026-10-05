@@ -15,6 +15,9 @@ class Platform_task {
     /** How long a per-build BuildKit daemon may take to become ready */
     const BUILDKITD_READY_SECONDS = 180;
 
+    /** Daemon log lines copied into the task log when a build fails (log_buildkitd) */
+    const BUILDKITD_LOG_LINES = 60;
+
     /**
      * Fetch one row with a prepared statement
      */
@@ -471,6 +474,32 @@ class Platform_task {
         }
 
         throw new RuntimeException("Build daemon {$name} was not ready within " . self::BUILDKITD_READY_SECONDS . 's');
+    }
+
+    /**
+     * Copy the end of the build daemon's log into the task log. A gateway
+     * frontend (Railpack's) that exits only shows "exit code: 1" in buildctl;
+     * its own error is in the daemon's log, which goes with the pod in
+     * stop_buildkitd. Call it on a failed build, before stop_buildkitd.
+     * Never throws.
+     */
+    static function log_buildkitd(Runtime $runtime, Task_log $log, int $id, string $kind = 'd'): void {
+        $name = Manifests::buildkitd_name($id, $kind);
+
+        try {
+            $lines = $runtime->kube()->pod_log(Manifests::BUILDKIT_NAMESPACE, $name, self::BUILDKITD_LOG_LINES);
+        } catch (Throwable $e) {
+            $log->warn("Could not read the log of build daemon {$name}: {$e->getMessage()}");
+            return;
+        }
+
+        $log->info("Last lines of build daemon {$name}:");
+
+        foreach (preg_split('/\R/', rtrim($lines)) ?: [] as $line) {
+            if (trim($line) !== '') {
+                $log->info('  ' . $line);
+            }
+        }
     }
 
     /**

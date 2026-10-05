@@ -248,6 +248,10 @@ return function (Task_log $log) use ($payload, $runtime): int {
         $log->info("Building image {$image}");
 
         if ($runtime->shell($script, $log) !== 0) {
+            if ($own_buildkitd) {
+                Platform_task::log_buildkitd($runtime, $log, $deployment_id);
+            }
+
             $log->error('Build failed');
             return 1;
         }
