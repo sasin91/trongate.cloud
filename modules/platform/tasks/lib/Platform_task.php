@@ -453,6 +453,7 @@ class Platform_task {
         $kube->apply(Manifests::buildkitd($id, $deadline_seconds, $kind));
 
         $until = time() + self::BUILDKITD_READY_SECONDS;
+        $pod = null;
 
         while (time() < $until) {
             $pod = $kube->get('v1', 'Pod', Manifests::BUILDKIT_NAMESPACE, $name);
@@ -460,7 +461,9 @@ class Platform_task {
             $ip = (string) ($pod['status']['podIP'] ?? '');
 
             if ($phase === 'Failed' || $phase === 'Succeeded') {
-                throw new RuntimeException("Build daemon {$name} stopped ({$phase})");
+                // The caller's finally deletes the pod, and its log with it
+                self::log_buildkitd($runtime, $log, $id, $kind);
+                throw new RuntimeException("Build daemon {$name} stopped ({$phase})" . self::_container_state($pod));
             }
 
             foreach ($pod['status']['conditions'] ?? [] as $condition) {
@@ -473,14 +476,37 @@ class Platform_task {
             sleep(2);
         }
 
-        throw new RuntimeException("Build daemon {$name} was not ready within " . self::BUILDKITD_READY_SECONDS . 's');
+        self::log_buildkitd($runtime, $log, $id, $kind);
+        throw new RuntimeException("Build daemon {$name} was not ready within " . self::BUILDKITD_READY_SECONDS . 's'
+            . self::_container_state($pod));
+    }
+
+    /**
+     * ": reason (message)" of a pod's first container that is waiting or has
+     * terminated, e.g. CreateContainerError when the node rejects its
+     * securityContext; "" when there is none. A container that never started
+     * has no log, so this is the only trace of why.
+     */
+    static function _container_state(?array $pod): string {
+        foreach ($pod['status']['containerStatuses'] ?? [] as $status) {
+            $state = $status['state']['waiting'] ?? $status['state']['terminated'] ?? null;
+
+            if (is_array($state) && ($state['reason'] ?? '') !== '') {
+                $message = trim((string) ($state['message'] ?? ''));
+
+                return ': ' . $state['reason'] . ($message !== '' ? " ({$message})" : '');
+            }
+        }
+
+        return '';
     }
 
     /**
      * Copy the end of the build daemon's log into the task log. A gateway
      * frontend (Railpack's) that exits only shows "exit code: 1" in buildctl;
      * its own error is in the daemon's log, which goes with the pod in
-     * stop_buildkitd. Call it on a failed build, before stop_buildkitd.
+     * stop_buildkitd. Call it on a failed build, before stop_buildkitd
+     * (start_buildkitd already does when the daemon never becomes ready).
      * Never throws.
      */
     static function log_buildkitd(Runtime $runtime, Task_log $log, int $id, string $kind = 'd'): void {
