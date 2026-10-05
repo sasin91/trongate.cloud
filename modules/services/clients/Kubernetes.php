@@ -168,6 +168,7 @@ class Kubernetes extends Client {
     /**
      * The last $tail_lines lines of a pod's (only) container log; the log
      * endpoint answers plain text, so this bypasses request()'s JSON decoding.
+     * The API server answers "Accept: text/plain" with a 406, so this accepts any type.
      */
     function pod_log(string $namespace, string $name, int $tail_lines = 100): string {
         $url = $this->api_base . $this->path('v1', 'Pod', $namespace, $name) . '/log?'
@@ -176,7 +177,7 @@ class Kubernetes extends Client {
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_HTTPHEADER => $this->_merge_headers($this->headers(), ['Accept: text/plain']),
+            CURLOPT_HTTPHEADER => $this->_merge_headers($this->headers(), ['Accept: */*']),
             CURLOPT_TIMEOUT => 30,
         ] + $this->_curl_options());
 

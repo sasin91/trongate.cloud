@@ -169,6 +169,16 @@ return function (Task_log $log) use ($payload, $runtime): int {
             copy(__DIR__ . '/railpack/Caddyfile', "{$src}/Caddyfile");
         }
 
+        // railpack prepare resolves the PHP version with its own mise, whose HOME is
+        // /tmp/railpack/mise; railpack/gitconfig points its php plugin at the repo's new home
+        $mise_home = '/tmp/railpack/mise';
+
+        if (!is_dir($mise_home) && !mkdir($mise_home, 0700, true) && !is_dir($mise_home)) {
+            throw new RuntimeException("Could not create {$mise_home}");
+        }
+
+        copy(__DIR__ . '/railpack/gitconfig', "{$mise_home}/.gitconfig");
+
         // Railpack's PHP provider only reads RAILPACK_PHP_EXTENSIONS once composer.json
         // parses (it returns no extensions otherwise), and Trongate apps usually ship
         // none. An empty one makes the variable count; the composer step then just

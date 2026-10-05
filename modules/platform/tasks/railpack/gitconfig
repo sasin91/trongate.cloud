@@ -1,0 +1,7 @@
+# git config for the mise that `railpack prepare` runs (its HOME is /tmp/railpack/mise).
+# Railpack v0.40.1 uses mise 2026.9.15, whose registry still clones the php plugin from
+# jdx/vfox-php. That repository is gone (GitHub answers with a login prompt), so every
+# build failed at "Failed to run mise command ... ls-remote php@8.4". The plugin now
+# lives under mise-plugins. deploy.php copies this file there before each build.
+[url "https://github.com/mise-plugins/vfox-php"]
+	insteadOf = https://github.com/jdx/vfox-php
