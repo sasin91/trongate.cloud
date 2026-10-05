@@ -22,7 +22,7 @@ defined('PLATFORM_INGRESS_IPV4') || define('PLATFORM_INGRESS_IPV4', getenv('PLAT
 defined('PLATFORM_INGRESS_IPV6') || define('PLATFORM_INGRESS_IPV6', getenv('PLATFORM_INGRESS_IPV6') ?: '');
 // Sablier API, reachable from Traefik (scale-to-zero middleware)
 defined('SABLIER_URL') || define('SABLIER_URL', getenv('SABLIER_URL') ?: 'http://sablier.sablier.svc.cluster.local:10000');
-// BuildKit daemon for Railpack builds. Empty (the cluster default): the worker starts
+// BuildKit daemon for app and platform builds. Empty (the cluster default): the worker starts
 // a throwaway daemon per build (Manifests::buildkitd). Set it only for local dev.
 defined('BUILDKIT_HOST') || define('BUILDKIT_HOST', getenv('BUILDKIT_HOST') ?: '');
 // Kubernetes API; empty values fall back to the in-cluster service account (Kubernetes::from_env())
@@ -39,6 +39,9 @@ defined('FILES_STORAGE_CLASS') || define('FILES_STORAGE_CLASS', getenv('FILES_ST
 defined('PLATFORM_SOURCE_REPOSITORY') || define('PLATFORM_SOURCE_REPOSITORY', strtolower(getenv('PLATFORM_SOURCE_REPOSITORY') ?: ''));
 defined('PLATFORM_SOURCE_BRANCH') || define('PLATFORM_SOURCE_BRANCH', getenv('PLATFORM_SOURCE_BRANCH') ?: 'main');
 defined('PLATFORM_IMAGES_REGISTRY') || define('PLATFORM_IMAGES_REGISTRY', getenv('PLATFORM_IMAGES_REGISTRY') ?: 'registry.trongate.cloud/platform');
+// What every customer app is built FROM (docker/app-base/Dockerfile); build_platform
+// pushes it as app-base:php8.4 before the worker image, so a worker always finds it
+defined('PLATFORM_APP_BASE_IMAGE') || define('PLATFORM_APP_BASE_IMAGE', getenv('PLATFORM_APP_BASE_IMAGE') ?: PLATFORM_IMAGES_REGISTRY . '/app-base:php8.4');
 // Seconds between reconcile_deploys runs: the worker queues a deploy for a branch
 // head that a missed GitHub push webhook never built. 0 turns it off.
 defined('DEPLOY_RECONCILE_INTERVAL') || define('DEPLOY_RECONCILE_INTERVAL', getenv('DEPLOY_RECONCILE_INTERVAL') !== false ? (int) getenv('DEPLOY_RECONCILE_INTERVAL') : 600);

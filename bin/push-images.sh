@@ -41,7 +41,22 @@ build() {
         .
 }
 
+# The base of every customer app first, as the worker's PLATFORM_APP_BASE_IMAGE
+# default (app-base:php8.4). Like build_platform: SOURCE_DATE_EPOCH=0, no revision
+# label and no provenance (it carries the build time), so an unchanged base keeps
+# its digest and the apps' build caches stay valid.
+echo "==> ${REGISTRY}/app-base (${sha})"
+docker buildx build \
+    --platform "$PLATFORM" \
+    --file docker/app-base/Dockerfile \
+    --build-arg SOURCE_DATE_EPOCH=0 \
+    --provenance=false \
+    --tag "${REGISTRY}/app-base:php8.4" \
+    --tag "${REGISTRY}/app-base:${sha}" \
+    --push \
+    .
+
 build trongate-cloud Dockerfile
 build trongate-cloud-worker Dockerfile.worker
 
-echo "Pushed :main, :${sha} and :main-${committed}-${sha}."
+echo "Pushed app-base:php8.4, and :main, :${sha} and :main-${committed}-${sha}."

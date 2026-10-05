@@ -1,8 +1,7 @@
 # Task worker: polls the tasks table and runs modules/platform/tasks/*.php.
-# Builds customer apps with Railpack + buildctl against a remote BuildKit (BUILDKIT_HOST).
+# Builds customer apps and the platform with buildctl against a per-build BuildKit daemon.
 FROM php:8.4-cli-bookworm
 
-ARG RAILPACK_VERSION=0.40.1
 ARG BUILDKIT_VERSION=0.33.1
 # Set by BuildKit from --platform (linux/amd64 -> amd64, linux/arm64 -> arm64);
 # no default, so a build without it fails below instead of shipping the wrong arch
@@ -15,27 +14,16 @@ RUN apt-get update \
     && docker-php-ext-install pcntl sodium pdo_mysql \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# railpack (checksum-verified) and buildctl, pinned
+# buildctl, pinned
 RUN case "${TARGETARCH}" in \
-        amd64) rp_arch=x86_64 ;; \
-        arm64) rp_arch=arm64 ;; \
+        amd64|arm64) ;; \
         *) echo "unsupported arch ${TARGETARCH}" >&2; exit 1 ;; \
     esac \
-    && rp_file="railpack-v${RAILPACK_VERSION}-${rp_arch}-unknown-linux-musl.tar.gz" \
-    && rp_base="https://github.com/railwayapp/railpack/releases/download/v${RAILPACK_VERSION}" \
-    && cd /tmp \
-    && curl -fsSLO "${rp_base}/${rp_file}" \
-    && curl -fsSL "${rp_base}/checksums.txt" | grep " ${rp_file}\$" | sha256sum -c - \
-    && tar -xzf "${rp_file}" -C /usr/local/bin railpack \
     && curl -fsSL "https://github.com/moby/buildkit/releases/download/v${BUILDKIT_VERSION}/buildkit-v${BUILDKIT_VERSION}.linux-${TARGETARCH}.tar.gz" \
         | tar -xz -C /usr/local bin/buildctl \
-    && rm -f /tmp/*.tar.gz \
-    && railpack --version && buildctl --version
+    && buildctl --version
 
-# The frontend must match the railpack CLI version that wrote the plan
-ENV RAILPACK_VERSION=${RAILPACK_VERSION} \
-    RAILPACK_FRONTEND=ghcr.io/railwayapp/railpack-frontend:v${RAILPACK_VERSION} \
-    DOCKER_CONFIG=/home/worker/.docker
+ENV DOCKER_CONFIG=/home/worker/.docker
 
 RUN useradd --uid 1000 --create-home --shell /usr/sbin/nologin worker
 

@@ -493,9 +493,9 @@ class Platform_task {
     }
 
     /**
-     * Copy the end of the build daemon's log into the task log. A gateway
-     * frontend (Railpack's) that exits only shows "exit code: 1" in buildctl;
-     * its own error is in the daemon's log, which goes with the pod in
+     * Copy the end of the build daemon's log into the task log. When the
+     * daemon itself fails (a container it cannot start), buildctl may only
+     * show "exit code: 1"; the error is in the daemon's log, which goes with the pod in
      * stop_buildkitd. Call it on a failed build, before stop_buildkitd
      * (start_buildkitd already does when the daemon never becomes ready).
      * Never throws.

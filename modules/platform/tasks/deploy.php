@@ -3,7 +3,7 @@
 /**
  * Deploy Task
  *
- * Builds an app's GitHub repository with Railpack (FrankenPHP image) on
+ * Builds an app's GitHub repository on PLATFORM_APP_BASE_IMAGE (FrankenPHP) with
  * a BuildKit daemon started for this build only, pushes it to PLATFORM_REGISTRY
  * and rolls it out to its project's namespace. GitHub is read with an
  * installation token of the trongate.cloud GitHub App.
@@ -128,7 +128,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
             throw new RuntimeException('Extracting the repository failed');
         }
 
-        // The tree is untrusted: PHP file calls below (and railpack prepare) would
+        // The tree is untrusted: PHP file calls below (and the build context) would
         // follow its symlinks, so refuse any that point outside the source dir.
         Platform_task::assert_no_escaping_symlinks($src);
 
@@ -140,57 +140,17 @@ return function (Task_log $log) use ($payload, $runtime): int {
             throw new RuntimeException('config/config.php not found; the platform patches it at runtime');
         }
 
-        // --- Railpack config -------------------------------------------------
-        // Trongate has no root index.php/composer.json, so force the PHP provider.
-        // The repo's own railpack.json wins where it sets something.
+        // --- Dockerfile ------------------------------------------------------
+        // Every Trongate app has the same shape, so the platform writes the
+        // Dockerfile: the prebuilt base (docker/app-base) plus the app's extra
+        // extensions, its composer packages and its files. Only the validated
+        // extension names come from settings; nothing from the repository
+        // becomes an instruction.
 
-        $config = [];
-        $config_file = "{$src}/railpack.json";
+        $lines = ['FROM ' . PLATFORM_APP_BASE_IMAGE];
 
-        if (is_file($config_file)) {
-            $config = json_decode((string) file_get_contents($config_file), true);
-
-            if (!is_array($config)) {
-                throw new RuntimeException('railpack.json in the repository is not valid JSON');
-            }
-
-            $log->info('Using the repository railpack.json');
-        }
-
-        $config['provider'] ??= 'php';
-        $config['deploy']['variables']['CADDY_SERVER_EXTRA_DIRECTIVES']
-            ??= 'header Content-Security-Policy "frame-ancestors \'self\'"';
-
-        file_put_contents($config_file, json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-
-        // Railpack's own Caddyfile logs every request at DEBUG; ours is the same at INFO.
-        // Railpack uses a Caddyfile from the repo root, so a repo that ships one keeps it.
-        if (!is_file("{$src}/Caddyfile")) {
-            copy(__DIR__ . '/railpack/Caddyfile', "{$src}/Caddyfile");
-        }
-
-        // railpack prepare resolves the PHP version with its own mise, whose HOME is
-        // /tmp/railpack/mise; railpack/gitconfig points its php plugin at the repo's new home
-        $mise_home = '/tmp/railpack/mise';
-
-        if (!is_dir($mise_home) && !mkdir($mise_home, 0700, true) && !is_dir($mise_home)) {
-            throw new RuntimeException("Could not create {$mise_home}");
-        }
-
-        copy(__DIR__ . '/railpack/gitconfig', "{$mise_home}/.gitconfig");
-
-        // Railpack's PHP provider only reads RAILPACK_PHP_EXTENSIONS once composer.json
-        // parses (it returns no extensions otherwise), and Trongate apps usually ship
-        // none. An empty one makes the variable count; the composer step then just
-        // writes an empty vendor/.
-        if (!is_file("{$src}/composer.json")) {
-            $composer = ['name' => 'trongate-cloud/app', 'type' => 'app', 'require' => new stdClass()];
-            file_put_contents("{$src}/composer.json", json_encode($composer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-        }
-
-        // Trongate's database class uses PDO; redis is the session handler for
-        // Valkey (Manifests::sessions_ini); app extras come from settings
-        $extensions = ['pdo_mysql', 'redis'];
+        // The base already has pdo_mysql, redis (Valkey sessions) and the common ones
+        $extensions = [];
 
         foreach (preg_split('/[\s,]+/', strtolower((string) ($app['php_extensions'] ?? ''))) ?: [] as $extension) {
             if (preg_match('/^[a-z0-9_]{1,40}$/', $extension) && !in_array($extension, $extensions, true)) {
@@ -198,58 +158,49 @@ return function (Task_log $log) use ($payload, $runtime): int {
             }
         }
 
-        // Railpack treats --env values as build secrets; buildctl must mount them too.
-        // A bare "--env NAME" makes railpack read NAME from its own environment.
-        // Invocation per https://railpack.com/platforms/running-railpack-in-production
-        // (verified against railpack v0.40.1: frontend opts filename, build-arg:cache-key,
-        // build-arg:secrets-hash; the plan is read from the "dockerfile" local).
-        $build_env = [
-            'RAILPACK_PHP_ROOT_DIR' => Manifests::APP_DIR . '/public',
-            'RAILPACK_PHP_EXTENSIONS' => implode(',', $extensions),
-        ];
+        if ($extensions) {
+            // install-php-extensions skips any the base already has
+            $lines[] = 'RUN install-php-extensions ' . implode(' ', $extensions);
+            $log->info('Extra PHP extensions: ' . implode(', ', $extensions));
+        }
 
-        $log->info('PHP extensions: ' . $build_env['RAILPACK_PHP_EXTENSIONS']);
+        // composer.json (and lock) first, so the packages layer stays cached
+        // while only the app's own files change
+        if (is_file("{$src}/composer.json")) {
+            $lines[] = 'COPY composer.json ' . (is_file("{$src}/composer.lock") ? 'composer.lock ' : '') . './';
+            $lines[] = 'RUN composer install --no-dev --optimize-autoloader --no-scripts --no-interaction --no-progress';
+        }
+
+        $lines[] = 'COPY . ./';
+
+        // A repository that ships a Caddyfile serves with it instead of the base's
+        if (is_file("{$src}/Caddyfile")) {
+            $lines[] = 'COPY Caddyfile /Caddyfile';
+            $log->info('Using the repository Caddyfile');
+        }
+
+        file_put_contents("{$plan_dir}/Dockerfile", implode("\n", $lines) . "\n");
 
         // --- Build + push ----------------------------------------------------
 
         $registry = rtrim(PLATFORM_REGISTRY, '/');
         $image = "{$registry}/p{$app_id}:{$short_sha}-{$deployment_id}";
         $cache_ref = "{$registry}/p{$app_id}:buildcache";
-        // The frontend must match the railpack CLI that wrote the plan (Dockerfile.worker sets both)
-        $railpack_version = getenv('RAILPACK_VERSION') ?: '';
-        $frontend = getenv('RAILPACK_FRONTEND')
-            ?: 'ghcr.io/railwayapp/railpack-frontend' . ($railpack_version !== '' ? ':v' . ltrim($railpack_version, 'v') : ':latest');
 
         // A fixed BUILDKIT_HOST (local dev) or, in the cluster, a daemon for this build only
         $own_buildkitd = BUILDKIT_HOST === '';
         $buildkit_host = $own_buildkitd ? Platform_task::start_buildkitd($runtime, $log, $deployment_id) : BUILDKIT_HOST;
 
-        $exports = [];
-        $env_flags = [];
-        $secret_flags = [];
-
-        foreach ($build_env as $name => $value) {
-            $exports[] = "export {$name}=" . $q($value);
-            $env_flags[] = '--env ' . $name;
-            $secret_flags[] = "--secret id={$name},env={$name}";
-        }
-
+        // The Dockerfile comes from the plan dir, so one in the repository is ignored
         $script = implode("\n", [
             'set -eu',
-            ...$exports,
-            'railpack prepare ' . $q($src)
-                . ' --plan-out ' . $q("{$plan_dir}/railpack-plan.json")
-                . ' --info-out ' . $q("{$work}/railpack-info.json")
-                . ' ' . implode(' ', $env_flags),
             'buildctl --addr ' . $q($buildkit_host) . ' build'
                 . ' --progress=plain'
-                . ' --frontend=gateway.v0'
-                . ' --opt source=' . $q($frontend)
+                . ' --frontend=dockerfile.v0'
                 . ' --local context=' . $q($src)
                 . ' --local dockerfile=' . $q($plan_dir)
-                . ' --opt build-arg:cache-key=' . $q("p{$app_id}")
-                . ' --opt build-arg:secrets-hash=' . $q(hash('sha256', json_encode($build_env)))
-                . ' ' . implode(' ', $secret_flags)
+                . ' --opt filename=Dockerfile'
+                . ' --opt platform=linux/amd64'
                 . ' --import-cache ' . $q("type=registry,ref={$cache_ref}")
                 . ' --export-cache ' . $q("type=registry,ref={$cache_ref},mode=max,ignore-error=true")
                 . ' --output ' . $q("type=image,name={$image},push=true"),
