@@ -119,43 +119,28 @@ return function (Task_log $log) use ($task, $runtime): int {
         // The app base first (deploys and nothing else use it), then the web
         // app, the worker last: Flux follows the worker image, so once its tag
         // exists the others do too
-        $base = PLATFORM_APP_BASE_IMAGE;
-        $images = [
-            'app-base' => [
-                'dockerfile' => 'docker/app-base/Dockerfile',
-                'names' => [$base, preg_replace('/:[^:\/]+$/', '', $base) . ":{$short_sha}"],
-                'opts' => ['build-arg:SOURCE_DATE_EPOCH=0'],
-            ],
-            'trongate-cloud' => [
-                'dockerfile' => 'Dockerfile',
-                'names' => ["{$registry}/trongate-cloud:{$tag}", "{$registry}/trongate-cloud:{$short_sha}"],
-                'opts' => ["label:org.opencontainers.image.revision={$commit_sha}"],
-            ],
-            'trongate-cloud-worker' => [
-                'dockerfile' => 'Dockerfile.worker',
-                'names' => ["{$registry}/trongate-cloud-worker:{$tag}", "{$registry}/trongate-cloud-worker:{$short_sha}"],
-                'opts' => ["label:org.opencontainers.image.revision={$commit_sha}"],
-            ],
-        ];
+        $scripts = ['app-base' => Platform_task::app_base_build(
+            $buildkit_host,
+            $src,
+            [Platform_task::image_repository(PLATFORM_APP_BASE_IMAGE) . ":{$short_sha}"]
+        )];
 
-        foreach ($images as $image => $build) {
-            $cache_ref = preg_replace('/:[^:\/]+$/', '', $build['names'][0]) . ':buildcache';
-            $log->info('Building image ' . $build['names'][0]);
+        foreach (['trongate-cloud' => 'Dockerfile', 'trongate-cloud-worker' => 'Dockerfile.worker'] as $image => $dockerfile) {
+            $ref = "{$registry}/{$image}";
+            $scripts[$image] = Platform_task::buildctl_build(
+                $buildkit_host,
+                $src,
+                $src,
+                $dockerfile,
+                ["{$ref}:{$tag}", "{$ref}:{$short_sha}"],
+                "{$ref}:buildcache",
+                ["label:org.opencontainers.image.revision={$commit_sha}"]
+            );
+        }
 
-            $script = implode("\n", [
-                'set -eu',
-                'buildctl --addr ' . $q($buildkit_host) . ' build'
-                    . ' --progress=plain'
-                    . ' --frontend=dockerfile.v0'
-                    . ' --local context=' . $q($src)
-                    . ' --local dockerfile=' . $q($src)
-                    . ' --opt filename=' . $q($build['dockerfile'])
-                    . ' --opt platform=linux/amd64'
-                    . implode('', array_map(fn(string $opt) => ' --opt ' . $q($opt), $build['opts']))
-                    . ' --import-cache ' . $q("type=registry,ref={$cache_ref}")
-                    . ' --export-cache ' . $q("type=registry,ref={$cache_ref},mode=max,ignore-error=true")
-                    . ' --output ' . $q('type=image,"name=' . implode(',', $build['names']) . '",push=true'),
-            ]) . "\n";
+        foreach ($scripts as $image => $build) {
+            $log->info("Building image {$image}");
+            $script = 'set -eu' . "\n" . $build . "\n";
 
             if ($runtime->shell($script, $log) !== 0) {
                 if ($own_buildkitd) {

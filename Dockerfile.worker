@@ -37,6 +37,8 @@ COPY modules/db modules/db
 COPY modules/encryption modules/encryption
 COPY modules/services/clients modules/services/clients
 COPY modules/platform modules/platform
+# Built by a deploy when the registry lacks PLATFORM_APP_BASE_IMAGE (Platform_task::ensure_app_base)
+COPY docker/app-base docker/app-base
 
 USER 1000
 

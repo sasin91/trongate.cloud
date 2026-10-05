@@ -168,10 +168,16 @@ return function (Task_log $log) use ($payload, $runtime): int {
         // while only the app's own files change
         if (is_file("{$src}/composer.json")) {
             $lines[] = 'COPY composer.json ' . (is_file("{$src}/composer.lock") ? 'composer.lock ' : '') . './';
-            $lines[] = 'RUN composer install --no-dev --optimize-autoloader --no-scripts --no-interaction --no-progress';
+            // The autoloader comes after the app's files: a classmap entry
+            // pointing at them fails while only composer.json is there
+            $lines[] = 'RUN composer install --no-dev --no-autoloader --no-scripts --no-interaction --no-progress';
         }
 
         $lines[] = 'COPY . ./';
+
+        if (is_file("{$src}/composer.json")) {
+            $lines[] = 'RUN composer dump-autoload --no-dev --optimize --no-scripts';
+        }
 
         // A repository that ships a Caddyfile serves with it instead of the base's
         if (is_file("{$src}/Caddyfile")) {
@@ -192,23 +198,15 @@ return function (Task_log $log) use ($payload, $runtime): int {
         $buildkit_host = $own_buildkitd ? Platform_task::start_buildkitd($runtime, $log, $deployment_id) : BUILDKIT_HOST;
 
         // The Dockerfile comes from the plan dir, so one in the repository is ignored
-        $script = implode("\n", [
-            'set -eu',
-            'buildctl --addr ' . $q($buildkit_host) . ' build'
-                . ' --progress=plain'
-                . ' --frontend=dockerfile.v0'
-                . ' --local context=' . $q($src)
-                . ' --local dockerfile=' . $q($plan_dir)
-                . ' --opt filename=Dockerfile'
-                . ' --opt platform=linux/amd64'
-                . ' --import-cache ' . $q("type=registry,ref={$cache_ref}")
-                . ' --export-cache ' . $q("type=registry,ref={$cache_ref},mode=max,ignore-error=true")
-                . ' --output ' . $q("type=image,name={$image},push=true"),
-        ]) . "\n";
+        $script = 'set -eu' . "\n"
+            . Platform_task::buildctl_build($buildkit_host, $src, $plan_dir, 'Dockerfile', [$image], $cache_ref) . "\n";
 
         $log->info("Building image {$image}");
 
-        if ($runtime->shell($script, $log) !== 0) {
+        $built = Platform_task::ensure_app_base($runtime, $log, $buildkit_host, $work)
+            && $runtime->shell($script, $log) === 0;
+
+        if (!$built) {
             if ($own_buildkitd) {
                 Platform_task::log_buildkitd($runtime, $log, $deployment_id);
             }
