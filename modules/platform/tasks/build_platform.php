@@ -134,6 +134,10 @@ return function (Task_log $log) use ($task, $runtime): int {
             ]) . "\n";
 
             if ($runtime->shell($script, $log) !== 0) {
+                if ($own_buildkitd) {
+                    Platform_task::log_buildkitd($runtime, $log, $task_id, 'p');
+                }
+
                 $log->error("Building {$image} failed");
                 return 1;
             }

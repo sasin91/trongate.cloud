@@ -166,6 +166,36 @@ class Kubernetes extends Client {
     }
 
     /**
+     * The last $tail_lines lines of a pod's (only) container log; the log
+     * endpoint answers plain text, so this bypasses request()'s JSON decoding.
+     */
+    function pod_log(string $namespace, string $name, int $tail_lines = 100): string {
+        $url = $this->api_base . $this->path('v1', 'Pod', $namespace, $name) . '/log?'
+            . http_build_query(['tailLines' => $tail_lines]);
+
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER => $this->_merge_headers($this->headers(), ['Accept: text/plain']),
+            CURLOPT_TIMEOUT => 30,
+        ] + $this->_curl_options());
+
+        $response = curl_exec($ch);
+
+        if ($response === false) {
+            throw new Client_Error('Curl Error: ' . curl_error($ch), 0);
+        }
+
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
+        if ($http_code >= 400) {
+            throw new Client_Error("Client API error ({$http_code}): pod log", $http_code);
+        }
+
+        return (string) $response;
+    }
+
+    /**
      * Delete an object (background propagation); false when it did not exist
      *
      * With $uid, the API server only deletes the object with that uid (409

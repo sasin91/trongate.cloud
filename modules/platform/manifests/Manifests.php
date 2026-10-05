@@ -84,6 +84,8 @@ class Manifests {
     // One throwaway BuildKit daemon per build (see buildkitd()), never shared by tenants
     const BUILDKIT_NAMESPACE = 'buildkit';
     const BUILDKIT_IMAGE = 'moby/buildkit:v0.33.1-rootless';
+    // SELinux type for the build daemon (see buildkitd()); the worker admission policy pins it
+    const BUILDKIT_SELINUX_TYPE = 'container_engine_t';
     const BUILDKIT_PORT = 1234;
 
     // Egress to the internet excludes cluster, node and link-local (metadata) ranges
@@ -862,6 +864,14 @@ class Manifests {
      * Rootless BuildKit needs Unconfined seccomp/AppArmor (the buildkit namespace
      * is "privileged" for that); --oci-worker-no-process-sandbox is safe here
      * because nothing else runs in the daemon.
+     *
+     * The nodes run SELinux enforcing (openSUSE Leap Micro). Under the default
+     * container_t, runc inside the pod may not mount a new devpts, so every
+     * container BuildKit starts (Railpack's frontend first) dies with
+     * "error mounting devpts ... permission denied" and buildctl only says
+     * "exit code: 1". container_engine_t is container-selinux's type for a
+     * container engine inside a container: it allows those mounts and is
+     * still confined, unlike spc_t.
      */
     static function buildkitd(int $id, int $timeout_seconds, string $kind = 'd'): array {
         return [
@@ -895,6 +905,7 @@ class Manifests {
                     'securityContext' => [
                         'seccompProfile' => ['type' => 'Unconfined'],
                         'appArmorProfile' => ['type' => 'Unconfined'],
+                        'seLinuxOptions' => ['type' => self::BUILDKIT_SELINUX_TYPE],
                         'runAsUser' => 1000,
                         'runAsGroup' => 1000,
                     ],

@@ -157,13 +157,20 @@ spec:
         (has(object.spec.template.spec.automountServiceAccountToken) &&
          object.spec.template.spec.automountServiceAccountToken == false)
       message: Tenant Deployments must set automountServiceAccountToken=false
-    # Build daemon Pods: the pinned rootless image, emptyDir volumes only, no host access
+    # Build daemon Pods: the pinned rootless image, emptyDir volumes only, no host access,
+    # and no SELinux type but container_engine_t (Manifests::BUILDKIT_SELINUX_TYPE; never spc_t)
     - expression: >-
         request.kind.kind != 'Pod' ||
         (object.spec.containers.all(c, c.image == 'moby/buildkit:v0.33.1-rootless' &&
            (!has(c.securityContext) ||
             ((!has(c.securityContext.privileged) || c.securityContext.privileged == false) &&
-             (!has(c.securityContext.capabilities) || !has(c.securityContext.capabilities.add))))) &&
+             (!has(c.securityContext.capabilities) || !has(c.securityContext.capabilities.add)) &&
+             (!has(c.securityContext.seLinuxOptions) ||
+              (c.securityContext.seLinuxOptions.type == 'container_engine_t' &&
+               !has(c.securityContext.seLinuxOptions.user) &&
+               !has(c.securityContext.seLinuxOptions.role) &&
+               !has(c.securityContext.seLinuxOptions.level)))))) &&
+         (!has(object.spec.securityContext) || !has(object.spec.securityContext.seLinuxOptions)) &&
          !has(object.spec.initContainers) &&
          !has(object.spec.ephemeralContainers) &&
          (!has(object.spec.hostNetwork) || object.spec.hostNetwork == false) &&
