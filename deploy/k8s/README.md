@@ -69,8 +69,9 @@ From the platform kit (or installed separately):
 - The platform images `registry.trongate.cloud/platform/trongate-cloud` and
   `registry.trongate.cloud/platform/trongate-cloud-worker` (from `Dockerfile`
   and `Dockerfile.worker`; tags in `platform/kustomization.yaml`), pushed to
-  the same registry by `bin/push-images.sh` (linux/amd64, built locally with
-  Docker; log in once as the registry's `push` user).
+  the same registry by the worker on every push to main (see "Deploying the
+  platform" below), or by hand with `bin/push-images.sh` (linux/amd64, built
+  locally with Docker; log in once as the registry's `push` user).
 
 ## Secrets (SOPS)
 
@@ -167,6 +168,33 @@ local `.env`; copy those values into the encrypted `trongate-cloud-env` and
    `Poll loop started`. A first app deploy then exercises a per-build
    buildkitd Pod, the registry, the tenant namespace, the admission policies,
    mariadb-operator CRs, JuiceFS and Sablier.
+
+## Deploying the platform
+
+A push to `main` of this repository deploys it, built by the platform itself:
+
+1. The GitHub App's push webhook (the App must be installed on this
+   repository) matches `PLATFORM_SOURCE_REPOSITORY` / `PLATFORM_SOURCE_BRANCH`
+   (`platform/config.yaml`) and queues a `build_platform` task, at most one
+   waiting at a time.
+2. The worker builds the head of `main`: `Dockerfile`, then
+   `Dockerfile.worker`, linux/amd64, on a throwaway `buildkitd-p{task}` Pod
+   (the same per-build daemon and push credential as customer builds), and
+   pushes both to `PLATFORM_IMAGES_REGISTRY` as
+   `:main-{commit time UTC, YYYYmmddHHMMSS}-{short sha}` and `:{short sha}`.
+3. Flux image automation in the infra repository (ImageRepository and
+   ImagePolicy on `trongate-cloud-worker`, newest `main-*` tag) commits that
+   tag to both `newTag` lines of its `trongate-cloud` Kustomization, and Flux
+   rolls out the app and the worker.
+
+Manifest changes under `deploy/k8s` apply within a minute of the push, before
+the new images exist, so keep them compatible with the running image. Schema
+changes (`db/schema.sql`) are not applied by any of this.
+
+Turning it off: suspend the ImageUpdateAutomation (`flux suspend image update
+trongate-cloud`) to stop rollouts, or empty `PLATFORM_SOURCE_REPOSITORY` to
+stop builds. `bin/push-images.sh` pushes the same `main-*` tag from a local
+checkout, which Flux rolls out the same way.
 
 ## Open items (need a live cluster)
 

@@ -436,17 +436,18 @@ class Platform_task {
     }
 
     /**
-     * Start the deployment's own BuildKit daemon (Manifests::buildkitd) and
-     * return its buildctl address once it is ready.
+     * Start the build's own BuildKit daemon (Manifests::buildkitd; $kind 'd'
+     * for a deployment, 'p' for a platform build) and return its buildctl
+     * address once it is ready.
      */
-    static function start_buildkitd(Runtime $runtime, Task_log $log, int $deployment_id): string {
+    static function start_buildkitd(Runtime $runtime, Task_log $log, int $id, string $kind = 'd'): string {
         $kube = $runtime->kube();
-        $name = Manifests::buildkitd_name($deployment_id);
+        $name = Manifests::buildkitd_name($id, $kind);
         // Outlives the build step's own timeout, so the pod never ends mid-build
         $deadline_seconds = Runtime::SHELL_TIMEOUT_SECONDS + self::BUILDKITD_READY_SECONDS + 120;
 
         $log->info("Starting build daemon {$name}");
-        $kube->apply(Manifests::buildkitd($deployment_id, $deadline_seconds));
+        $kube->apply(Manifests::buildkitd($id, $deadline_seconds, $kind));
 
         $until = time() + self::BUILDKITD_READY_SECONDS;
 
@@ -473,11 +474,11 @@ class Platform_task {
     }
 
     /**
-     * Delete the deployment's BuildKit daemon. Never throws: a leftover pod
+     * Delete the build's BuildKit daemon. Never throws: a leftover pod
      * still ends at its activeDeadlineSeconds.
      */
-    static function stop_buildkitd(Runtime $runtime, Task_log $log, int $deployment_id): void {
-        $name = Manifests::buildkitd_name($deployment_id);
+    static function stop_buildkitd(Runtime $runtime, Task_log $log, int $id, string $kind = 'd'): void {
+        $name = Manifests::buildkitd_name($id, $kind);
 
         try {
             $runtime->kube()->delete('v1', 'Pod', Manifests::BUILDKIT_NAMESPACE, $name);

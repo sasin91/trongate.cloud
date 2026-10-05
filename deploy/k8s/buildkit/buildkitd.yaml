@@ -1,5 +1,6 @@
 # BuildKit for the worker's Railpack builds. There is no long-lived daemon: for
 # every build the worker creates a rootless buildkitd Pod "buildkitd-d{deployment}"
+# (or "buildkitd-p{task}" for the platform's own images)
 # here (Manifests::buildkitd), builds against tcp://{podIP}:1234 and deletes it.
 # Untrusted build steps therefore never share a daemon, PID namespace, local
 # cache or forwarded registry credentials with another tenant's build; the

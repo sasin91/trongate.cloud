@@ -15,6 +15,12 @@ data:
   DB_USER: tcloud
   PLATFORM_APPS_DOMAIN: trongate.dev
   PLATFORM_REGISTRY: registry.trongate.cloud/tc
+  # A push to main here rebuilds the platform images (worker build_platform
+  # task) into PLATFORM_IMAGES_REGISTRY; Flux image automation in the infra
+  # repository rolls them out. Empty turns it off.
+  PLATFORM_SOURCE_REPOSITORY: sasin91/trongate.cloud
+  PLATFORM_SOURCE_BRANCH: main
+  PLATFORM_IMAGES_REGISTRY: registry.trongate.cloud/platform
   PLATFORM_GATEWAY_NAME: platform
   PLATFORM_GATEWAY_NAMESPACE: traefik
   # Custom domains: per-domain Gateways of this class, certificates from this

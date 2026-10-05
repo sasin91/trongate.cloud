@@ -8,7 +8,8 @@
  * the App is installed on. A signed push queues a deployment of every app
  * built from that repository and branch, unless its customer turned Deploy on
  * push off (app.auto_deploy). The deploy task builds the branch head, so
- * replaying an old push cannot roll back.
+ * replaying an old push cannot roll back. A push to the platform's own
+ * repository and branch (PLATFORM_SOURCE_REPOSITORY) also queues build_platform.
  *
  * @property-read Webhooks_model $model
  */
@@ -79,6 +80,12 @@ class Webhooks extends Trongate {
         $branch = substr($ref, strlen('refs/heads/'));
         $deployments = [];
         $skipped = [];
+        $platform_build = null;
+
+        // The platform's own repository: rebuild its images, which Flux rolls out
+        if (PLATFORM_SOURCE_REPOSITORY !== '' && $repository === PLATFORM_SOURCE_REPOSITORY && $branch === PLATFORM_SOURCE_BRANCH) {
+            $platform_build = $this->model->queue_platform_build($sha) ?? 'already_queued';
+        }
 
         foreach ($this->model->apps_on_branch('https://github.com/' . $repository, $branch) as $app) {
             if (empty($app->auto_deploy)) {
@@ -93,12 +100,18 @@ class Webhooks extends Trongate {
             }
         }
 
-        if ($deployments === [] && $skipped === []) {
+        if ($deployments === [] && $skipped === [] && $platform_build === null) {
             $this->_respond(202, ['ok' => true, 'ignored' => 'no_app']);
             return;
         }
 
-        $this->_respond(202, ['ok' => true, 'deployments' => $deployments, 'skipped' => $skipped, 'commit_sha' => $sha]);
+        $body = ['ok' => true, 'deployments' => $deployments, 'skipped' => $skipped, 'commit_sha' => $sha];
+
+        if ($platform_build !== null) {
+            $body['platform_build'] = $platform_build;
+        }
+
+        $this->_respond(202, $body);
     }
 
     /**

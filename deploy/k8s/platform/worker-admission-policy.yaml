@@ -6,7 +6,8 @@
 # the same pattern is the tenant_namespace variable of each policy below).
 #
 # 1. Where: only inside tenant namespaces (or the tenant Namespace objects
-#    themselves), plus per-build buildkitd-d* Pods in the buildkit namespace.
+#    themselves), plus per-build buildkitd-d* (deployment) and buildkitd-p*
+#    (platform image) Pods in the buildkit namespace.
 # 2. What: the content checks in trongate-worker-objects, so a compromised worker
 #    cannot loosen a tenant namespace, expose a Service, mount a token, claim a
 #    platform hostname, or point MariaDB CRs at anything but a tenant's own
@@ -79,7 +80,7 @@ spec:
     - expression: >-
         request.namespace.matches(variables.tenant_namespace) ||
         (request.kind.kind == 'Namespace' && request.name.matches(variables.tenant_namespace)) ||
-        (request.namespace == 'buildkit' && request.kind.kind == 'Pod' && request.name.startsWith('buildkitd-d'))
+        (request.namespace == 'buildkit' && request.kind.kind == 'Pod' && request.name.matches('^buildkitd-[dp][0-9]+$'))
       message: The trongate-cloud worker may only write inside tenant (project-*) namespaces (and build Pods in buildkit)
 ---
 apiVersion: admissionregistration.k8s.io/v1
@@ -322,7 +323,7 @@ spec:
     - expression: >-
         variables.domain_tls ||
         variables.tenant_namespace_object ||
-        (request.namespace == 'buildkit' && request.kind.kind == 'Pod' && oldObject.metadata.name.startsWith('buildkitd-d')) ||
+        (request.namespace == 'buildkit' && request.kind.kind == 'Pod' && oldObject.metadata.name.matches('^buildkitd-[dp][0-9]+$')) ||
         (variables.labelled &&
          request.namespace.matches(variables.tenant_namespace) &&
          'platform.example.com/project-id' in oldObject.metadata.labels &&

@@ -851,7 +851,9 @@ class Manifests {
     }
 
     /**
-     * A rootless BuildKit daemon Pod for one deployment's build. The worker
+     * A rootless BuildKit daemon Pod for one build: a deployment's ($kind 'd',
+     * $id the deployment id) or the platform's own ('p', the build_platform
+     * task id). The worker
      * creates it, builds against tcp://{podIP}:BUILDKIT_PORT and deletes it, so
      * untrusted build steps never share a daemon, PID namespace, local cache or
      * forwarded credentials with another tenant's build. The registry cache
@@ -861,14 +863,14 @@ class Manifests {
      * is "privileged" for that); --oci-worker-no-process-sandbox is safe here
      * because nothing else runs in the daemon.
      */
-    static function buildkitd(int $deployment_id, int $timeout_seconds): array {
+    static function buildkitd(int $id, int $timeout_seconds, string $kind = 'd'): array {
         return [
             'apiVersion' => 'v1',
             'kind' => 'Pod',
-            'metadata' => self::_metadata(self::buildkitd_name($deployment_id), self::BUILDKIT_NAMESPACE, self::_labels([
+            'metadata' => self::_metadata(self::buildkitd_name($id, $kind), self::BUILDKIT_NAMESPACE, self::_labels([
                 // buildkit/buildkitd.yaml's NetworkPolicy selects this label
                 'app.kubernetes.io/name' => 'buildkitd',
-                self::LABEL_PREFIX . '/deployment-id' => (string) $deployment_id,
+                self::LABEL_PREFIX . ($kind === 'p' ? '/platform-build-task-id' : '/deployment-id') => (string) $id,
             ])),
             'spec' => [
                 'restartPolicy' => 'Never',
@@ -907,8 +909,16 @@ class Manifests {
         ];
     }
 
-    static function buildkitd_name(int $deployment_id): string {
-        return "buildkitd-d{$deployment_id}";
+    /**
+     * buildkitd-d{deployment id}, or buildkitd-p{task id} for a platform build;
+     * worker-admission-policy.yaml allows exactly these two prefixes.
+     */
+    static function buildkitd_name(int $id, string $kind = 'd'): string {
+        if (!in_array($kind, ['d', 'p'], true)) {
+            throw new InvalidArgumentException("Unknown build kind: {$kind}");
+        }
+
+        return "buildkitd-{$kind}{$id}";
     }
 
     static function _deployment(array $app, array $deployment, array $o): array {
