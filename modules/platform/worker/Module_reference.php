@@ -11,9 +11,9 @@ require_once APPPATH . 'modules/encryption/Encryptor.php';
  * Extensible to future reference types (env:, vault:, etc.)
  */
 class Module_reference {
-    private mysqli $db;
+    private PDO $db;
 
-    public function __construct(mysqli $db) {
+    public function __construct(PDO $db) {
         $this->db = $db;
     }
 
@@ -52,17 +52,15 @@ class Module_reference {
         $module_id = (int) $module_id;
 
         // <=> so a missing service matches rows stored with service NULL
-        $stmt = $this->db->prepare(
+        $row = Runtime::run(
+            $this->db,
             'SELECT variables FROM secrets
              WHERE module = ? AND module_id = ? AND service <=> ?
-             LIMIT 1'
-        );
-        $stmt->bind_param('sis', $module, $module_id, $service);
-        $stmt->execute();
-        $row = $stmt->get_result()->fetch_assoc();
-        $stmt->close();
+             LIMIT 1',
+            [$module, $module_id, $service]
+        )->fetch();
 
-        if ($row === null) {
+        if ($row === false) {
             return false;
         }
 

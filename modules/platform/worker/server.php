@@ -22,7 +22,7 @@ do {
 
     try {
         $db = Runtime::connect();
-    } catch (\mysqli_sql_exception $e) {
+    } catch (\PDOException $e) {
         $db = null;
         error_log("DB connection failed (attempt {$attempts}/{$max_attempts}): {$e->getMessage()}");
 
@@ -40,5 +40,3 @@ if ($db === null) {
 $runtime = new Runtime($db);
 $runtime->recover_stale_tasks();
 $runtime->poll();
-
-$db->close();

@@ -9,11 +9,11 @@
 class Task_log {
     const LEVELS = ['info', 'warn', 'error'];
 
-    private mysqli $db;
+    private PDO $db;
 
     private int $task_id;
 
-    function __construct(mysqli $db, int $task_id) {
+    function __construct(PDO $db, int $task_id) {
         $this->db = $db;
         $this->task_id = $task_id;
     }
@@ -52,13 +52,12 @@ class Task_log {
             fwrite(STDOUT, sprintf('[task #%d] %s: %s', $this->task_id, $level, $line) . PHP_EOL);
 
             try {
-                $stmt = $this->db->prepare(
-                    'INSERT INTO task_logs (task_id, level, message) VALUES (?, ?, ?)'
+                Runtime::run(
+                    $this->db,
+                    'INSERT INTO task_logs (task_id, level, message) VALUES (?, ?, ?)',
+                    [$this->task_id, $level, $line]
                 );
-                $stmt->bind_param('iss', $this->task_id, $level, $line);
-                $stmt->execute();
-                $stmt->close();
-            } catch (\mysqli_sql_exception $e) {
+            } catch (\PDOException $e) {
                 // Never let logging break a running task
                 fwrite(STDOUT, sprintf('[task #%d] log write failed: %s', $this->task_id, $e->getMessage()) . PHP_EOL);
             }

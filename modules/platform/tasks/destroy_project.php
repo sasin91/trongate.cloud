@@ -46,7 +46,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
         throw new InvalidArgumentException('destroy_project needs project_id');
     }
 
-    $project = Platform_task::row($db, 'SELECT id, namespace, deleted_at FROM project WHERE id = ?', 'i', $project_id);
+    $project = Platform_task::row($db, 'SELECT id, namespace, deleted_at FROM project WHERE id = ?', [$project_id]);
 
     if ($project === null || $project['deleted_at'] === null) {
         throw new RuntimeException("Project #{$project_id} is not a deleted project; refusing to destroy it");
@@ -64,7 +64,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
         FROM app a
         WHERE a.project_id = ?
         SQL;
-    $apps = Platform_task::row($db, $sql, 'i', $project_id);
+    $apps = Platform_task::row($db, $sql, [$project_id]);
 
     if ((int) ($apps['live'] ?? 0) > 0) {
         throw new RuntimeException("Project #{$project_id} still has apps; its namespace is left in place");

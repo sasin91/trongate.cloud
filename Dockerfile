@@ -1,7 +1,7 @@
 # Platform app (trongate.cloud): FrankenPHP serving public/ on :8080 as a non-root user.
 FROM dunglas/frankenphp:1.12-php8.4-bookworm
 
-RUN install-php-extensions pdo_mysql mysqli intl sodium
+RUN install-php-extensions pdo_mysql intl sodium
 
 ENV PORT=8080 \
     SERVER_NAME=:8080 \

@@ -73,7 +73,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
         ORDER BY id
         SQL;
 
-    $app_ids = array_column(Platform_task::rows($db, $sql, 'iii', $project_id, $app_id, $app_id), 'id');
+    $app_ids = array_column(Platform_task::rows($db, $sql, [$project_id, $app_id, $app_id]), 'id');
 
     if (!$app_ids) {
         $log->info('No verified custom domains to check');
@@ -101,13 +101,13 @@ return function (Task_log $log) use ($payload, $runtime): int {
               AND failed_at IS NULL
             SQL;
 
-        if ((int) (Platform_task::row($db, $sql, 'i', $id)['busy'] ?? 0) > 0) {
+        if ((int) (Platform_task::row($db, $sql, [$id])['busy'] ?? 0) > 0) {
             $log->info("{$domain} points here; the deploy in progress will route it");
             return true;
         }
 
         $current_id = (int) ($app['current_deployment_id'] ?? 0);
-        $deployment = $current_id > 0 ? Platform_task::row($db, 'SELECT * FROM deployment WHERE id = ? AND app_id = ?', 'ii', $current_id, $id) : null;
+        $deployment = $current_id > 0 ? Platform_task::row($db, 'SELECT * FROM deployment WHERE id = ? AND app_id = ?', [$current_id, $id]) : null;
 
         if ($deployment === null || empty($deployment['image'])) {
             $log->info("{$domain} points here; it goes live with the app's first deploy");
@@ -184,9 +184,9 @@ return function (Task_log $log) use ($payload, $runtime): int {
                         domain_checked_at = NOW()
                     WHERE id = ? AND verified_domain = ?
                     SQL;
-                Platform_task::execute($db, $sql, 'iis', $demote_after_failures, (int) $id, $domain);
+                Platform_task::execute($db, $sql, [$demote_after_failures, (int) $id, $domain]);
 
-                $failures = (int) (Platform_task::row($db, 'SELECT domain_dns_failures FROM app WHERE id = ?', 'i', (int) $id)['domain_dns_failures'] ?? 0);
+                $failures = (int) (Platform_task::row($db, 'SELECT domain_dns_failures FROM app WHERE id = ?', [(int) $id])['domain_dns_failures'] ?? 0);
 
                 if ($was_pointed && $failures >= $demote_after_failures) {
                     $log->warn("{$domain}: {$check['detail']} ({$failures} checks in a row). No longer routed from the next deploy on.");
@@ -204,7 +204,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
                     domain_checked_at = NOW()
                 WHERE id = ? AND verified_domain = ?
                 SQL;
-            Platform_task::execute($db, $sql, 'is', (int) $id, $domain);
+            Platform_task::execute($db, $sql, [(int) $id, $domain]);
             $log->info("{$domain}: {$check['detail']}");
 
             $namespace = Manifests::namespace_name($app);
@@ -243,7 +243,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
                     SET domain_secured_at = NOW()
                     WHERE id = ? AND verified_domain = ? AND domain_pointed_at IS NOT NULL AND domain_secured_at IS NULL
                     SQL;
-                Platform_task::execute($db, $sql, 'is', (int) $id, $domain);
+                Platform_task::execute($db, $sql, [(int) $id, $domain]);
                 $log->info("{$domain}: HTTPS certificate issued");
                 $app = Platform_task::app($db, $project_id, (int) $id);
             }

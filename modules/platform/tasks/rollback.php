@@ -49,9 +49,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
         $previous = Platform_task::row(
             $db,
             'SELECT status, completed_at FROM deployment WHERE id = ? AND app_id = ?',
-            'ii',
-            $previous_id,
-            $app_id
+            [$previous_id, $app_id],
         );
 
         if ($previous !== null && $previous['status'] === 'success') {

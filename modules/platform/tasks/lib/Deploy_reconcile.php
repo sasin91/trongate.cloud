@@ -81,7 +81,7 @@ class Deploy_reconcile {
         'error',
     ];
 
-    private mysqli $db;
+    private PDO $db;
 
     private Task_log $log;
 
@@ -200,13 +200,7 @@ class Deploy_reconcile {
             SQL;
 
         $limit = self::MAX_APPS_PER_RUN + 1;
-        $stmt = $this->db->prepare($sql);
-        $stmt->bind_param('i', $limit);
-        $stmt->execute();
-        $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-        $stmt->close();
-
-        return $rows;
+        return Platform_task::rows($this->db, $sql, [$limit]);
     }
 
     /**
@@ -230,10 +224,7 @@ class Deploy_reconcile {
      * Remember that the app was checked, for the rotation in apps().
      */
     function mark_checked(int $app_id): void {
-        $stmt = $this->db->prepare('UPDATE app SET reconciled_at = NOW() WHERE id = ?');
-        $stmt->bind_param('i', $app_id);
-        $stmt->execute();
-        $stmt->close();
+        Platform_task::execute($this->db, 'UPDATE app SET reconciled_at = NOW() WHERE id = ?', [$app_id]);
     }
 
     /**
@@ -269,9 +260,7 @@ class Deploy_reconcile {
         $built = Platform_task::row(
             $this->db,
             'SELECT id, status FROM deployment WHERE app_id = ? AND commit_sha = ? ORDER BY id DESC LIMIT 1',
-            'is',
-            $app_id,
-            $sha
+            [$app_id, $sha],
         );
 
         if ($built !== null) {
@@ -290,8 +279,7 @@ class Deploy_reconcile {
         $active = Platform_task::row(
             $this->db,
             "SELECT id FROM deployment WHERE app_id = ? AND status IN ('pending', 'building', 'deploying') LIMIT 1",
-            'i',
-            $app_id
+            [$app_id]
         );
 
         if ($active !== null) {
