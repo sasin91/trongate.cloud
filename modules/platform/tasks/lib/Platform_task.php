@@ -18,59 +18,29 @@ class Platform_task {
     /**
      * Fetch one row with a prepared statement
      */
-    static function row(mysqli $db, string $sql, string $types = '', mixed ...$params): ?array {
-        $stmt = $db->prepare($sql);
-
-        if ($types !== '') {
-            $stmt->bind_param($types, ...$params);
-        }
-
-        $stmt->execute();
-        $row = $stmt->get_result()->fetch_assoc();
-        $stmt->close();
-
-        return $row ?: null;
+    static function row(PDO $db, string $sql, array $params = []): ?array {
+        return Runtime::run($db, $sql, $params)->fetch() ?: null;
     }
 
     /**
      * Fetch all rows with a prepared statement
      */
-    static function rows(mysqli $db, string $sql, string $types = '', mixed ...$params): array {
-        $stmt = $db->prepare($sql);
-
-        if ($types !== '') {
-            $stmt->bind_param($types, ...$params);
-        }
-
-        $stmt->execute();
-        $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-        $stmt->close();
-
-        return $rows;
+    static function rows(PDO $db, string $sql, array $params = []): array {
+        return Runtime::run($db, $sql, $params)->fetchAll();
     }
 
     /**
      * Run a write with a prepared statement; returns the affected row count
      */
-    static function execute(mysqli $db, string $sql, string $types = '', mixed ...$params): int {
-        $stmt = $db->prepare($sql);
-
-        if ($types !== '') {
-            $stmt->bind_param($types, ...$params);
-        }
-
-        $stmt->execute();
-        $affected = (int) $stmt->affected_rows;
-        $stmt->close();
-
-        return $affected;
+    static function execute(PDO $db, string $sql, array $params = []): int {
+        return Runtime::run($db, $sql, $params)->rowCount();
     }
 
     /**
      * The app row plus its project's namespace and owner_id (project_owner_id);
      * fails unless it belongs to the project and neither is deleted
      */
-    static function app(mysqli $db, int $project_id, int $app_id): array {
+    static function app(PDO $db, int $project_id, int $app_id): array {
         $sql = <<<SQL
             SELECT a.*, p.namespace, p.owner_id AS project_owner_id
             FROM app a
@@ -78,7 +48,7 @@ class Platform_task {
             WHERE a.id = ? AND a.project_id = ? AND a.deleted_at IS NULL AND p.deleted_at IS NULL
             SQL;
 
-        $app = self::row($db, $sql, 'ii', $app_id, $project_id);
+        $app = self::row($db, $sql, [$app_id, $project_id]);
 
         if ($app === null) {
             throw new RuntimeException("App #{$app_id} not found for project #{$project_id} (or deleted)");
@@ -91,8 +61,8 @@ class Platform_task {
      * The namespace of a project, deleted or not (destroy_app and
      * destroy_project run after the rows are soft-deleted)
      */
-    static function project_namespace(mysqli $db, int $project_id): string {
-        $project = self::row($db, 'SELECT namespace FROM project WHERE id = ?', 'i', $project_id);
+    static function project_namespace(PDO $db, int $project_id): string {
+        $project = self::row($db, 'SELECT namespace FROM project WHERE id = ?', [$project_id]);
 
         if ($project === null) {
             throw new RuntimeException("Project #{$project_id} not found");
@@ -115,14 +85,14 @@ class Platform_task {
     /**
      * The deployment row; fails unless it belongs to the app
      */
-    static function deployment(mysqli $db, int $app_id, int $deployment_id): array {
+    static function deployment(PDO $db, int $app_id, int $deployment_id): array {
         $sql = <<<SQL
             SELECT *
             FROM deployment
             WHERE id = ? AND app_id = ?
             SQL;
 
-        $deployment = self::row($db, $sql, 'ii', $deployment_id, $app_id);
+        $deployment = self::row($db, $sql, [$deployment_id, $app_id]);
 
         if ($deployment === null) {
             throw new RuntimeException("Deployment #{$deployment_id} not found for app #{$app_id}");
@@ -135,9 +105,9 @@ class Platform_task {
      * The app's database server. Places the app on the active server
      * with the fewest apps (and spare capacity) on first deploy.
      */
-    static function database_server(mysqli $db, array &$app, Task_log $log): array {
+    static function database_server(PDO $db, array &$app, Task_log $log): array {
         if (!empty($app['database_server_id'])) {
-            $server = self::row($db, 'SELECT * FROM database_server WHERE id = ?', 'i', (int) $app['database_server_id']);
+            $server = self::row($db, 'SELECT * FROM database_server WHERE id = ?', [(int) $app['database_server_id']]);
 
             if ($server === null) {
                 throw new RuntimeException("Database server #{$app['database_server_id']} no longer exists");
@@ -164,16 +134,16 @@ class Platform_task {
         }
 
         // Only claim when still unplaced, so two concurrent deploys agree on one server
-        $stmt = $db->prepare('UPDATE app SET database_server_id = ? WHERE id = ? AND database_server_id IS NULL');
         $server_id = (int) $server['id'];
         $app_id = (int) $app['id'];
-        $stmt->bind_param('ii', $server_id, $app_id);
-        $stmt->execute();
-        $claimed = $stmt->affected_rows > 0;
-        $stmt->close();
+        $claimed = self::execute(
+            $db,
+            'UPDATE app SET database_server_id = ? WHERE id = ? AND database_server_id IS NULL',
+            [$server_id, $app_id]
+        ) > 0;
 
         if (!$claimed) {
-            $fresh = self::row($db, 'SELECT database_server_id FROM app WHERE id = ?', 'i', $app_id);
+            $fresh = self::row($db, 'SELECT database_server_id FROM app WHERE id = ?', [$app_id]);
             $app['database_server_id'] = $fresh['database_server_id'] ?? null;
 
             return self::database_server($db, $app, $log);
@@ -200,8 +170,7 @@ class Platform_task {
         $gate = self::row(
             $runtime->db(),
             'SELECT verified_domain, domain_pointed_at, domain_secured_at FROM app WHERE id = ?',
-            'i',
-            (int) $app['id']
+            [(int) $app['id']],
         );
         $app = ($gate ?? []) + $app;
 

@@ -6,7 +6,6 @@
     "require": {
         "php": "^8.4",
         "ext-curl": "*",
-        "ext-mysqli": "*",
         "ext-openssl": "*",
         "ext-pdo": "*",
         "ext-sodium": "*"
