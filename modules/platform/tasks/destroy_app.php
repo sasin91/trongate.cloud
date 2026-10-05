@@ -47,7 +47,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
         throw new InvalidArgumentException('destroy_app needs project_id and app_id');
     }
 
-    $row = Platform_task::row($db, 'SELECT project_id, deleted_at FROM app WHERE id = ?', 'i', $app_id);
+    $row = Platform_task::row($db, 'SELECT project_id, deleted_at FROM app WHERE id = ?', [$app_id]);
 
     if ($row !== null && ((int) $row['project_id'] !== $project_id || $row['deleted_at'] === null)) {
         throw new RuntimeException("App #{$app_id} is not a deleted app of project #{$project_id}; refusing to destroy it");
@@ -106,10 +106,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
     }
 
     // The route is gone, so another app may verify the domain now
-    $stmt = $db->prepare('UPDATE app SET verified_domain = NULL WHERE id = ? AND deleted_at IS NOT NULL');
-    $stmt->bind_param('i', $app_id);
-    $stmt->execute();
-    $stmt->close();
+    Platform_task::execute($db, 'UPDATE app SET verified_domain = NULL WHERE id = ? AND deleted_at IS NOT NULL', [$app_id]);
 
     $log->info("App #{$app_id} removed from {$namespace}; its database and files are kept");
 

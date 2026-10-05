@@ -42,10 +42,12 @@ require_once __DIR__ . '/Task_log.php';
  * than one worker replica it is still queued once per interval, and never
  * while its previous run is unfinished; whichever worker is free runs it.
  *
- * ## Why mysqli over PDO
+ * ## Database
  *
- * This worker is MariaDB-only and framework-free. mysqli is the native driver —
- * lighter than PDO, no abstraction layer needed.
+ * The worker talks to MariaDB through PDO, like the web app. Its own
+ * bookkeeping uses PDO directly (Runtime::run binds by value type, as the
+ * framework's Db does); queueing deploys goes through the framework's Db
+ * class over the same connection (see Worker_actions).
  *
  * ## Graceful Shutdown
  *
@@ -96,7 +98,7 @@ class Runtime {
 
     public bool $running = false;
 
-    private mysqli $db;
+    private PDO $db;
 
     private Module_reference $module_ref;
 
@@ -105,7 +107,7 @@ class Runtime {
 
     private int $next_schedule_check = 0;
 
-    function __construct(mysqli $db) {
+    function __construct(PDO $db) {
         $this->db = $db;
         $this->module_ref = new Module_reference($db);
 
@@ -124,21 +126,46 @@ class Runtime {
     /**
      * Open a database connection from the worker's environment.
      *
-     * @throws mysqli_sql_exception when the connection fails
+     * Not persistent: after a lost connection, reconnect() must get a new one.
+     *
+     * @throws PDOException when the connection fails
      */
-    static function connect(): mysqli {
-        mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
-
-        $db = new mysqli(
+    static function connect(): PDO {
+        $dsn = sprintf(
+            'mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4',
             getenv('DB_HOST') ?: '127.0.0.1',
-            getenv('DB_USER') ?: 'root',
-            getenv('DB_PASSWORD') ?: '',
-            getenv('DB_NAME') ?: 'tcloud',
-            (int) (getenv('DB_PORT') ?: 3306)
+            (int) (getenv('DB_PORT') ?: 3306),
+            getenv('DB_NAME') ?: 'tcloud'
         );
-        $db->set_charset('utf8mb4');
 
-        return $db;
+        return new PDO($dsn, getenv('DB_USER') ?: 'root', getenv('DB_PASSWORD') ?: '', [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        ]);
+    }
+
+    /**
+     * Prepare and execute SQL with positional (?) parameters. Each value is
+     * bound by its PHP type, as the framework's Db does, so ints work in
+     * LIMIT and null compares with <=>.
+     */
+    static function run(PDO $db, string $sql, array $params = []): PDOStatement {
+        $stmt = $db->prepare($sql);
+
+        foreach (array_values($params) as $i => $value) {
+            $type = match (true) {
+                is_int($value) => PDO::PARAM_INT,
+                is_bool($value) => PDO::PARAM_BOOL,
+                is_null($value) => PDO::PARAM_NULL,
+                default => PDO::PARAM_STR,
+            };
+
+            $stmt->bindValue($i + 1, $value, $type);
+        }
+
+        $stmt->execute();
+
+        return $stmt;
     }
 
     // -------------------------------------------------------------------------
@@ -148,7 +175,7 @@ class Runtime {
     /**
      * The worker's database connection.
      */
-    function db(): mysqli {
+    function db(): PDO {
         return $this->db;
     }
 
@@ -297,13 +324,11 @@ class Runtime {
         }
 
         $sets = ['status = ?'];
-        $types = 's';
         $values = [$status];
 
         foreach (['commit_sha', 'image', 'completed_at'] as $column) {
             if (array_key_exists($column, $extra)) {
                 $sets[] = "{$column} = ?";
-                $types .= 's';
                 $values[] = $extra[$column] === null ? null : (string) $extra[$column];
             }
         }
@@ -312,24 +337,19 @@ class Runtime {
             $sets[] = 'completed_at = NOW()';
         }
 
-        $types .= 'i';
         $values[] = $id;
 
-        $stmt = $this->db->prepare('UPDATE deployment SET ' . implode(', ', $sets) . ' WHERE id = ?');
-        $stmt->bind_param($types, ...$values);
-        $stmt->execute();
-        $stmt->close();
+        self::run($this->db, 'UPDATE deployment SET ' . implode(', ', $sets) . ' WHERE id = ?', $values);
 
         if ($status === 'success') {
-            $stmt = $this->db->prepare(
+            self::run(
+                $this->db,
                 'UPDATE app p
                  JOIN deployment d ON d.app_id = p.id
                  SET p.current_deployment_id = d.id
-                 WHERE d.id = ?'
+                 WHERE d.id = ?',
+                [$id]
             );
-            $stmt->bind_param('i', $id);
-            $stmt->execute();
-            $stmt->close();
         }
     }
 
@@ -338,13 +358,11 @@ class Runtime {
      * Runtime records when the task finished either way.
      */
     function record_periodic_summary(string $script, array $summary): void {
-        $stmt = $this->db->prepare(
-            'UPDATE scheduled_jobs SET last_summary = ? WHERE script = ?'
+        self::run(
+            $this->db,
+            'UPDATE scheduled_jobs SET last_summary = ? WHERE script = ?',
+            [json_encode($summary, JSON_UNESCAPED_SLASHES), $script]
         );
-        $json = json_encode($summary, JSON_UNESCAPED_SLASHES);
-        $stmt->bind_param('ss', $json, $script);
-        $stmt->execute();
-        $stmt->close();
     }
 
     // -------------------------------------------------------------------------
@@ -355,28 +373,22 @@ class Runtime {
      * Recover tasks left behind by a killed worker and fail their deployments.
      */
     function recover_stale_tasks(): void {
-        $stmt = $this->db->prepare(
+        $affected = self::run(
+            $this->db,
             'UPDATE tasks
              SET failed_at = NOW(),
                  error_message = ?
              WHERE started_at < NOW() - INTERVAL ? SECOND
                AND completed_at IS NULL
-               AND failed_at IS NULL'
-        );
-
-        $message = 'Worker was terminated (exceeded termination grace period)';
-        $threshold = self::STALE_THRESHOLD_SECONDS;
-        $stmt->bind_param('si', $message, $threshold);
-        $stmt->execute();
-
-        $affected = $stmt->affected_rows;
-        $stmt->close();
+               AND failed_at IS NULL',
+            ['Worker was terminated (exceeded termination grace period)', self::STALE_THRESHOLD_SECONDS]
+        )->rowCount();
 
         if ($affected > 0) {
             $this->log("Recovered {$affected} stale task(s)");
 
             // Deployments whose task was killed would otherwise never finish
-            $this->db->query(
+            $this->db->exec(
                 "UPDATE deployment d
                  JOIN tasks t ON t.deployment_id = d.id
                  SET d.status = 'failed', d.completed_at = NOW()
@@ -418,13 +430,8 @@ class Runtime {
         $this->log('Database connection lost, reconnecting...');
 
         try {
-            $this->db->close();
-        } catch (\Throwable) {
-        }
-
-        try {
             $this->db = self::connect();
-        } catch (\mysqli_sql_exception $e) {
+        } catch (\PDOException $e) {
             $this->log("Reconnect failed: {$e->getMessage()}");
             return false;
         }
@@ -443,16 +450,16 @@ class Runtime {
      */
     private function pick_task(): ?array {
         try {
-            $this->db->begin_transaction();
-        } catch (\mysqli_sql_exception) {
+            $this->db->beginTransaction();
+        } catch (\PDOException) {
             // Connection dead — errno 2006/2013
             if (!$this->reconnect()) {
                 return null;
             }
 
             try {
-                $this->db->begin_transaction();
-            } catch (\mysqli_sql_exception) {
+                $this->db->beginTransaction();
+            } catch (\PDOException) {
                 return null;
             }
         }
@@ -469,24 +476,21 @@ class Runtime {
                  FOR UPDATE SKIP LOCKED'
             );
 
-            $task = $result->fetch_assoc();
-            $result->free();
+            $task = $result->fetch();
+            $result->closeCursor();
 
-            if ($task === null) {
-                $this->db->rollback();
+            if ($task === false) {
+                $this->db->rollBack();
                 return null;
             }
 
-            $stmt = $this->db->prepare('UPDATE tasks SET started_at = NOW() WHERE id = ?');
-            $stmt->bind_param('i', $task['id']);
-            $stmt->execute();
-            $stmt->close();
+            self::run($this->db, 'UPDATE tasks SET started_at = NOW() WHERE id = ?', [(int) $task['id']]);
 
             $this->db->commit();
-        } catch (\mysqli_sql_exception $e) {
+        } catch (\PDOException $e) {
             $this->log("Picking a task failed: {$e->getMessage()}");
             try {
-                $this->db->rollback();
+                $this->db->rollBack();
             } catch (\Throwable) {
             }
             return null;
@@ -520,11 +524,11 @@ class Runtime {
                 if ($this->claim_periodic_task($script, $interval)) {
                     $this->log("Queued periodic task {$script}");
                 }
-            } catch (\mysqli_sql_exception $e) {
+            } catch (\PDOException $e) {
                 // A dead connection is picked up by pick_task's reconnect
                 $this->log("Scheduling {$script} failed: {$e->getMessage()}");
                 try {
-                    $this->db->rollback();
+                    $this->db->rollBack();
                 } catch (\Throwable) {
                 }
             }
@@ -536,14 +540,12 @@ class Runtime {
      * The conditional UPDATE is the claim: of several workers, one wins.
      */
     private function claim_periodic_task(string $script, int $interval): bool {
-        $stmt = $this->db->prepare('INSERT IGNORE INTO scheduled_jobs (script) VALUES (?)');
-        $stmt->bind_param('s', $script);
-        $stmt->execute();
-        $stmt->close();
+        self::run($this->db, 'INSERT IGNORE INTO scheduled_jobs (script) VALUES (?)', [$script]);
 
-        $this->db->begin_transaction();
+        $this->db->beginTransaction();
 
-        $stmt = $this->db->prepare(
+        $claimed = self::run(
+            $this->db,
             'UPDATE scheduled_jobs s
              SET s.last_queued_at = NOW()
              WHERE s.script = ?
@@ -553,34 +555,26 @@ class Runtime {
                    WHERE t.script = s.script
                      AND t.completed_at IS NULL
                      AND t.failed_at IS NULL
-               )'
-        );
-        $stmt->bind_param('si', $script, $interval);
-        $stmt->execute();
-        $claimed = $stmt->affected_rows === 1;
-        $stmt->close();
+               )',
+            [$script, $interval]
+        )->rowCount() === 1;
 
         if (!$claimed) {
-            $this->db->rollback();
+            $this->db->rollBack();
             return false;
         }
 
-        $stmt = $this->db->prepare("INSERT INTO tasks (project_id, script, payload) VALUES (NULL, ?, '{}')");
-        $stmt->bind_param('s', $script);
-        $stmt->execute();
-        $stmt->close();
+        self::run($this->db, "INSERT INTO tasks (project_id, script, payload) VALUES (NULL, ?, '{}')", [$script]);
 
         // Failed runs too: scheduled_jobs.last_failed_at keeps the signal
-        $stmt = $this->db->prepare(
+        self::run(
+            $this->db,
             'DELETE FROM tasks
              WHERE script = ?
                AND project_id IS NULL
-               AND COALESCE(completed_at, failed_at) < NOW() - INTERVAL ? DAY'
+               AND COALESCE(completed_at, failed_at) < NOW() - INTERVAL ? DAY',
+            [$script, self::PERIODIC_RETENTION_DAYS]
         );
-        $retention = self::PERIODIC_RETENTION_DAYS;
-        $stmt->bind_param('si', $script, $retention);
-        $stmt->execute();
-        $stmt->close();
 
         $this->db->commit();
 
@@ -648,10 +642,7 @@ class Runtime {
 
     private function complete(array $task): void {
         $this->run_safely(function () use ($task) {
-            $stmt = $this->db->prepare('UPDATE tasks SET completed_at = NOW() WHERE id = ?');
-            $stmt->bind_param('i', $task['id']);
-            $stmt->execute();
-            $stmt->close();
+            self::run($this->db, 'UPDATE tasks SET completed_at = NOW() WHERE id = ?', [$task['id']]);
 
             $this->record_periodic_run($task, 'last_finished_at');
 
@@ -664,12 +655,7 @@ class Runtime {
 
     private function fail(array $task, string $message): void {
         $this->run_safely(function () use ($task, $message) {
-            $stmt = $this->db->prepare(
-                'UPDATE tasks SET failed_at = NOW(), error_message = ? WHERE id = ?'
-            );
-            $stmt->bind_param('si', $message, $task['id']);
-            $stmt->execute();
-            $stmt->close();
+            self::run($this->db, 'UPDATE tasks SET failed_at = NOW(), error_message = ? WHERE id = ?', [$message, $task['id']]);
 
             $this->record_periodic_run($task, 'last_failed_at');
 
@@ -689,20 +675,13 @@ class Runtime {
             return;
         }
 
-        $stmt = $this->db->prepare("UPDATE scheduled_jobs SET {$column} = NOW() WHERE script = ?");
-        $stmt->bind_param('s', $task['script']);
-        $stmt->execute();
-        $stmt->close();
+        self::run($this->db, "UPDATE scheduled_jobs SET {$column} = NOW() WHERE script = ?", [$task['script']]);
     }
 
     private function deployment_is_terminal(int $deployment_id): bool {
-        $stmt = $this->db->prepare('SELECT status FROM deployment WHERE id = ?');
-        $stmt->bind_param('i', $deployment_id);
-        $stmt->execute();
-        $row = $stmt->get_result()->fetch_assoc();
-        $stmt->close();
+        $row = self::run($this->db, 'SELECT status FROM deployment WHERE id = ?', [$deployment_id])->fetch();
 
-        return $row === null || in_array($row['status'], self::TERMINAL_STATUSES, true);
+        return $row === false || in_array($row['status'], self::TERMINAL_STATUSES, true);
     }
 
     /**
@@ -712,7 +691,7 @@ class Runtime {
     private function run_safely(Closure $callback): void {
         try {
             $callback();
-        } catch (\mysqli_sql_exception $e) {
+        } catch (\PDOException $e) {
             $this->log("Task bookkeeping failed: {$e->getMessage()}");
         }
     }
