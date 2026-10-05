@@ -1,6 +1,6 @@
 # The worker creates and deletes one buildkitd Pod per build in this namespace
 # (Manifests::buildkitd). worker-admission-policy.yaml (platform/) limits those
-# writes to Pods named buildkitd-d* running the pinned BuildKit image.
+# writes to Pods named buildkitd-d* or buildkitd-p* running the pinned BuildKit image.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:

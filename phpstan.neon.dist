@@ -39,6 +39,9 @@ parameters:
         - GITHUB_APP_CLIENT_SECRET
         - GITHUB_APP_PRIVATE_KEY
         - GITHUB_APP_WEBHOOK_SECRET
+        - PLATFORM_SOURCE_REPOSITORY
+        - PLATFORM_SOURCE_BRANCH
+        - PLATFORM_IMAGES_REGISTRY
     ignoreErrors:
         # Task scripts are included by Runtime and receive $payload, $task, $runtime
         -

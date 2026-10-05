@@ -31,6 +31,14 @@ defined('KUBE_TOKEN') || define('KUBE_TOKEN', getenv('KUBE_TOKEN') ?: '');
 defined('KUBE_CA_FILE') || define('KUBE_CA_FILE', getenv('KUBE_CA_FILE') ?: '');
 // RWX StorageClass (JuiceFS) for per-project persistent paths
 defined('FILES_STORAGE_CLASS') || define('FILES_STORAGE_CLASS', getenv('FILES_STORAGE_CLASS') ?: 'tenant-files');
+// The platform deploying itself: a push to PLATFORM_SOURCE_BRANCH of this GitHub
+// repository ("owner/name", where the GitHub App is installed) makes the worker
+// build Dockerfile and Dockerfile.worker (build_platform task) and push them to
+// PLATFORM_IMAGES_REGISTRY as :main-{commit time}-{short sha}, which Flux image
+// automation pins in the infra repository. Empty turns it off.
+defined('PLATFORM_SOURCE_REPOSITORY') || define('PLATFORM_SOURCE_REPOSITORY', strtolower(getenv('PLATFORM_SOURCE_REPOSITORY') ?: ''));
+defined('PLATFORM_SOURCE_BRANCH') || define('PLATFORM_SOURCE_BRANCH', getenv('PLATFORM_SOURCE_BRANCH') ?: 'main');
+defined('PLATFORM_IMAGES_REGISTRY') || define('PLATFORM_IMAGES_REGISTRY', getenv('PLATFORM_IMAGES_REGISTRY') ?: 'registry.trongate.cloud/platform');
 // Seconds between reconcile_deploys runs: the worker queues a deploy for a branch
 // head that a missed GitHub push webhook never built. 0 turns it off.
 defined('DEPLOY_RECONCILE_INTERVAL') || define('DEPLOY_RECONCILE_INTERVAL', getenv('DEPLOY_RECONCILE_INTERVAL') !== false ? (int) getenv('DEPLOY_RECONCILE_INTERVAL') : 600);

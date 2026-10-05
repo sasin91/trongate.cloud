@@ -13,8 +13,10 @@ resources:
   - worker-admission-policy.yaml
 # Not listed on purpose: secrets.example.yaml (create a SOPS-encrypted copy, see ../README.md)
 
-# Built from ../../Dockerfile and ../../Dockerfile.worker by bin/push-images.sh
-# and pushed to the cluster's own registry; pin tags (or let Flux image automation do it)
+# Built from ../../Dockerfile and ../../Dockerfile.worker by the worker's
+# build_platform task on every push to main (or bin/push-images.sh) and pushed to
+# the cluster's own registry. The cluster pins the tag in the infra repository,
+# where Flux image automation updates it (../README.md, "Deploying the platform").
 images:
   - name: trongate-cloud
     newName: registry.trongate.cloud/platform/trongate-cloud
