@@ -2,7 +2,8 @@
 /**
  * apps/{id}/database (Database::index). Expects: $app, $urls, $live_state, $can_rollback, $database_name,
  * $tables (App_database::tables), $table (one of $tables or null), $columns, $rows, $more, $page,
- * $sql, $result (App_database::run or null), $query_error, $error (the database cannot be opened).
+ * $sql, $result (App_database::run or null), $query_error, $error (the database cannot be opened),
+ * $recent_actions (Database_model::recent_actions).
  */
 $e = fn($value) => htmlspecialchars((string) $value);
 $base = 'apps/' . (int) $app->id . '/database';
@@ -79,10 +80,17 @@ $row_key = fn(array $row) => array_combine($primary_key, array_map(fn($c) => (st
                     <h2 id="db-sql-h">SQL</h2>
                     <span class="muted ov-mono"><?= $e($database_name) ?></span>
                 </div>
-                <?= form_open($base . '/query' . ($table !== null ? '?' . http_build_query(['table' => $table['name']]) : ''), ['class' => 'ov-pad db-sql']) ?>
+                <?= form_open($base . '/query' . ($table !== null ? '?' . http_build_query(['table' => $table['name']]) : ''), [
+                    'class' => 'ov-pad db-sql',
+                    'onsubmit' => "return !this.allow_changes.checked || confirm('Run this statement with changes allowed? It can change or delete data in " . $e($database_name) . ".')",
+                ]) ?>
                     <textarea name="sql" id="db-sql" aria-label="SQL statement" class="form-input mono" rows="4" spellcheck="false" placeholder="SELECT * FROM <?= $e($table['name'] ?? 'users') ?> LIMIT 10"><?= $e($sql) ?></textarea>
                     <div class="db-sql-foot">
-                        <span class="form-hint">One statement at a time, as your app's own database user. Stops after <?= App_database::STATEMENT_SECONDS ?> seconds.</span>
+                        <span class="form-hint">One statement at a time, as your app's own database user. Read-only unless you allow changes. Stops after <?= App_database::STATEMENT_SECONDS ?> seconds. Every statement is logged.</span>
+                        <label class="checkbox-label db-allow">
+                            <input type="checkbox" name="allow_changes" value="1" id="db-allow-changes">
+                            Allow changes
+                        </label>
                         <button type="submit" class="btn-primary">Run</button>
                     </div>
                 <?= form_close() ?>
@@ -158,6 +166,24 @@ $row_key = fn(array $row) => array_combine($primary_key, array_map(fn($c) => (st
             </section>
             <?php elseif ($result === null && $query_error === null && $tables !== []): ?>
                 <p class="muted">Pick a table to see its rows.</p>
+            <?php endif; ?>
+
+            <?php if ($recent_actions !== []): ?>
+            <section class="ov-card" aria-labelledby="db-log-h">
+                <div class="ov-card-head">
+                    <h2 id="db-log-h">Recent activity</h2>
+                    <span class="muted">times in UTC</span>
+                </div>
+                <ul class="db-log">
+                    <?php foreach ($recent_actions as $entry): ?>
+                    <li>
+                        <span class="muted"><?= $e(substr((string) $entry->created_at, 0, 16)) ?> &middot; <?= $e($entry->who ?? 'someone') ?></span>
+                        <code title="<?= $e($entry->statement) ?>"><?= $e(preg_replace('/^(.{140}).+$/us', '$1…', preg_replace('/\s+/', ' ', (string) $entry->statement))) ?></code>
+                        <span class="<?= $entry->error !== null ? 'db-log-error' : 'muted' ?>"><?= $entry->error !== null ? $e($entry->error) : ($entry->affected !== null ? (int) $entry->affected . ' changed' : 'read') ?></span>
+                    </li>
+                    <?php endforeach; ?>
+                </ul>
+            </section>
             <?php endif; ?>
         </div>
     </div>

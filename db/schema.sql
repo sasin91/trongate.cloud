@@ -169,6 +169,22 @@ CREATE TABLE database_server (
 INSERT INTO database_server (label, host, operator_name) VALUES
 ('shared-1', 'shared-1.databases.svc.cluster.local', 'shared-1');
 
+-- Every statement run and row changed from an app's Database tab (modules/apps/database).
+-- Who, what and the outcome; row edits keep the table, key and columns, not the values.
+CREATE TABLE app_database_log (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  app_id INT NOT NULL,
+  customer_id INT NOT NULL,
+  action ENUM('query', 'insert', 'update', 'delete') NOT NULL,
+  statement TEXT NOT NULL,
+  allow_changes TINYINT(1) NOT NULL DEFAULT 0,
+  affected INT NULL,
+  error VARCHAR(500) NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_app (app_id, id),
+  KEY idx_customer_time (customer_id, created_at)
+);
+
 -- Deleting an app soft-deletes the row: it keeps the slug ({slug}.PLATFORM_APPS_DOMAIN
 -- is never reused), the deployment history and the database placement.
 CREATE TABLE app (

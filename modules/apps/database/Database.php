@@ -37,18 +37,26 @@ class Database extends Trongate {
         $this->_require_post_with_csrf();
 
         $sql = trim((string) post('sql'));
+        $allow_changes = (bool) post('allow_changes');
         $page = ['sql' => $sql];
+        $refusal = $sql === '' ? null : App_database::refusal($sql, $allow_changes);
 
-        if ($sql !== '') {
+        if ($refusal !== null) {
+            $page['query_error'] = $refusal; // refused before it reaches the database, so not logged
+        } elseif ($sql !== '') {
             $database = $this->_open_app_database($app);
 
             if (is_string($database)) {
                 $page['error'] = $database;
             } else {
                 try {
-                    $page['result'] = $database->run($sql);
-                } catch (PDOException $e) {
-                    $page['query_error'] = $this->_database_error($e);
+                    $page['result'] = $this->_logged($app, 'query', $sql, $allow_changes, function () use ($database, $sql, $allow_changes) {
+                        $result = $database->run($sql, $allow_changes);
+
+                        return [$result, $result['affected']];
+                    });
+                } catch (PDOException | RuntimeException $e) {
+                    $page['query_error'] = $e instanceof PDOException ? $this->_database_error($e) : $e->getMessage();
                 }
             }
         }
@@ -121,10 +129,14 @@ class Database extends Trongate {
         }
 
         try {
-            $is_new ? $database->insert($table, $values) : $database->update($table, $key, $values);
-        } catch (PDOException $e) {
+            $this->_logged($app, $is_new ? 'insert' : 'update', $this->_describe_row_change($is_new ? 'insert' : 'update', $table, $key, array_keys($values)), true, function () use ($database, $table, $key, $values, $is_new) {
+                $affected = $is_new ? $database->insert($table, $values) : $database->update($table, $key, $values);
+
+                return [$affected, $affected];
+            });
+        } catch (PDOException | RuntimeException $e) {
             $this->_database_row_page($app, $table, $key, [
-                'error' => $this->_database_error($e),
+                'error' => $e instanceof PDOException ? $this->_database_error($e) : $e->getMessage(),
                 'posted' => $values + $fields,
             ]);
             return;
@@ -152,16 +164,80 @@ class Database extends Trongate {
         }
 
         try {
-            $deleted = $database->delete($table, $key);
+            $deleted = $this->_logged($app, 'delete', $this->_describe_row_change('delete', $table, $key), true, function () use ($database, $table, $key) {
+                $deleted = $database->delete($table, $key);
+
+                return [$deleted, $deleted];
+            });
             set_flashdata($deleted > 0 ? 'Row deleted.' : 'That row was already gone.');
-        } catch (PDOException $e) {
-            set_flashdata('Could not delete the row: ' . htmlspecialchars($this->_database_error($e)));
+        } catch (PDOException | RuntimeException $e) {
+            set_flashdata('Could not delete the row: ' . htmlspecialchars($e instanceof PDOException ? $this->_database_error($e) : $e->getMessage()));
         }
 
         redirect($this->_database_url($app, ['table' => $table]));
     }
 
     // --- Helpers ---
+
+    /**
+     * Run $run (returning [its result, rows affected]) under the customer's
+     * rate limit and lock, and record it in app_database_log, failed or not.
+     *
+     * @throws RuntimeException when the customer is over Database_model::ACTIONS_PER_MINUTE
+     *         or already has a statement running
+     * @throws PDOException from $run, after it is logged
+     */
+    function _logged(object $app, string $action, string $statement, bool $allow_changes, callable $run): mixed {
+        $customer = $this->_customer_or_redirect();
+
+        if ($this->model->over_action_limit((int) $customer->id)) {
+            throw new RuntimeException('You ran ' . Database_model::ACTIONS_PER_MINUTE . ' statements in the last minute. Wait a moment, then try again.');
+        }
+
+        if (!$this->model->take_action_lock((int) $customer->id)) {
+            throw new RuntimeException('Another statement of yours is still running. Wait for it to finish.');
+        }
+
+        $entry = [
+            'app_id' => (int) $app->id,
+            'customer_id' => (int) $customer->id,
+            'action' => $action,
+            'statement' => $statement,
+            'allow_changes' => $allow_changes,
+            'affected' => null,
+            'error' => null,
+        ];
+
+        try {
+            [$result, $entry['affected']] = $run();
+
+            return $result;
+        } catch (PDOException $e) {
+            $entry['error'] = $this->_database_error($e);
+            throw $e;
+        } finally {
+            $this->model->log_action($entry);
+            $this->model->release_action_lock((int) $customer->id);
+        }
+    }
+
+    /**
+     * A row change as logged: table, key and the columns written, never the values
+     *
+     * @param string $action insert, update or delete
+     * @param array<string, string> $key
+     * @param list<string> $columns
+     */
+    function _describe_row_change(string $action, string $table, array $key, array $columns = []): string {
+        $where = implode(' AND ', array_map(fn($column, $value) => App_database::quote_name($column) . ' = ' . var_export($value, true), array_keys($key), $key));
+        $set = implode(', ', array_map([App_database::class, 'quote_name'], $columns));
+
+        return match ($action) {
+            'insert' => 'INSERT INTO ' . App_database::quote_name($table) . ' (' . $set . ')',
+            'delete' => 'DELETE FROM ' . App_database::quote_name($table) . ' WHERE ' . $where,
+            default => 'UPDATE ' . App_database::quote_name($table) . ' SET ' . $set . ' WHERE ' . $where,
+        };
+    }
 
     /**
      * Render the database page. $page may carry sql, result, query_error and error.
@@ -183,6 +259,7 @@ class Database extends Trongate {
             'result' => null,
             'query_error' => null,
             'error' => null,
+            'recent_actions' => $this->model->recent_actions((int) $app->id),
             'crumbs' => [...$this->_app_crumbs($app), ['apps/' . $app->id . '/database', 'Database']],
             'additional_includes_top' => ['apps_module/css/apps.css', 'apps-database_module/css/database.css'],
         ];

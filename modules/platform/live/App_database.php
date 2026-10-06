@@ -18,6 +18,18 @@ class App_database {
     /** Rows shown for a query; the rest are dropped */
     const MAX_RESULT_ROWS = 500;
 
+    /** Bytes of result data read for a query, so a SELECT of large blobs cannot exhaust PHP's memory */
+    const MAX_RESULT_BYTES = 2 * 1024 * 1024;
+
+    /** A longer statement is refused (the SQL box is for queries, not imports) */
+    const MAX_STATEMENT_BYTES = 64 * 1024;
+
+    /** First keywords of statements that only read. They run in a read-only transaction. */
+    const READ_STATEMENTS = ['SELECT', 'WITH', 'SHOW', 'DESCRIBE', 'DESC', 'EXPLAIN'];
+
+    /** First keywords of statements that change data or tables; they run only with $allow_changes */
+    const WRITE_STATEMENTS = ['INSERT', 'UPDATE', 'DELETE', 'REPLACE', 'CREATE', 'ALTER', 'DROP', 'TRUNCATE', 'RENAME'];
+
     /** MariaDB aborts a statement after this long, so one query cannot tie up a web worker */
     const STATEMENT_SECONDS = 15;
 
@@ -211,15 +223,19 @@ class App_database {
 
     /**
      * @param array<string, string|null> $values column => value; left-out columns get their default
+     * @return int rows added
      */
-    function insert(string $table, array $values): void {
+    function insert(string $table, array $values): int {
         $sql = $values === []
             ? 'INSERT INTO ' . self::quote_name($table) . ' () VALUES ()'
             : 'INSERT INTO ' . self::quote_name($table)
                 . ' (' . implode(', ', array_map([self::class, 'quote_name'], array_keys($values))) . ')'
                 . ' VALUES (' . implode(', ', array_fill(0, count($values), '?')) . ')';
 
-        $this->pdo->prepare($sql)->execute(array_values($values));
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute(array_values($values));
+
+        return $stmt->rowCount();
     }
 
     /**
@@ -235,13 +251,74 @@ class App_database {
     }
 
     /**
-     * Run one SQL statement as typed. A statement that returns rows gives its
-     * first MAX_RESULT_ROWS rows; any other gives the number of rows it changed.
+     * Why a statement may not run here, or null when it may (see run()).
+     * Anything but the statements in READ_STATEMENTS and WRITE_STATEMENTS is
+     * refused: SET (which could lift the read-only mode and the time limit),
+     * LOCK, HANDLER, LOAD DATA, CALL, PREPARE and the like.
+     */
+    static function refusal(string $sql, bool $allow_changes): ?string {
+        if (strlen($sql) > self::MAX_STATEMENT_BYTES) {
+            return 'That statement is longer than ' . (self::MAX_STATEMENT_BYTES / 1024) . ' KB.';
+        }
+
+        // Executable comments (/*! ... */, /*M! ... */) run their contents as SQL
+        if (preg_match('#/\*M?!#', $sql)) {
+            return 'Executable comments (/*! ... */) are not allowed here.';
+        }
+
+        // Files on the database server; the app's user lacks the FILE privilege anyway
+        if (preg_match('/\bINTO\s+(OUT|DUMP)FILE\b|\bLOAD_FILE\s*\(/i', $sql)) {
+            return 'Reading or writing files on the database server is not allowed.';
+        }
+
+        $kind = self::statement_kind($sql);
+
+        if ($kind === null) {
+            return 'Only SELECT, SHOW, DESCRIBE and EXPLAIN run here, or with "Allow changes" INSERT, UPDATE, DELETE, REPLACE, CREATE, ALTER, DROP, TRUNCATE and RENAME.';
+        }
+
+        if ($kind === 'write' && !$allow_changes) {
+            return 'This statement changes your database. Tick "Allow changes" to run it.';
+        }
+
+        return null;
+    }
+
+    /**
+     * 'read' or 'write' by the statement's first keyword (after comments), or null when it is neither
+     */
+    static function statement_kind(string $sql): ?string {
+        $sql = (string) preg_replace('#^(\s+|--(\s[^\n]*)?(\n|$)|\#[^\n]*(\n|$)|/\*.*?\*/)*#s', '', $sql);
+        $keyword = strtoupper((string) preg_replace('/^([A-Za-z]+).*$/s', '$1', $sql));
+
+        return match (true) {
+            in_array($keyword, self::READ_STATEMENTS, true) => 'read',
+            in_array($keyword, self::WRITE_STATEMENTS, true) => 'write',
+            default => null,
+        };
+    }
+
+    /**
+     * Run one SQL statement as typed, once refusal() allows it. Without
+     * $allow_changes it runs in a read-only transaction, so MariaDB itself
+     * refuses any write (a function with side effects included).
+     *
+     * A statement that returns rows gives its first MAX_RESULT_ROWS rows (and
+     * at most MAX_RESULT_BYTES); any other gives the number of rows it changed.
      *
      * @return array{columns: list<string>, rows: list<list<string|null>>, truncated: bool, affected: int|null, seconds: float}
+     * @throws InvalidArgumentException with refusal() when the statement may not run
      * @throws PDOException with MariaDB's own message when the statement fails
      */
-    function run(string $sql): array {
+    function run(string $sql, bool $allow_changes = false): array {
+        $refusal = self::refusal($sql, $allow_changes);
+
+        if ($refusal !== null) {
+            throw new InvalidArgumentException($refusal);
+        }
+
+        $this->pdo->exec('SET SESSION TRANSACTION ' . ($allow_changes ? 'READ WRITE' : 'READ ONLY'));
+
         $started = microtime(true);
         $stmt = $this->pdo->query($sql);
 
@@ -256,10 +333,13 @@ class App_database {
         }
 
         $rows = [];
+        $bytes = 0;
         $truncated = false;
 
         while (($row = $stmt->fetch(PDO::FETCH_NUM)) !== false) {
-            if (count($rows) === self::MAX_RESULT_ROWS) {
+            $bytes += array_sum(array_map(fn($value) => strlen((string) $value), $row));
+
+            if (count($rows) === self::MAX_RESULT_ROWS || $bytes > self::MAX_RESULT_BYTES) {
                 $truncated = true;
                 break;
             }
