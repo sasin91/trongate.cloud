@@ -1,9 +1,10 @@
 <?php
 
 require_once APPPATH . 'modules/platform/live/App_state.php';
+require_once APPPATH . 'modules/platform/live/App_logs.php';
 
 /**
- * Live app state for controllers (see App_state). Pages render without it when
+ * Live app state and logs for controllers (see App_state, App_logs). Pages render without it when
  * the cluster cannot be reached, e.g. in local development.
  */
 trait Live_app_state {
@@ -35,6 +36,24 @@ trait Live_app_state {
 
         try {
             return App_state::for_app(Kubernetes::from_env(), Manifests::namespace_name($app), (int) $app->id);
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * An app's state and log lines newer than $cursor (see App_logs::read),
+     * or null when the cluster cannot be read or it was never deployed
+     *
+     * @return array{state: array{state: string, label: string, detail: string}, lines: list<array{time: string, pod: string, text: string}>, cursor: string, pods: int}|null
+     */
+    function _live_app_logs(object $app, string $cursor = ''): ?array {
+        if (empty($app->current_deployment_id)) {
+            return null;
+        }
+
+        try {
+            return App_logs::read(Kubernetes::from_env(), Manifests::namespace_name($app), (int) $app->id, $cursor);
         } catch (Throwable $e) {
             return null;
         }
