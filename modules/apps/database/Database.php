@@ -75,9 +75,11 @@ class Database extends Trongate {
         $this->_require_post_with_csrf();
 
         $table = (string) post('table');
-        $key = $this->_posted_key($_POST['key'] ?? null);
-        $fields = array_map('strval', array_filter(is_array($_POST['fields'] ?? null) ? $_POST['fields'] : [], 'is_scalar'));
-        $nulls = is_array($_POST['null'] ?? null) ? $_POST['null'] : [];
+        $key = $this->_posted_key(post('key'));
+        $fields = post('fields');
+        $fields = is_array($fields) ? array_map('strval', array_filter($fields, 'is_scalar')) : [];
+        $nulls = post('null');
+        $nulls = is_array($nulls) ? $nulls : [];
 
         [$database, $columns] = $this->_database_table_or_redirect($app, $table);
         $is_new = $key === [];
@@ -141,7 +143,7 @@ class Database extends Trongate {
         $this->_require_post_with_csrf();
 
         $table = (string) post('table');
-        $key = $this->_posted_key($_POST['key'] ?? null);
+        $key = $this->_posted_key(post('key'));
 
         [$database, $columns] = $this->_database_table_or_redirect($app, $table);
 
