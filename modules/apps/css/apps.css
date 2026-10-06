@@ -750,3 +750,14 @@ a.status-pill {
         font-size: 0.875rem;
     }
 }
+
+.app-log-copy {
+    min-height: 36px;
+    padding: 0 0.75rem;
+    font-size: 0.875rem;
+}
+
+.app-log-copy:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
