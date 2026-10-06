@@ -44,12 +44,15 @@ header {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 1rem;
 }
 
 .header-left {
     display: flex;
     align-items: center;
     gap: 1.5rem;
+    flex: 1;
+    min-width: 0;
 }
 
 .header-right {
@@ -81,6 +84,27 @@ header {
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 16rem;
+    min-width: 0;
+}
+
+/* When space runs out, the project gives way before the current page */
+.header-crumbs .nav-link:not([aria-current]) {
+    flex-shrink: 3;
+}
+
+.header-crumbs .nav-link[aria-current="page"] {
+    flex-shrink: 1;
+}
+
+.header-nav {
+    display: flex;
+    gap: 1.25rem;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.header-nav .nav-link {
+    white-space: nowrap;
 }
 
 .header-crumbs .nav-link[aria-current="page"] {
@@ -96,6 +120,7 @@ header {
     display: inline-flex;
     align-items: center;
     gap: 0.6rem;
+    flex-shrink: 0;
 }
 
 .header-title {
@@ -133,6 +158,41 @@ main {
 .container {
     max-width: 1200px;
     margin: 0 auto;
+}
+
+/* Narrow screens: the mark stands in for the wordmark and links to Projects */
+@media (max-width: 640px) {
+    header {
+        padding: 0 1rem;
+        height: 56px;
+    }
+
+    .header-left {
+        gap: 0.75rem;
+    }
+
+    .header-crumbs .nav-link {
+        max-width: none;
+    }
+
+    .header-left:has(.header-crumbs) .header-separator,
+    .header-projects {
+        display: none;
+    }
+
+    /* Hidden from view but kept as the logo link's accessible name */
+    .header-left:has(.header-crumbs) .header-title {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+
+    main {
+        padding: 1.25rem 1rem;
+    }
 }
 
 /* Card Styles */
