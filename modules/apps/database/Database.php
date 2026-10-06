@@ -1,19 +1,27 @@
 <?php
 
+require_once APPPATH . 'modules/customer/traits/Customer_guard.php';
+require_once APPPATH . 'modules/apps/traits/App_page.php';
 require_once APPPATH . 'modules/platform/live/App_database.php';
 
 /**
- * apps/{id}/database: browse and edit an app's own database (App_database).
- * Every member of the app's project may use it, like deploy and logs.
+ * Child module of apps: apps/{id}/database, browse and edit an app's own
+ * database (App_database). Every member of the app's project may use it,
+ * like deploy and logs.
  *
- * Requires the Customer_guard trait and Apps_model in the same controller.
+ * @property-read Database_model $model
+ * @property-read Trongate_tokens $trongate_tokens
+ * @property-read Templates $templates
+ * @property-read Validation $validation
  */
-trait App_database_pages {
+class Database extends Trongate {
+    use Customer_guard;
+    use App_page;
 
     /**
      * apps/{id}/database: the tables, one table's rows (?table=, ?page=) and the SQL box.
      */
-    function database(): void {
+    function index(): void {
         $this->_make_sure_allowed();
         $app = $this->_member_app_or_redirect(segment(3, 'int'));
 
@@ -23,7 +31,7 @@ trait App_database_pages {
     /**
      * POST apps/{id}/database/query: run one statement and show its result.
      */
-    function database_query(): void {
+    function query(): void {
         $this->_make_sure_allowed();
         $app = $this->_member_app_or_redirect(segment(3, 'int'));
         $this->_require_post_with_csrf();
@@ -51,7 +59,7 @@ trait App_database_pages {
     /**
      * apps/{id}/database/row?table=&key[col]=: edit one row, or add one without key[].
      */
-    function database_row(): void {
+    function row(): void {
         $this->_make_sure_allowed();
         $app = $this->_member_app_or_redirect(segment(3, 'int'));
 
@@ -61,7 +69,7 @@ trait App_database_pages {
     /**
      * POST apps/{id}/database/row/submit: save the row form (table, key[], fields[], null[]).
      */
-    function database_row_submit(): void {
+    function submit_row(): void {
         $this->_make_sure_allowed();
         $app = $this->_member_app_or_redirect(segment(3, 'int'));
         $this->_require_post_with_csrf();
@@ -114,7 +122,7 @@ trait App_database_pages {
     /**
      * POST apps/{id}/database/row/delete: delete one row (table, key[]).
      */
-    function database_row_delete(): void {
+    function delete_row(): void {
         $this->_make_sure_allowed();
         $app = $this->_member_app_or_redirect(segment(3, 'int'));
         $this->_require_post_with_csrf();
@@ -145,12 +153,10 @@ trait App_database_pages {
      */
     function _database_page(object $app, array $page = []): void {
         $data = [
-            'view_module' => 'apps',
-            'view_file' => 'database',
+            'view_module' => 'apps/database',
+            'view_file' => 'index',
             'app' => $app,
-            'urls' => $this->_app_urls($app),
-            'can_rollback' => $this->model->rollback_target($app) !== false,
-            'live_state' => $this->_live_app_state($app),
+            ...$this->_app_header_data($app),
             'database_name' => Manifests::database_name((int) $app->id),
             'tables' => [],
             'table' => null,
@@ -163,7 +169,7 @@ trait App_database_pages {
             'query_error' => null,
             'error' => null,
             'crumbs' => [...$this->_app_crumbs($app), ['apps/' . $app->id . '/database', 'Database']],
-            'additional_includes_top' => ['apps_module/css/apps.css'],
+            'additional_includes_top' => ['apps_module/css/apps.css', 'apps-database_module/css/database.css'],
         ];
         $data = $page + $data;
 
@@ -217,8 +223,8 @@ trait App_database_pages {
         }
 
         $data = [
-            'view_module' => 'apps',
-            'view_file' => 'database_row',
+            'view_module' => 'apps/database',
+            'view_file' => 'row',
             'app' => $app,
             'table' => $table,
             'columns' => $columns,
@@ -231,7 +237,7 @@ trait App_database_pages {
                 ['apps/' . $app->id . '/database', 'Database'],
                 [$this->_database_url($app, ['table' => $table]), $table],
             ],
-            'additional_includes_top' => ['apps_module/css/apps.css'],
+            'additional_includes_top' => ['apps_module/css/apps.css', 'apps-database_module/css/database.css'],
         ];
         $this->module('templates');
         $this->templates->customer($data);

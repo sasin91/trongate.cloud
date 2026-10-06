@@ -1,7 +1,7 @@
 <?php
 /**
  * App page header: name, live state, address, Deploy/Roll back and the section tabs.
- * Shared by the overview (_overview.php), the logs page (logs.php) and the database page (database.php).
+ * Shared by the overview (_overview.php), the logs page (logs.php) and the database page (database/views/index.php).
  *
  * Expects: $app, $urls, $live_state (array|null), $can_rollback, $active_tab
  * ('overview', 'logs' or 'database'), and optionally $preview (true: no forms, no polling).

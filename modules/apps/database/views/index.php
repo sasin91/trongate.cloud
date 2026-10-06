@@ -1,6 +1,6 @@
 <?php
 /**
- * apps/{id}/database. Expects: $app, $urls, $live_state, $can_rollback, $database_name,
+ * apps/{id}/database (Database::index). Expects: $app, $urls, $live_state, $can_rollback, $database_name,
  * $tables (App_database::tables), $table (one of $tables or null), $columns, $rows, $more, $page,
  * $sql, $result (App_database::run or null), $query_error, $error (the database cannot be opened).
  */
@@ -42,7 +42,7 @@ $primary_key = $table !== null ? App_database::primary_key($columns) : [];
 $row_key = fn(array $row) => array_combine($primary_key, array_map(fn($c) => (string) $row[$c], $primary_key));
 ?>
 <div class="ov">
-    <?php $active_tab = 'database'; require __DIR__ . '/_app_header.php'; ?>
+    <?php $active_tab = 'database'; require APPPATH . 'modules/apps/views/_app_header.php'; ?>
 
     <?= flashdata('<p class="flash">', '</p>') ?>
 

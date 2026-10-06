@@ -1,6 +1,6 @@
 <?php
 /**
- * apps/{id}/database/row: edit one row ($key set) or add one ($key empty).
+ * apps/{id}/database/row (Database::row): edit one row ($key set) or add one ($key empty).
  * Expects: $app, $table, $columns (App_database::columns), $key, $row (values, or null for a
  * new row), $error, $back_url.
  */

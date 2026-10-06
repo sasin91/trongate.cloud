@@ -3,14 +3,14 @@
 require_once APPPATH . 'modules/customer/traits/Customer_guard.php';
 require_once APPPATH . 'modules/services/traits/Provider_clients.php';
 require_once __DIR__ . '/traits/App_form.php';
-require_once __DIR__ . '/traits/App_database_pages.php';
+require_once __DIR__ . '/traits/App_page.php';
 require_once APPPATH . 'modules/platform/manifests/Manifests.php';
 require_once APPPATH . 'modules/platform/manifests/App_env.php';
 require_once APPPATH . 'modules/platform/manifests/Domain_dns.php';
-require_once APPPATH . 'modules/platform/traits/Live_app_state.php';
 
 /**
- * Apps inside a project: create, overview, deploy/rollback, logs, database, platform settings and delete.
+ * Apps inside a project: create, overview, deploy/rollback, logs, platform settings and delete.
+ * The database page is the child module apps-database (database/Database.php).
  * Every member of the app's project may do all of it except delete, which is the owner's.
  *
  * @property-read Apps_model $model
@@ -24,8 +24,7 @@ class Apps extends Trongate {
     use Customer_guard;
     use Provider_clients;
     use App_form;
-    use App_database_pages;
-    use Live_app_state;
+    use App_page;
 
     const MAX_PERSISTENT_PATHS = 20;
 
@@ -404,18 +403,6 @@ class Apps extends Trongate {
     // --- Helpers ---
 
     /**
-     * Header breadcrumb: the app's project, then the app
-     *
-     * @return list<array{0: string, 1: string}>
-     */
-    function _app_crumbs(object $app): array {
-        return [
-            ['projects/' . $app->project_id, (string) $app->project_name],
-            ['apps/' . $app->id, (string) $app->label],
-        ];
-    }
-
-    /**
      * The app's environment variables, decrypted (App_env)
      *
      * @return array<string, string>
@@ -426,15 +413,6 @@ class Apps extends Trongate {
         return $this->secrets->exists(App_env::MODULE, (int) $app->id, App_env::SERVICE)
             ? $this->secrets->get(App_env::MODULE, (int) $app->id, App_env::SERVICE)
             : [];
-    }
-
-    /**
-     * Public URLs of an app: the platform subdomain first, then the custom domain.
-     *
-     * @return list<string>
-     */
-    function _app_urls(object $app): array {
-        return array_map(fn(string $host) => 'https://' . $host, Manifests::hostnames((array) $app));
     }
 
     /**

@@ -19,12 +19,4 @@ class Apps_model extends Model {
         return $this->_previous_successful_deployment($app);
     }
 
-    /**
-     * The shared MariaDB server an app's database was placed on (see Platform_task::database_server)
-     */
-    function database_server(int $id): object|false {
-        $server = $this->db->get_where($id, 'database_server');
-
-        return is_object($server) ? $server : false;
-    }
 }
