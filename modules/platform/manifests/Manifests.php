@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../../../config/platform.php';
 require_once __DIR__ . '/Trongate_config.php';
+require_once __DIR__ . '/App_env.php';
 
 /**
  * Kubernetes manifests for tenants and their apps, as arrays ready for Kubernetes::apply_all().
@@ -574,8 +575,10 @@ class Manifests {
      * @param array{host: string, port: int, password: string}|null $sessions Valkey
      *        for PHP sessions (Platform_task::ensure_session_user); null keeps
      *        PHP's file sessions inside the pod
+     * @param array<string, string> $env the app's environment variables (App_env),
+     *        written to the p{id}-env Secret and loaded with envFrom
      */
-    static function app(array $app, array $deployment, array $database, ?array $sessions = null): array {
+    static function app(array $app, array $deployment, array $database, ?array $sessions = null, array $env = []): array {
         $app_id = (int) $app['id'];
         $namespace = self::namespace_name($app);
         $name = self::app_name($app_id);
@@ -621,6 +624,17 @@ class Manifests {
                 'database.php' => $database_php,
                 'password' => $password,
             ] + ($sessions_ini !== '' ? ['sessions.ini' => $sessions_ini] : []),
+        ];
+
+        // Always written, so removing the last variable empties it on the next
+        // deploy. 'data', not 'stringData': server-side apply then owns each key,
+        // so a variable left out of the next apply is removed from the Secret.
+        $manifests[] = [
+            'apiVersion' => 'v1',
+            'kind' => 'Secret',
+            'metadata' => self::_metadata(self::env_secret_name($app_id), $namespace, $labels),
+            'type' => 'Opaque',
+            'data' => (object) array_map('base64_encode', $env),
         ];
 
         $manifests[] = [
@@ -688,7 +702,9 @@ class Manifests {
             'always_on' => $always_on,
             'base_url' => $base_url,
             'sessions' => $sessions_ini !== '',
-            'config_hash' => substr(hash('sha256', $database_php . $sessions_ini . $base_url . json_encode($paths)), 0, 16),
+            'env_secret_name' => self::env_secret_name($app_id),
+            // Changed variables roll the pods: envFrom is only read at container start
+            'config_hash' => substr(hash('sha256', $database_php . $sessions_ini . $base_url . json_encode($paths) . json_encode($env)), 0, 16),
         ]);
 
         $manifests[] = [
@@ -842,7 +858,15 @@ class Manifests {
             ['k8s.mariadb.com/v1alpha1', 'Database', "{$name}-db"],
             ['v1', 'PersistentVolumeClaim', "p{$app_id}-files"],
             ['v1', 'Secret', "p{$app_id}-database"],
+            ['v1', 'Secret', self::env_secret_name($app_id)],
         ];
+    }
+
+    /**
+     * The Secret holding an app's own environment variables
+     */
+    static function env_secret_name(int $app_id): string {
+        return "p{$app_id}-env";
     }
 
     /**
@@ -1058,6 +1082,9 @@ class Manifests {
                         'name' => 'app',
                         'image' => $o['image'],
                         'ports' => [['name' => 'http', 'containerPort' => self::APP_PORT, 'protocol' => 'TCP']],
+                        // The customer's variables; 'env' below wins on a name
+                        // clash, so the platform's own stay put (App_env::RESERVED)
+                        'envFrom' => [['secretRef' => ['name' => $o['env_secret_name']]]],
                         'env' => [
                             ['name' => 'PORT', 'value' => (string) self::APP_PORT],
                             // Caddy needs writable config/data dirs; the image's defaults are root-owned
