@@ -10,6 +10,10 @@
     <section class="ov-card app-logs" aria-labelledby="logs-h">
         <div class="ov-card-head">
             <h2 id="logs-h">Output</h2>
+            <label class="checkbox-label app-log-filter">
+                <input type="checkbox" id="log-problems-only">
+                Warnings and errors only
+            </label>
             <span class="muted">Last <?= App_logs::TAIL_LINES ?> lines &middot; times in UTC</span>
         </div>
         <?php require __DIR__ . '/_logs_note.php'; ?>

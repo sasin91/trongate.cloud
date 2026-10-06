@@ -24,6 +24,36 @@ class App_logs {
     /** A longer line is cut; a stack trace dumped as one line stays readable */
     const MAX_LINE_LENGTH = 4000;
 
+    /** Level names as loggers write them (Caddy/zap, Monolog, PSR-3, syslog) => the level shown */
+    const LEVELS = [
+        'debug' => 'debug',
+        'info' => 'info',
+        'notice' => 'info',
+        'warn' => 'warn',
+        'warning' => 'warn',
+        'error' => 'error',
+        'err' => 'error',
+        'critical' => 'error',
+        'crit' => 'error',
+        'alert' => 'error',
+        'emergency' => 'error',
+        'fatal' => 'error',
+        'panic' => 'error',
+        'dpanic' => 'error',
+    ];
+
+    /** PHP's own error prefixes ("PHP Warning:  ...") => the level shown */
+    const PHP_ERROR_LEVELS = [
+        'fatal error' => 'error',
+        'parse error' => 'error',
+        'catchable fatal error' => 'error',
+        'recoverable fatal error' => 'error',
+        'warning' => 'warn',
+        'notice' => 'info',
+        'deprecated' => 'info',
+        'strict standards' => 'info',
+    ];
+
     /**
      * The app's state and its log lines newer than $cursor (all recent ones
      * when empty), oldest first.
@@ -31,7 +61,7 @@ class App_logs {
      * The cursor is the last line's timestamp as cursor_key() writes it; lines
      * of every pod of the app are merged by it, so a rollout reads as one log.
      *
-     * @return array{state: array{state: string, label: string, detail: string}, lines: list<array{time: string, pod: string, text: string}>, cursor: string, pods: int}
+     * @return array{state: array{state: string, label: string, detail: string}, lines: list<array{time: string, pod: string, level: string, text: string}>, cursor: string, pods: int}
      */
     static function read(Kubernetes $kube, string $namespace, int $app_id, string $cursor = ''): array {
         if (!Manifests::is_tenant_namespace($namespace)) {
@@ -126,7 +156,7 @@ class App_logs {
     /**
      * Log lines from a "timestamps=true" pod log: "<RFC3339Nano> <text>" per line
      *
-     * @return list<array{time: string, pod: string, text: string}>
+     * @return list<array{time: string, pod: string, level: string, text: string}>
      */
     static function parse(string $pod, string $log): array {
         $lines = [];
@@ -148,11 +178,45 @@ class App_logs {
             $lines[] = [
                 'time' => $time,
                 'pod' => $pod,
+                'level' => self::level($text),
                 'text' => mb_strimwidth($text, 0, self::MAX_LINE_LENGTH, '…'),
             ];
         }
 
         return $lines;
+    }
+
+    /**
+     * The severity a line states, if any: debug, info, warn or error, or ''.
+     *
+     * Pod logs carry no level, so it is read from the text: the "level" of
+     * a JSON line (Caddy/FrankenPHP, most structured loggers), PHP's own
+     * "PHP Warning:" style prefixes, or Monolog's "channel.LEVEL:". A plain
+     * line such as an error_log() message has none.
+     */
+    static function level(string $text): string {
+        $text = ltrim($text);
+
+        if (str_starts_with($text, '{')) {
+            $json = json_decode($text, true);
+
+            if (is_array($json)) {
+                $name = $json['level'] ?? $json['severity'] ?? $json['level_name'] ?? null;
+
+                return is_string($name) ? (self::LEVELS[strtolower($name)] ?? '') : '';
+            }
+        }
+
+        // PHP may prefix its own errors with a date: "[06-Oct-2026 19:12:30 UTC] PHP Warning:  ..."
+        if (preg_match('/^(?:\[[^\]]*\]\s*)?PHP ([A-Za-z ]+?):/', $text, $match)) {
+            return self::PHP_ERROR_LEVELS[strtolower($match[1])] ?? '';
+        }
+
+        if (preg_match('/^(?:\[[^\]]*\]\s*)?[\w-]+\.(DEBUG|INFO|NOTICE|WARNING|ERROR|CRITICAL|ALERT|EMERGENCY):/', $text, $match)) {
+            return self::LEVELS[strtolower($match[1])];
+        }
+
+        return '';
     }
 
     /**

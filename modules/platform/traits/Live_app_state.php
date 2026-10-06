@@ -45,7 +45,7 @@ trait Live_app_state {
      * An app's state and log lines newer than $cursor (see App_logs::read),
      * or null when the cluster cannot be read or it was never deployed
      *
-     * @return array{state: array{state: string, label: string, detail: string}, lines: list<array{time: string, pod: string, text: string}>, cursor: string, pods: int}|null
+     * @return array{state: array{state: string, label: string, detail: string}, lines: list<array{time: string, pod: string, level: string, text: string}>, cursor: string, pods: int}|null
      */
     function _live_app_logs(object $app, string $cursor = ''): ?array {
         if (empty($app->current_deployment_id)) {

@@ -679,6 +679,49 @@ a.status-pill {
     user-select: none;
 }
 
+/* Level read from the line (App_logs::level); lines without one keep the column */
+.app-log-level {
+    flex: none;
+    width: 3rem;
+    font-size: 0.6875rem;
+    line-height: 1.8;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    user-select: none;
+}
+
+.app-log-line[data-level="warn"] {
+    background: #fdf6e7;
+}
+
+.app-log-line[data-level="warn"] .app-log-level {
+    color: #8a5a00;
+    font-weight: 600;
+}
+
+.app-log-line[data-level="error"] {
+    background: #fdf0ef;
+}
+
+.app-log-line[data-level="error"] .app-log-level {
+    color: #b42318;
+    font-weight: 600;
+}
+
+.app-log-text {
+    min-width: 0;
+}
+
+.app-log-filter {
+    margin-left: auto;
+    font-size: 0.875rem;
+}
+
+.app-logs:has(#log-problems-only:checked) .app-log-line:not([data-level="warn"], [data-level="error"]) {
+    display: none;
+}
+
 @media (max-width: 550px) {
     .app-log-box {
         padding: 0.5rem 0.75rem;
@@ -686,9 +729,13 @@ a.status-pill {
     }
 
     .app-log-line {
-        flex-direction: column;
-        gap: 0;
+        flex-wrap: wrap;
+        gap: 0 0.75rem;
         margin-bottom: 0.25rem;
+    }
+
+    .app-log-text {
+        flex-basis: 100%;
     }
 }
 
