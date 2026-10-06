@@ -199,6 +199,13 @@ trait Platform_actions {
                 ['app_id' => $app_id, 'project_id' => $project_id]
             );
 
+            // The app's environment variables (App_env) go with it; the cluster's
+            // copy, the p{id}-env Secret, is removed by destroy_app
+            $this->db->query_bind(
+                "DELETE FROM secrets WHERE module = 'app' AND module_id = :app_id",
+                ['app_id' => $app_id]
+            );
+
             return $this->_queue_task($project_id, $app_id, null, 'destroy_app', [
                 'app_id' => $app_id,
                 'project_id' => $project_id,

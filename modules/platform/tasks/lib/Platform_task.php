@@ -182,7 +182,8 @@ class Platform_task {
 
         self::release_domains($runtime, $log, $app);
 
-        $manifests = Manifests::app($app, $deployment, $database, self::ensure_session_user($runtime, $log, (int) $app['id']));
+        $env = self::app_env($runtime, $log, (int) $app['id']);
+        $manifests = Manifests::app($app, $deployment, $database, self::ensure_session_user($runtime, $log, (int) $app['id']), $env);
 
         foreach ($manifests as $manifest) {
             // Names and kinds only: Secrets carry the database password
@@ -191,6 +192,25 @@ class Platform_task {
         }
 
         self::prune_domain_gateways($runtime, $log, $app);
+    }
+
+    /**
+     * The app's environment variables (App_env), decrypted. Names only go to
+     * the log.
+     *
+     * @return array<string, string>
+     */
+    static function app_env(Runtime $runtime, Task_log $log, int $app_id): array {
+        $env = $runtime->resolve_reference(App_env::reference($app_id));
+
+        if (!is_array($env) || $env === []) {
+            return [];
+        }
+
+        $env = array_map('strval', $env);
+        $log->info('Environment variables: ' . implode(', ', array_keys($env)));
+
+        return $env;
     }
 
     /**

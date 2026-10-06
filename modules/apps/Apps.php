@@ -4,6 +4,7 @@ require_once APPPATH . 'modules/customer/traits/Customer_guard.php';
 require_once APPPATH . 'modules/services/traits/Provider_clients.php';
 require_once __DIR__ . '/traits/App_form.php';
 require_once APPPATH . 'modules/platform/manifests/Manifests.php';
+require_once APPPATH . 'modules/platform/manifests/App_env.php';
 require_once APPPATH . 'modules/platform/manifests/Domain_dns.php';
 require_once APPPATH . 'modules/platform/traits/Live_app_state.php';
 
@@ -31,6 +32,9 @@ class Apps extends Trongate {
 
     /** The app submit_delete() checks the typed confirmation against */
     private ?object $app_to_delete = null;
+
+    /** settings() is redisplaying the environment variable form, not the settings form */
+    private bool $env_form_posted = false;
 
     /**
      * projects/{id}/apps/new: the new-app questions, or Connect GitHub first
@@ -177,7 +181,7 @@ class Apps extends Trongate {
         $this->_make_sure_allowed();
         $app = $this->_member_app_or_redirect(segment(3, 'int'));
 
-        $is_resubmit = REQUEST_TYPE === 'POST';
+        $is_resubmit = REQUEST_TYPE === 'POST' && !$this->env_form_posted;
         $paths = Manifests::persistent_paths((array) $app);
 
         $data = [
@@ -194,12 +198,63 @@ class Apps extends Trongate {
             'domain_routed' => Manifests::custom_domains((array) $app) !== [],
             'domain_secured' => Manifests::secured_domains((array) $app) !== [],
             'ingress_addresses' => Domain_dns::ingress_addresses(),
+            'env_names' => array_keys($this->_app_env($app)),
+            'env_name' => $this->env_form_posted ? (string) post('env_name', true) : '',
             'can_delete' => $this->_is_owner($app),
             'crumbs' => $this->_app_crumbs($app),
             'additional_includes_top' => ['apps_module/css/apps.css'],
         ];
         $this->module('templates');
         $this->templates->customer($data);
+    }
+
+    /**
+     * POST apps/{id}/env/submit: add or replace one environment variable.
+     * Values are write-only: they are never shown again.
+     */
+    function submit_env(): void {
+        $this->_make_sure_allowed();
+        $app = $this->_member_app_or_redirect(segment(3, 'int'));
+        $this->editing_app_id = (int) $app->id;
+
+        $this->validation->set_rules('env_name', 'Name', 'required|callback__validate_env_name');
+        $this->validation->set_rules('env_value', 'Value', 'required|max_length[' . App_env::MAX_VALUE_BYTES . ']');
+
+        if ($this->validation->run() !== true) {
+            $this->env_form_posted = true;
+            $this->settings();
+            return;
+        }
+
+        $name = trim((string) post('env_name'));
+        $this->secrets->update(App_env::MODULE, (int) $app->id, App_env::SERVICE, [$name => (string) post('env_value')]);
+
+        set_flashdata(htmlspecialchars($name) . ' saved. It takes effect on the next deployment.');
+        redirect('apps/' . $app->id . '/settings');
+    }
+
+    /**
+     * POST apps/{id}/env/delete: remove one environment variable (POST env_name).
+     */
+    function delete_env(): void {
+        $this->_make_sure_allowed();
+        $app = $this->_member_app_or_redirect(segment(3, 'int'));
+        $this->_require_post_with_csrf();
+
+        $name = (string) post('env_name', true);
+        $env = $this->_app_env($app);
+
+        if (array_key_exists($name, $env)) {
+            unset($env[$name]);
+
+            $env === []
+                ? $this->secrets->delete(App_env::MODULE, (int) $app->id, App_env::SERVICE)
+                : $this->secrets->save(App_env::MODULE, (int) $app->id, App_env::SERVICE, $env);
+
+            set_flashdata(htmlspecialchars($name) . ' removed. It is gone from the app after the next deployment.');
+        }
+
+        redirect('apps/' . $app->id . '/settings');
     }
 
     function submit_settings(): void {
@@ -312,6 +367,19 @@ class Apps extends Trongate {
     }
 
     /**
+     * The app's environment variables, decrypted (App_env)
+     *
+     * @return array<string, string>
+     */
+    function _app_env(object $app): array {
+        $this->module('secrets');
+
+        return $this->secrets->exists(App_env::MODULE, (int) $app->id, App_env::SERVICE)
+            ? $this->secrets->get(App_env::MODULE, (int) $app->id, App_env::SERVICE)
+            : [];
+    }
+
+    /**
      * Public URLs of an app: the platform subdomain first, then the custom domain.
      *
      * @return list<string>
@@ -375,6 +443,23 @@ class Apps extends Trongate {
             if (in_array($segments[0], self::RESERVED_PATHS, true)) {
                 return "\"{$path}\" is managed by the platform and cannot be persistent.";
             }
+        }
+
+        return true;
+    }
+
+    function _validate_env_name(string $value): bool|string {
+        $name = trim($value);
+        $error = App_env::name_error($name);
+
+        if ($error !== null) {
+            return $error;
+        }
+
+        $env = $this->_app_env((object) ['id' => $this->editing_app_id]);
+
+        if (!array_key_exists($name, $env) && count($env) >= App_env::MAX_VARIABLES) {
+            return 'An app can have at most ' . App_env::MAX_VARIABLES . ' environment variables.';
         }
 
         return true;

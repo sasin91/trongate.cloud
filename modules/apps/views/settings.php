@@ -57,6 +57,41 @@
         <?= form_close() ?>
     </div>
 
+    <h2 id="environment">Environment variables</h2>
+    <div class="card settings-card">
+        <p class="form-hint">For API keys and other secrets. Your app reads them with <code>getenv('NAME')</code>. Values are stored encrypted and never shown again; to change one, save it again under the same name. Changes take effect on the next deployment.</p>
+
+        <?php if ($env_names !== []): ?>
+        <ul class="env-list">
+            <?php foreach ($env_names as $name): ?>
+            <li>
+                <code><?= htmlspecialchars((string) $name) ?></code>
+                <?= form_open('apps/' . $app->id . '/env/delete', ['class' => 'row-actions']) ?>
+                    <input type="hidden" name="env_name" value="<?= htmlspecialchars((string) $name) ?>">
+                    <button type="submit" class="btn-link">Remove</button>
+                <?= form_close() ?>
+            </li>
+            <?php endforeach; ?>
+        </ul>
+        <?php endif; ?>
+
+        <?= form_open('apps/' . $app->id . '/env/submit') ?>
+        <div class="env-fields">
+            <div class="form-group">
+                <label for="env_name" class="form-label">Name</label>
+                <input type="text" name="env_name" id="env_name" class="form-input mono" placeholder="ANTHROPIC_API_KEY" autocomplete="off" value="<?= htmlspecialchars($env_name) ?>">
+            </div>
+            <div class="form-group">
+                <label for="env_value" class="form-label">Value</label>
+                <input type="password" name="env_value" id="env_value" class="form-input mono" autocomplete="new-password">
+            </div>
+        </div>
+        <div class="form-actions">
+            <button type="submit" class="btn-secondary">Save variable</button>
+        </div>
+        <?= form_close() ?>
+    </div>
+
     <?php if ($domain_record !== null): ?>
     <h2>Custom domain</h2>
     <div class="card settings-card">
