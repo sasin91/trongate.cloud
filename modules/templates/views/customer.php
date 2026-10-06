@@ -26,9 +26,9 @@
                 </nav>
             <?php endif; ?>
         </div>
-        <nav class="header-nav" style="display: flex; gap: 1.25rem; align-items: center;">
-            <a href="dashboard" class="nav-link">Projects</a>
-            <a href="logout" class="nav-link">Sign Out</a>
+        <nav class="header-nav">
+            <a href="dashboard" class="nav-link header-projects">Projects</a>
+            <a href="logout" class="nav-link">Sign out</a>
         </nav>
     </header>
 
