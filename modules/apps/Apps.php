@@ -3,13 +3,14 @@
 require_once APPPATH . 'modules/customer/traits/Customer_guard.php';
 require_once APPPATH . 'modules/services/traits/Provider_clients.php';
 require_once __DIR__ . '/traits/App_form.php';
+require_once __DIR__ . '/traits/App_database_pages.php';
 require_once APPPATH . 'modules/platform/manifests/Manifests.php';
 require_once APPPATH . 'modules/platform/manifests/App_env.php';
 require_once APPPATH . 'modules/platform/manifests/Domain_dns.php';
 require_once APPPATH . 'modules/platform/traits/Live_app_state.php';
 
 /**
- * Apps inside a project: create, overview, deploy/rollback, platform settings and delete.
+ * Apps inside a project: create, overview, deploy/rollback, logs, database, platform settings and delete.
  * Every member of the app's project may do all of it except delete, which is the owner's.
  *
  * @property-read Apps_model $model
@@ -23,6 +24,7 @@ class Apps extends Trongate {
     use Customer_guard;
     use Provider_clients;
     use App_form;
+    use App_database_pages;
     use Live_app_state;
 
     const MAX_PERSISTENT_PATHS = 20;

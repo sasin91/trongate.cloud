@@ -1,10 +1,10 @@
 <?php
 /**
  * App page header: name, live state, address, Deploy/Roll back and the section tabs.
- * Shared by the overview (_overview.php) and the logs page (logs.php).
+ * Shared by the overview (_overview.php), the logs page (logs.php) and the database page (database.php).
  *
  * Expects: $app, $urls, $live_state (array|null), $can_rollback, $active_tab
- * ('overview' or 'logs'), and optionally $preview (true: no forms, no polling).
+ * ('overview', 'logs' or 'database'), and optionally $preview (true: no forms, no polling).
  */
 $preview = $preview ?? false;
 $e ??= fn($value) => htmlspecialchars((string) $value);
@@ -50,5 +50,6 @@ $auto_deploy ??= !isset($app->auto_deploy) || !empty($app->auto_deploy);
         <a href="apps/<?= (int) $app->id ?>"<?= $active_tab === 'overview' ? ' aria-current="page"' : '' ?>>Overview</a>
         <a href="apps/<?= (int) $app->id ?>#deployments">Deployments</a>
         <a href="apps/<?= (int) $app->id ?>/logs"<?= $active_tab === 'logs' ? ' aria-current="page"' : '' ?>>Logs</a>
+        <a href="apps/<?= (int) $app->id ?>/database"<?= $active_tab === 'database' ? ' aria-current="page"' : '' ?>>Database</a>
         <a href="apps/<?= (int) $app->id ?>/settings">Settings</a>
     </nav>
