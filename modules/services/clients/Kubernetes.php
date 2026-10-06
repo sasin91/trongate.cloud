@@ -166,20 +166,25 @@ class Kubernetes extends Client {
     }
 
     /**
-     * The last $tail_lines lines of a pod's (only) container log; the log
-     * endpoint answers plain text, so this bypasses request()'s JSON decoding.
+     * The last $tail_lines lines of a pod's container log; the log endpoint
+     * answers plain text, so this bypasses request()'s JSON decoding.
      * The API server answers "Accept: text/plain" with a 406, so this accepts any type.
+     *
+     * $options adds query parameters of the log endpoint, e.g. container,
+     * timestamps, sinceTime, previous or limitBytes.
+     *
+     * @param array<string, string|int|bool> $options
      */
-    function pod_log(string $namespace, string $name, int $tail_lines = 100): string {
-        $url = $this->api_base . $this->path('v1', 'Pod', $namespace, $name) . '/log?'
-            . http_build_query(['tailLines' => $tail_lines]);
+    function pod_log(string $namespace, string $name, int $tail_lines = 100, array $options = []): string {
+        $query = array_map(fn($value) => is_bool($value) ? ($value ? 'true' : 'false') : $value, ['tailLines' => $tail_lines] + $options);
+        $url = $this->api_base . $this->path('v1', 'Pod', $namespace, $name) . '/log?' . http_build_query($query);
 
         $ch = curl_init($url);
+        // with_timeout() wins over the default 30s
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HTTPHEADER => $this->_merge_headers($this->headers(), ['Accept: */*']),
-            CURLOPT_TIMEOUT => 30,
-        ] + $this->_curl_options());
+        ] + $this->_curl_options() + [CURLOPT_TIMEOUT => 30]);
 
         $response = curl_exec($ch);
 

@@ -127,6 +127,53 @@ class Apps extends Trongate {
         $this->view('_live_state', ['live_state' => $this->_live_app_state($app)]);
     }
 
+    /**
+     * apps/{id}/logs: the app's recent output, kept up to date by logs_partial().
+     */
+    function logs(): void {
+        $this->_make_sure_allowed();
+        $app = $this->_member_app_or_redirect(segment(3, 'int'));
+        $logs = $this->_live_app_logs($app);
+
+        $data = [
+            'view_module' => 'apps',
+            'view_file' => 'logs',
+            'app' => $app,
+            'urls' => $this->_app_urls($app),
+            'can_rollback' => $this->model->rollback_target($app) !== false,
+            'live_state' => $logs['state'] ?? null,
+            'logs' => $logs,
+            'crumbs' => $this->_app_crumbs($app),
+            'additional_includes_top' => ['apps_module/css/apps.css'],
+            'additional_includes_btm' => ['apps_module/js/app_logs.js'],
+        ];
+        $this->module('templates');
+        $this->templates->customer($data);
+    }
+
+    /**
+     * MX partial polled by the logs page: lines newer than ?since= (a log
+     * timestamp, see App_logs), the next cursor and what the app is doing.
+     */
+    function logs_partial(): void {
+        $this->_make_sure_allowed();
+        $customer = $this->_customer_or_redirect();
+        $app = $this->model->find_member_app((int) $customer->id, segment(3, 'int'));
+
+        if ($app === false) {
+            http_response_code(404);
+            return;
+        }
+
+        $cursor = (string) ($_GET['since'] ?? '');
+
+        $this->view('_logs_partial', [
+            'app' => $app,
+            'logs' => $this->_live_app_logs($app, $cursor),
+            'cursor' => $cursor,
+        ]);
+    }
+
     function deploy(): void {
         $this->_make_sure_allowed();
         $app = $this->_member_app_or_redirect(segment(3, 'int'));
