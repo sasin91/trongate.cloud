@@ -15,6 +15,8 @@ $base = 'apps/' . (int) $app->id . '/database';
 
     <h1><?= $is_new ? 'Add row' : 'Edit row' ?></h1>
 
+    <?= validation_errors() ?>
+
     <?php if ($error !== null): ?>
         <p class="db-error" role="alert"><?= $e($error) ?></p>
     <?php endif; ?>

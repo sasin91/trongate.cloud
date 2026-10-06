@@ -103,6 +103,19 @@ class Database extends Trongate {
             } else {
                 $values[$name] = $value;
             }
+
+            // Bracket and dot names would read the wrong field; MariaDB still checks those
+            $rules = is_string($values[$name] ?? null) ? App_database::rules($column) : '';
+
+            if ($rules !== '' && strpbrk($name, '[].') === false) {
+                $values[$name] = trim($value);
+                $this->validation->set_rules('fields[' . $name . ']', $name, $rules);
+            }
+        }
+
+        if ($this->validation->run() !== true) {
+            $this->_database_row_page($app, $table, $key, ['posted' => $values + $fields]);
+            return;
         }
 
         try {
@@ -307,6 +320,28 @@ class Database extends Trongate {
         }
 
         return array_map('strval', array_filter($key, fn($value, $column) => is_string($column) && is_scalar($value), ARRAY_FILTER_USE_BOTH));
+    }
+
+    /**
+     * Validation callback for UNSIGNED integer columns (after the integer rule)
+     */
+    function _valid_db_unsigned(string $value): bool|string {
+        return (int) $value >= 0 ? true : 'The [label] field cannot be negative.';
+    }
+
+    /**
+     * Validation callback for DATETIME and TIMESTAMP: what MariaDB stores, seconds optional
+     */
+    function _valid_db_datetime(string $value): bool|string {
+        foreach (['Y-m-d H:i:s.u', 'Y-m-d H:i:s', 'Y-m-d H:i', 'Y-m-d'] as $format) {
+            $date = DateTime::createFromFormat('!' . $format, $value);
+
+            if ($date !== false && $date->format($format) === $value) {
+                return true;
+            }
+        }
+
+        return $value === '0000-00-00 00:00:00' ? true : 'The [label] field must be a date and time like 2026-10-06 21:04:10.';
     }
 
     /**

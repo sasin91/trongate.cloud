@@ -29,6 +29,14 @@ class App_database {
     /** Column types shown as a byte count and never edited (no safe text form) */
     const BINARY_TYPES = ['binary', 'varbinary', 'tinyblob', 'blob', 'mediumblob', 'longblob', 'geometry', 'point', 'linestring', 'polygon'];
 
+    /** Column types => Trongate Validation rules for a value typed into the row form (see rules()) */
+    const TYPE_RULES = [
+        'tinyint' => 'integer', 'smallint' => 'integer', 'mediumint' => 'integer', 'int' => 'integer', 'bigint' => 'integer', 'year' => 'integer',
+        'decimal' => 'numeric', 'float' => 'numeric', 'double' => 'numeric',
+        'date' => 'valid_date', 'time' => 'valid_time',
+        'datetime' => 'callback__valid_db_datetime', 'timestamp' => 'callback__valid_db_datetime',
+    ];
+
     /** Column types edited in a textarea */
     const LONG_TYPES = ['text', 'tinytext', 'mediumtext', 'longtext', 'json'];
 
@@ -262,6 +270,25 @@ class App_database {
         $stmt->closeCursor();
 
         return ['columns' => $columns, 'rows' => $rows, 'truncated' => $truncated, 'affected' => null, 'seconds' => microtime(true) - $started];
+    }
+
+    /**
+     * Trongate Validation rules for a value typed into a column, '' when only
+     * MariaDB checks it (text: its limits are in characters, max_length counts bytes).
+     * An empty value never reaches these columns as text: it means NULL or the default.
+     *
+     * @param array{type: string, column_type: string} $column
+     */
+    static function rules(array $column): string {
+        $rule = self::TYPE_RULES[$column['type']] ?? null;
+
+        if ($rule === null) {
+            return '';
+        }
+
+        $unsigned = $rule === 'integer' && str_contains($column['column_type'], 'unsigned');
+
+        return 'required|' . $rule . ($unsigned ? '|callback__valid_db_unsigned' : '');
     }
 
     /**
