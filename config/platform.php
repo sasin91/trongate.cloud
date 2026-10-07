@@ -49,6 +49,10 @@ defined('DEPLOY_RECONCILE_INTERVAL') || define('DEPLOY_RECONCILE_INTERVAL', gete
 // for every project with a verified custom domain (the DNS gate and promotion). 0 turns it off.
 defined('DOMAIN_RECHECK_INTERVAL') || define('DOMAIN_RECHECK_INTERVAL', getenv('DOMAIN_RECHECK_INTERVAL') !== false ? (int) getenv('DOMAIN_RECHECK_INTERVAL') : 600);
 
+// Seconds between sample_app_logs runs: the worker counts new error and warning
+// lines in each running app's log (App_log_rates, the app page's Errors card). 0 turns it off.
+defined('APP_LOG_SAMPLE_INTERVAL') || define('APP_LOG_SAMPLE_INTERVAL', getenv('APP_LOG_SAMPLE_INTERVAL') !== false ? (int) getenv('APP_LOG_SAMPLE_INTERVAL') : 60);
+
 // The trongate.cloud GitHub App (docs/github-app.md). One App does both jobs:
 // its OAuth client signs customers in and lists the repositories they may
 // pick; its installation tokens let the worker read those repositories, and

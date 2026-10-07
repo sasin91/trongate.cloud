@@ -7,6 +7,7 @@ require_once __DIR__ . '/traits/App_page.php';
 require_once APPPATH . 'modules/platform/manifests/Manifests.php';
 require_once APPPATH . 'modules/platform/manifests/App_env.php';
 require_once APPPATH . 'modules/platform/manifests/Domain_dns.php';
+require_once APPPATH . 'modules/platform/live/App_log_rates.php';
 
 /**
  * Apps inside a project: create, overview, deploy/rollback, logs, platform settings and delete.
@@ -96,6 +97,7 @@ class Apps extends Trongate {
             'deployments' => $deployments,
             'can_rollback' => $this->model->rollback_target($app) !== false,
             'live_state' => $this->_live_app_state($app),
+            'log_rates' => $this->_log_rates($app),
             'database_name' => Manifests::database_name((int) $app->id),
             'crumbs' => $this->_app_crumbs($app),
             'additional_includes_top' => [
@@ -396,6 +398,26 @@ class Apps extends Trongate {
 
         set_flashdata(htmlspecialchars($app->label) . ' was deleted. It is being taken offline now.');
         redirect('projects/' . $app->project_id);
+    }
+
+    // --- Helpers ---
+
+    /**
+     * Hourly error and warning counts of the last 24 hours (App_log_rates),
+     * or null before the app's first deployment or when they cannot be read
+     *
+     * @return list<array{hour: string, total: int, warnings: int, errors: int}>|null
+     */
+    function _log_rates(object $app): ?array {
+        if (empty($app->current_deployment_id)) {
+            return null;
+        }
+
+        try {
+            return App_log_rates::hourly($this->model->log_rate_rows((int) $app->id), time());
+        } catch (Throwable $e) {
+            return null;
+        }
     }
 
     // --- Validation callbacks (the settings ones are in App_rules) ---
