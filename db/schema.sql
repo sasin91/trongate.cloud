@@ -227,6 +227,24 @@ CREATE TABLE app (
   CONSTRAINT fk_app_database_server FOREIGN KEY (database_server_id) REFERENCES database_server (id)
 );
 
+-- Log lines per app per 5-minute window (UTC), by level: sampled from running apps'
+-- logs by the worker's sample_app_logs task (App_log_rates), kept 7 days.
+CREATE TABLE app_log_rate (
+  app_id INT NOT NULL,
+  bucket DATETIME NOT NULL,
+  total INT UNSIGNED NOT NULL DEFAULT 0,
+  warnings INT UNSIGNED NOT NULL DEFAULT 0,
+  errors INT UNSIGNED NOT NULL DEFAULT 0,
+  PRIMARY KEY (app_id, bucket),
+  KEY idx_bucket (bucket)
+);
+
+-- Where sample_app_logs left off in each app's log: the last sampled line's timestamp
+CREATE TABLE app_log_cursor (
+  app_id INT PRIMARY KEY,
+  cursor_time VARCHAR(30) NOT NULL
+);
+
 -- customer_id is who pressed Deploy; NULL for webhook, reconcile and admin (MCP) deploys
 CREATE TABLE deployment (
   id INT PRIMARY KEY AUTO_INCREMENT,

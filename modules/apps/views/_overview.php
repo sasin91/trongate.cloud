@@ -149,6 +149,10 @@ $platform_host = $app->slug . '.' . PLATFORM_APPS_DOMAIN;
                 <?php endif; ?>
             </section>
 
+            <?php if (($log_rates ?? null) !== null): ?>
+                <?php require __DIR__ . '/_log_rates.php'; ?>
+            <?php endif; ?>
+
             <section class="ov-card" aria-labelledby="dom-h">
                 <div class="ov-card-head">
                     <h2 id="dom-h">Domains</h2>
