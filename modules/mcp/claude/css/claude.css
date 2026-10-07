@@ -1,0 +1,36 @@
+/* integrations/claude (modules/mcp/claude), on top of apps.css */
+
+.claude-lead {
+    color: var(--text-muted);
+    max-width: 60ch;
+}
+
+.settings-card h3 {
+    margin: 0 0 0.75rem;
+    font-size: 1rem;
+}
+
+.claude-steps {
+    margin: 0;
+    padding-left: 1.25rem;
+    line-height: 1.7;
+}
+
+.claude-url,
+.claude-command {
+    display: block;
+    margin: 0.35rem 0;
+    padding: 0.5rem 0.75rem;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow-x: auto;
+    white-space: pre;
+    user-select: all;
+}
+
+.claude-meta {
+    display: block;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}

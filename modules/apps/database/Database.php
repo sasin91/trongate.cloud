@@ -3,6 +3,7 @@
 require_once APPPATH . 'modules/customer/traits/Customer_guard.php';
 require_once APPPATH . 'modules/apps/traits/App_page.php';
 require_once APPPATH . 'modules/platform/live/App_database.php';
+require_once __DIR__ . '/traits/App_database_guard.php';
 
 /**
  * Child module of apps: apps/{id}/database, browse and edit an app's own
@@ -17,6 +18,7 @@ require_once APPPATH . 'modules/platform/live/App_database.php';
 class Database extends Trongate {
     use Customer_guard;
     use App_page;
+    use App_database_guard;
 
     /**
      * apps/{id}/database: the tables, one table's rows (?table=, ?page=) and the SQL box.
@@ -180,63 +182,10 @@ class Database extends Trongate {
     // --- Helpers ---
 
     /**
-     * Run $run (returning [its result, rows affected]) under the customer's
-     * rate limit and lock, and record it in app_database_log, failed or not.
-     *
-     * @throws RuntimeException when the customer is over Database_model::ACTIONS_PER_MINUTE
-     *         or already has a statement running
-     * @throws PDOException from $run, after it is logged
+     * Who App_database_guard::_logged() runs statements as
      */
-    function _logged(object $app, string $action, string $statement, bool $allow_changes, callable $run): mixed {
-        $customer = $this->_customer_or_redirect();
-
-        if ($this->model->over_action_limit((int) $customer->id)) {
-            throw new RuntimeException('You ran ' . Database_model::ACTIONS_PER_MINUTE . ' statements in the last minute. Wait a moment, then try again.');
-        }
-
-        if (!$this->model->take_action_lock((int) $customer->id)) {
-            throw new RuntimeException('Another statement of yours is still running. Wait for it to finish.');
-        }
-
-        $entry = [
-            'app_id' => (int) $app->id,
-            'customer_id' => (int) $customer->id,
-            'action' => $action,
-            'statement' => $statement,
-            'allow_changes' => $allow_changes,
-            'affected' => null,
-            'error' => null,
-        ];
-
-        try {
-            [$result, $entry['affected']] = $run();
-
-            return $result;
-        } catch (PDOException $e) {
-            $entry['error'] = $this->_database_error($e);
-            throw $e;
-        } finally {
-            $this->model->log_action($entry);
-            $this->model->release_action_lock((int) $customer->id);
-        }
-    }
-
-    /**
-     * A row change as logged: table, key and the columns written, never the values
-     *
-     * @param string $action insert, update or delete
-     * @param array<string, string> $key
-     * @param list<string> $columns
-     */
-    function _describe_row_change(string $action, string $table, array $key, array $columns = []): string {
-        $where = implode(' AND ', array_map(fn($column, $value) => App_database::quote_name($column) . ' = ' . var_export($value, true), array_keys($key), $key));
-        $set = implode(', ', array_map([App_database::class, 'quote_name'], $columns));
-
-        return match ($action) {
-            'insert' => 'INSERT INTO ' . App_database::quote_name($table) . ' (' . $set . ')',
-            'delete' => 'DELETE FROM ' . App_database::quote_name($table) . ' WHERE ' . $where,
-            default => 'UPDATE ' . App_database::quote_name($table) . ' SET ' . $set . ' WHERE ' . $where,
-        };
+    function _database_customer_id(): int {
+        return (int) $this->_customer_or_redirect()->id;
     }
 
     /**
@@ -361,34 +310,6 @@ class Database extends Trongate {
     }
 
     /**
-     * The app's database, or why it cannot be opened
-     */
-    function _open_app_database(object $app): App_database|string {
-        if (empty($app->database_server_id)) {
-            return 'This app has no database yet. It is created on the first deployment.';
-        }
-
-        $server = $this->model->database_server((int) $app->database_server_id);
-
-        if ($server === false) {
-            return 'The database server of this app is gone.';
-        }
-
-        try {
-            return App_database::open((array) $server, (int) $app->id);
-        } catch (PDOException $e) {
-            return 'Could not reach the database: ' . $this->_database_error($e);
-        }
-    }
-
-    /**
-     * MariaDB's message without PDO's SQLSTATE prefix
-     */
-    function _database_error(PDOException $e): string {
-        return (string) preg_replace('/^SQLSTATE\[\w+\]: [^:]*: (\d+ )?/', '', $e->getMessage());
-    }
-
-    /**
      * A primary key from key[col]=value request data
      *
      * @return array<string, string>
@@ -421,21 +342,6 @@ class Database extends Trongate {
         }
 
         return $value === '0000-00-00 00:00:00' ? true : 'The [label] field must be a date and time like 2026-10-06 21:04:10.';
-    }
-
-    /**
-     * Whether $key names exactly the table's primary key columns
-     *
-     * @param array<string, string> $key
-     * @param list<array{name: string, key: bool}> $columns
-     */
-    function _is_primary_key(array $key, array $columns): bool {
-        $names = array_keys($key);
-        $primary_key = App_database::primary_key($columns);
-        sort($names);
-        sort($primary_key);
-
-        return $key !== [] && $names === $primary_key;
     }
 
     function _database_url(object $app, array $query = []): string {

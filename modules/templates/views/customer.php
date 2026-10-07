@@ -28,6 +28,7 @@
         </div>
         <nav class="header-nav">
             <a href="dashboard" class="nav-link header-projects">Projects</a>
+            <a href="integrations/claude" class="nav-link header-projects">Claude</a>
             <a href="logout" class="nav-link">Sign out</a>
         </nav>
     </header>

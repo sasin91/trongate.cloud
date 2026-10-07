@@ -95,3 +95,15 @@
     padding: 0.5rem 0;
     font-size: 0.9375rem;
 }
+
+/* The dashboard's pointer to integrations/claude */
+.dashboard-aside {
+    margin-top: 2rem;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.dashboard-aside a {
+    color: var(--accent-ink);
+    font-weight: 600;
+}

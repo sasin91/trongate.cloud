@@ -1,0 +1,41 @@
+/* The consent page of the OAuth flow (modules/mcp/oauth), on top of the sign-in page's login.css */
+
+main.consent {
+    max-width: 440px;
+}
+
+.consent p {
+    line-height: 1.5;
+}
+
+.consent-lead {
+    text-align: center;
+}
+
+.consent-list {
+    margin: 0 0 1rem;
+    padding-left: 1.25rem;
+    line-height: 1.6;
+}
+
+.consent-note {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+}
+
+.consent-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin: 1.5rem 0 1rem;
+}
+
+.consent-actions button[type="submit"].alt {
+    background-color: var(--bg-subtle);
+    color: var(--text-bold);
+}
+
+@media (max-width: 550px) {
+    main.consent {
+        padding: 1.5rem 1rem;
+    }
+}

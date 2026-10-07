@@ -1,62 +1,113 @@
-# Admin MCP server
+# MCP server
 
-Trongate Cloud has a built-in [Model Context Protocol](https://modelcontextprotocol.io) server for platform admins. With it, Claude can list apps across all projects, read deployment logs, deploy and roll back. It is not a customer feature.
+Trongate Cloud has a built-in [Model Context Protocol](https://modelcontextprotocol.io) server, so an assistant such as Claude can do what a customer does in the control panel: create projects and apps, deploy and roll back, read build and app logs, change settings and environment variables, and read and change an app's database.
 
 - **Endpoint:** `POST {BASE_URL}mcp` (Streamable HTTP; responses are always `application/json`, never SSE).
 - **Protocol versions:** `2025-06-18` and `2025-03-26`. JSON-RPC batches are only accepted under `2025-03-26`.
-- **Auth:** `Authorization: Bearer <MCP_SECRET>`. One shared secret from the environment; no tokens table, no OAuth.
 - **Stateless:** `initialize` returns an `Mcp-Session-Id`, but the server never requires it. `GET` and `DELETE` return `405`.
+- **Two kinds of token:**
+  - an **OAuth access token**: a customer connected an assistant. The tools act as that customer, in the projects they are a member of.
+  - the **admin secret** (`MCP_SECRET`): every project, plus the admin tools (audit and retry cleanups). Not a customer feature.
 
-## 1. Set the secret
+## Connecting as a customer (OAuth)
+
+Customers never paste tokens. The assistant finds everything from the endpoint:
+
+1. `POST /mcp` without a token returns `401` with `WWW-Authenticate: Bearer resource_metadata="{BASE_URL}.well-known/oauth-protected-resource/mcp"` (RFC 9728).
+2. That document names this server as the authorization server; `/.well-known/oauth-authorization-server` (RFC 8414) lists the endpoints.
+3. The assistant registers itself at `POST /oauth/register` (dynamic client registration, RFC 7591). Its redirect URIs must belong to a supported assistant (an `Mcp_provider`, below), otherwise `400 invalid_redirect_uri`.
+4. `GET /oauth/authorize` (PKCE `S256` required) checks the request, keeps it in a signed cookie for 10 minutes and shows `/oauth/consent`. Signed out, the customer signs in with GitHub and comes back. **Allow** sends a code back to the assistant.
+5. `POST /oauth/token` swaps the code (with `code_verifier`) for an access token (1 hour) and a refresh token (30 days, rotated on every use).
+
+The customer sees and disconnects their connections on `integrations/claude`. Disconnecting revokes the grant and deletes its tokens at once.
+
+Safety:
+
+- Tokens, codes and client secrets are stored only as sha256. Codes and refresh tokens are single use: presenting a spent one again revokes the whole grant.
+- An access token works only while its grant is live and the customer is active and onboarded. Membership is checked on every call, like the panel does.
+- Clients nobody connected within a day are deleted; registrations are capped per hour.
+
+### Tables
+
+`mcp_oauth_client`, `mcp_oauth_grant` and `mcp_oauth_token` (see `db/schema.sql`). Apply them by hand in production before deploying.
+
+## Assistants (providers)
+
+The OAuth server and the tools are shared. Each assistant is a child module of `mcp` with an `Mcp_provider` (`modules/mcp/providers/Mcp_provider.php`) that says which redirect URIs are its own and where its setup page is, and is listed in `Mcp_providers::PROVIDERS`.
+
+- **Claude** (`modules/mcp/claude`): `https://claude.ai/api/mcp/auth_callback`, `https://claude.com/api/mcp/auth_callback` and loopback URIs (Claude Code). Page: `integrations/claude`.
+- **Adding OpenAI later:** `modules/mcp/openai` with an `Openai_provider` accepting ChatGPT's callback, its own page, one line in `PROVIDERS` and its routes.
+
+### Claude (web, desktop, phone)
+
+Settings, Connectors, Add custom connector, URL `{BASE_URL}mcp`, then Connect and Allow.
+
+### Claude Code
+
+```sh
+claude mcp add --transport http trongate https://trongate.cloud/mcp
+```
+
+Then `/mcp`, pick `trongate` and sign in.
+
+## Tools
+
+Customer tools act as the signed-in customer. Write tools carry `destructiveHint`, so assistants ask before running them.
+
+| Tool | Who | Notes |
+|---|---|---|
+| `list_projects` | customer | Projects, role, app count |
+| `create_project` | customer | Owned by the customer |
+| `list_apps` | both | `project_id?` |
+| `get_app` | both | Settings, custom domain status and its TXT record, live state, current deployment, database name, env var names (customer) |
+| `create_app` | customer | From a repository the GitHub App can read for the customer (needs their GitHub sign-in); deploys it unless `deploy: false` |
+| `update_app_settings` | customer | Only the fields passed change (`domain`, `persistent_paths`, `php_extensions`, `always_on`, `auto_deploy`); same rules as the Settings page (`App_rules`) |
+| `verify_domain` | customer | Checks the TXT record |
+| `list_deployments`, `get_deployment_logs` | both | Build and rollout logs, followable with `after_id` |
+| `deploy_app`, `rollback_app` | both | Recorded as `trigger_type = mcp`, with the customer |
+| `get_app_logs` | both | The running app's output (`App_logs`); never wakes an asleep app; `problems_only` |
+| `list_env_vars`, `set_env_var`, `delete_env_var` | customer | Values are write-only |
+| `list_tables`, `describe_table`, `browse_table` | customer | The app's own database, as the app's own user |
+| `query_database` | customer | Read-only transaction; same allowlist and limits as the Database tab |
+| `execute_sql` | customer | Writes allowed ("Allow changes") |
+| `insert_row`, `update_row`, `delete_row` | customer | One row by primary key |
+| `database_activity` | customer | The app's `app_database_log` |
+| `platform_status` | admin | All projects or one |
+| `audit_app_resources`, `retry_app_cleanup`, `retry_project_cleanup` | admin | See below |
+
+Deleting apps or projects and managing members stay in the control panel.
+
+Database tools share the Database tab's guardrails (`App_database_guard`, `App_database_log`): statement allowlist (`App_database::refusal`), 15 s per statement, 500 rows / 2 MB, one statement at a time and 30 per minute per customer, and every statement and row change in `app_database_log`, shown under Recent activity on the Database tab.
+
+- `audit_app_resources`: per-app objects in tenant namespaces that carry trongate.cloud's labels but match no live app, deleted apps whose `destroy_app` did not finish (`unfinished_cleanups`), and deleted projects whose `destroy_project` did not finish. Never repairs; Secrets are not listed.
+- `retry_app_cleanup` / `retry_project_cleanup`: queue the cleanup again (refused while one is queued or running).
+
+Results are pretty-printed JSON text; under `2025-06-18` the same data is also sent as `structuredContent`. Tool errors (bad arguments, not found, refused SQL) come back as `isError: true` results. An unknown tool is JSON-RPC `-32602`.
+
+## Admin secret
 
 ```sh
 php -r "echo bin2hex(random_bytes(32));"
 ```
 
-Put it in `MCP_SECRET` (`.env` locally, the SOPS-encrypted, app-only `trongate-cloud-mcp` Secret in the cluster). `scripts/setup-env.sh` generates one. While `MCP_SECRET` is unset or shorter than 32 characters, every request gets `401`. Rotate it by changing the value and restarting the app.
-
-## 2. Connect Claude Code
+Put it in `MCP_SECRET` (`.env` locally, the SOPS-encrypted `trongate-cloud-mcp` Secret in the cluster). While it is unset or shorter than 32 characters, the admin secret is never accepted. It is compared with `hash_equals` over sha256 digests.
 
 ```sh
-claude mcp add --transport http --scope user trongate https://trongate.cloud/mcp \
+claude mcp add --transport http --scope user trongate-admin https://trongate.cloud/mcp \
   --header "Authorization: Bearer $TRONGATE_MCP_SECRET"
 ```
 
-Run `/mcp` inside Claude Code to check that the server is connected.
-
-### From your phone
-
-Start Claude Code on your machine with the server configured, then enable **Remote Control** (`/remote-control`). Continue that session from the Claude app and ask things like "is the shop deploy done?" or "roll back the blog". The secret never leaves your machine.
-
-## Tools
-
-| Tool | Arguments | Notes |
-|---|---|---|
-| `list_apps` | `project_id?` | All projects (or one): URLs, source, current deployment status, project id and name |
-| `get_app` | `app_id` | Settings, persistent paths, current deployment |
-| `list_deployments` | `app_id`, `limit?` (1–100, default 10) | Newest first |
-| `get_deployment_logs` | `deployment_id`, `after_id?` | Up to 200 lines. Pass `next_after_id` as `after_id` to follow a running deployment; `finished` becomes true when it ends |
-| `platform_status` | `project_id?` | Apps and deployments by status, deployments in progress, recent failures |
-| `deploy_app` | `app_id`, `commit_sha?` | Queues a deployment (`trigger_type = mcp`, no project member) and returns its id |
-| `rollback_app` | `app_id`, `deployment_id?` | Redeploys an earlier successful image. Without `deployment_id`, it rolls back to the one before the current deployment |
-| `audit_app_resources` | | Read-only: per-app objects in tenant namespaces (HTTPRoute, Middleware, Service, Deployment, MariaDB CRs, PVC) that carry trongate.cloud's labels but match no live app in their project's namespace, e.g. after a failed `destroy_app`; deleted apps whose `destroy_app` failed, is still pending, or was never queued (`unfinished_cleanups`); and deleted projects whose namespace removal (`destroy_project`) did not finish (`unfinished_project_cleanups`). Never repairs; Secrets are not listed |
-| `retry_app_cleanup` | `app_id` | Queues `destroy_app` again for a deleted app (refused while one is queued or running). The only way to finish a failed app cleanup: a deleted app is hidden from every other tool and the UI, and the worker does not retry |
-| `retry_project_cleanup` | `project_id` | Queues `destroy_project` again for a deleted project whose namespace is still there (refused while one is queued or running). It deletes the namespace only if no app object is left in it |
-
-- **Annotations:** read tools are marked `readOnlyHint`; `deploy_app`, `rollback_app`, `retry_app_cleanup` and `retry_project_cleanup` are marked `destructiveHint`, so clients ask before running them.
-- **Results:** pretty-printed JSON text. Under `2025-06-18` the same data is also sent as `structuredContent`.
-- **Tool errors** (bad arguments, not found) come back as `isError: true` results. An unknown tool is JSON-RPC `-32602`.
-
 ## Security
 
-- The secret is compared with `hash_equals` over sha256 digests. It is never logged or returned.
-- Tools resolve an app's or deployment's project first and then go through `Platform_actions` with that project id. Internal columns are never returned.
-- Missing or wrong secret: `401`. Unsupported `MCP-Protocol-Version`: `400`. Body over 1 MB: `413`.
-- **DNS rebinding:** a request with an `Origin` header must match `BASE_URL`'s origin or an entry in `MCP_ALLOWED_ORIGINS` (comma separated), otherwise `403`. CLI clients send no `Origin`.
+- Missing or wrong token: `401`. Unsupported `MCP-Protocol-Version`: `400`. Body over 1 MB: `413`.
+- **DNS rebinding:** a request with an `Origin` header must match `BASE_URL`'s origin or an entry in `MCP_ALLOWED_ORIGINS` (comma separated), otherwise `403`.
 - The web server must pass the `Authorization` header to PHP. Nginx/Herd and FrankenPHP do by default.
 
 ## Code map
 
-- `modules/mcp/Mcp.php`: transport, JSON-RPC and auth.
-- `modules/mcp/traits/Mcp_tools.php`: tool definitions and handlers. To add a tool, add its name to `TOOLS`, a definition and a `_tool_{name}()` method.
-- `modules/mcp/Mcp_model.php`: `Platform_actions` + project lookups + `platform_status()`.
+- `modules/mcp/Mcp.php`: transport, JSON-RPC, authentication (admin secret or access token).
+- `modules/mcp/traits/Mcp_tools.php`: tool registry and the app tools; `Mcp_database_tools.php`, `Mcp_admin_tools.php`: the other groups. Each definition lists its `scopes`. Add a tool with a definition and a `_tool_{name}()` method.
+- `modules/mcp/traits/Mcp_grants.php`: tokens and grants (model trait).
+- `modules/mcp/oauth/`: the OAuth server (`mcp-oauth`) and the consent page.
+- `modules/mcp/providers/Mcp_provider.php`: the provider interface and registry.
+- `modules/mcp/claude/`: Claude's provider and page (`mcp-claude`).

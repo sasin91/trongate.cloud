@@ -29,4 +29,6 @@
             <a href="projects/new" class="btn-create">New project</a>
         </div>
     <?php endif; ?>
+
+    <p class="dashboard-aside"><a href="integrations/claude">Use Claude with trongate.cloud</a>: deploy, read logs and fix your databases by asking.</p>
 </div>
