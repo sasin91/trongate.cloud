@@ -15,7 +15,8 @@ $steps = [
 ];
 
 $stability = [
-    ['Nothing goes live untested', 'A new build only takes traffic after it passes its health check. Until then, the last good one keeps serving.'],
+    ['Nothing goes live untested', 'A new build only takes traffic once your app answers. Until then, the last good one keeps serving.'],
+    ['Failed deploys undo themselves', 'If a new build fails its check, we put the last good one back automatically. Nobody has to wake up for it.'],
     ['Every good build is kept', 'Roll back to any earlier release in one click, without rebuilding.'],
     ['No surprise upgrades', 'We build exactly what you pushed, on the Trongate version you chose. Your app changes when you change it.'],
 ];
@@ -23,7 +24,7 @@ $stability = [
 $features = [
     ['Deploy on push', 'A webhook ships every push to your branch. If GitHub drops one, we notice the new commit and deploy it anyway.', '<path d="M12 16V8"/><path d="M8.5 11.5 12 8l3.5 3.5"/><path d="M7 19a4.5 4.5 0 0 1-1-8.9A5.5 5.5 0 0 1 16.6 8.5 3.5 3.5 0 0 1 18 19z"/>'],
     ['Custom domains, HTTPS included', 'Add a CNAME. We spot the DNS change, issue a certificate and switch your domain on, no redeploy needed.', '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>'],
-    ['One-click roll back', 'Every good build is kept. Traffic only moves once the new one passes its health check.', '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/>'],
+    ['Safe rollouts', 'Your old version serves until the new one passes its check. If it fails, the last good build comes straight back. Roll back any time in one click.', '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/>'],
     ['A database per app', 'MariaDB with the credentials wired into your config.', '<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>'],
     ['Sleeps when idle', 'Side projects nap when nobody visits and wake on the next request. Keep production always on.', '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'],
     ['Status at a glance', 'See whether your app is up, and every deployment with its build log.', '<path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/>'],
