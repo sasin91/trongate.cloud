@@ -14,6 +14,8 @@
                 <input type="checkbox" id="log-problems-only">
                 Warnings and errors only
             </label>
+            <!-- Shown by app_logs.js, which does the copying -->
+            <button type="button" class="btn-secondary app-log-copy" id="copy-last-error" hidden disabled>Copy last error</button>
             <span class="muted">Last <?= App_logs::TAIL_LINES ?> lines &middot; times in UTC</span>
         </div>
         <?php require __DIR__ . '/_logs_note.php'; ?>
