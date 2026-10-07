@@ -78,7 +78,7 @@ $platform_host = $app->slug . '.' . PLATFORM_APPS_DOMAIN;
                             <div>
                                 <span class="ov-node-kind">Database</span>
                                 <strong class="ov-mono"><?= $e($database_name) ?></strong>
-                                <span class="muted">MariaDB</span>
+                                <span class="muted">MariaDB<?php if (!$preview): ?> &middot; <a href="apps/<?= (int) $app->id ?>/database">Open</a><?php endif; ?></span>
                             </div>
                         </div>
                     </div>
