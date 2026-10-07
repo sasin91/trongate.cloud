@@ -20,9 +20,9 @@ Trongate.cloud hosts customer Trongate apps on our own k3s cluster. Customers si
 
 ## Custom domains
 
-Ported from Scaleweb's CRM (`hostname-gate.ts`, `domain-promotion.ts`), where an
-un-pointed customer domain shared a certificate with the app's preview host and
-kept its ACME order failing for 23 hours.
+An un-pointed customer domain must never share a certificate with the app's
+preview host, or its ACME order keeps failing and can hold up the whole
+certificate for hours.
 
 - **DNS gate.** `app.verified_domain` (TXT record) proves ownership,
   not that the domain reaches us. `Manifests::custom_domains` routes it only
@@ -69,7 +69,7 @@ kept its ACME order failing for 23 hours.
   Traefik 3.7's GatewayClass does not list it as supported. **Why per domain
   rather than per app:** a listener whose certificate is pending or failing
   stays confined to its own Gateway and Certificate, so one domain can never
-  hold up another hostname of the app (CRM's lesson).
+  hold up another hostname of the app.
 - **Safety.** `worker-admission-policy.yaml` checks tenant Gateways like routes:
   only the `traefik` class and the tenant issuer (and no other `cert-manager.io/*`
   annotation, such as `common-name`, which would add names to the certificate),
@@ -161,7 +161,7 @@ Still open:
   - BuildKit mTLS. Today only the NetworkPolicy and the per-build daemon protect it.
   - JuiceFS metadata still shares `shared-1` with tenant databases.
 - **Custom domains:**
-  - `www.` twins: CRM redirects `www.{domain}` to the apex; here a customer adds the `www` host as its own app domain (one domain per app today).
+  - `www.` twins: no automatic redirect to the apex; a customer adds the `www` host as its own app domain (one domain per app today).
   - Defence in depth outside the cluster: CAA records on trongate.cloud and trongate.dev with `accounturi` limited to the platform issuers' ACME accounts, so Let's Encrypt refuses those names to the `letsencrypt-tenants` account even if the admission policy were bypassed. A DNS change, not made yet.
   - A renewal that fails later does not move `BASE_URL` back; Let's Encrypt's expiry mails and cert-manager metrics are the signal.
   - A domain pointed through a proxy/CDN (other addresses, no CNAME into the apps domain) never passes the gate.

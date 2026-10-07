@@ -33,10 +33,8 @@ CREATE TABLE trongate_users (
   user_level_id INT DEFAULT 0
 );
 
-INSERT INTO trongate_users (id, code, user_level_id) VALUES
-(1, 'YeJd2ZcRHbE5Zz7LM8WvSM5fE75CR5nR', 1);
-
--- Platform admin (tg-admin). Change the password after the first sign-in.
+-- Platform admin (tg-admin): none is seeded. Create one by hand, with a
+-- password_hash() of a strong password, linked to a level-1 trongate_users row.
 CREATE TABLE trongate_administrators (
   id INT PRIMARY KEY AUTO_INCREMENT,
   username VARCHAR(65) DEFAULT NULL,
@@ -49,9 +47,6 @@ CREATE TABLE trongate_administrators (
   login_blocked_until INT NOT NULL DEFAULT 0,
   failed_login_ip VARCHAR(45) NOT NULL DEFAULT ''
 );
-
-INSERT INTO trongate_administrators (id, username, password, trongate_user_id, active) VALUES
-(1, 'admin', '$2y$11$SoHZDvbfLSRHAi3WiKIBiu.tAoi/GCBBO4HRxVX1I3qQkq3wCWfXi', 1, 1);
 
 CREATE TABLE trongate_tokens (
   id INT PRIMARY KEY AUTO_INCREMENT,
