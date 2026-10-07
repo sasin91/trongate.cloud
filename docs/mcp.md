@@ -68,8 +68,8 @@ Customer tools act as the signed-in customer. Write tools carry `destructiveHint
 | `get_app_logs` | both | The running app's output (`App_logs`); never wakes an asleep app; `problems_only` |
 | `list_env_vars`, `set_env_var`, `delete_env_var` | customer | Values are write-only |
 | `list_tables`, `describe_table`, `browse_table` | customer | The app's own database, as the app's own user |
-| `query_database` | customer | Up to 20 statements in one read-only transaction; one result per statement; same allowlist and limits as the Database tab |
-| `execute_sql` | customer | Writes allowed ("Allow changes"), up to 20 statements in one transaction; backs up the tables it names first unless `backup: false` |
+| `query_database` | customer | Statements run in one read-only transaction; one result per statement; same allowlist and limits as the Database tab |
+| `execute_sql` | customer | Writes allowed ("Allow changes"), all statements in one transaction; backs up the tables it names first unless `backup: false` |
 | `insert_row`, `update_row`, `delete_row` | customer | One row by primary key; `update_row` and `delete_row` back up the row first unless `backup: false` |
 | `list_backups`, `restore_backup` | customer | The Database tab's Backups (kept 7 days); restoring puts the tables or row back as they were |
 | `database_activity` | customer | The app's `app_database_log`, with the backup each change took |

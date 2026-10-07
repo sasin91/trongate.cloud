@@ -20,7 +20,7 @@ trait Mcp_database_tools {
         $table = ['type' => 'string', 'minLength' => 1, 'description' => 'Table name (from list_tables)'];
         $key = ['type' => 'object', 'additionalProperties' => ['type' => ['string', 'number']], 'description' => 'The row\'s primary key: every primary key column => value (see describe_table)'];
         $values = ['type' => 'object', 'additionalProperties' => ['type' => ['string', 'number', 'boolean', 'null']], 'description' => 'column => value; null stores NULL'];
-        $sql = ['type' => 'string', 'minLength' => 1, 'maxLength' => App_database::MAX_STATEMENT_BYTES, 'description' => 'Up to ' . App_database::MAX_STATEMENTS . ' MariaDB statements separated by ";", run in one transaction'];
+        $sql = ['type' => 'string', 'minLength' => 1, 'maxLength' => App_database::MAX_STATEMENT_BYTES, 'description' => 'MariaDB statements separated by ";", run in one transaction'];
         $backup = ['type' => 'boolean', 'default' => true, 'description' => 'Back up what it changes first, so restore_backup can undo it'];
         $customer = ['customer'];
 
