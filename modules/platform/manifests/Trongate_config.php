@@ -62,38 +62,59 @@ class Trongate_config {
     }
 
     /**
-     * POSIX sh that rewrites define('NAME', ...) lines in a PHP file to the given values,
-     * appending the define when the file has none.
+     * POSIX sh that rewrites every define('NAME', ...) in a PHP file to the given
+     * values, appending the define when the file has none, then lints the result.
+     *
+     * The rewrite runs config_patcher.php with the image's own PHP and works on
+     * tokens, so multi-line defines (a closure, a getenv() ternary) are replaced
+     * whole instead of leaving their tail behind as a parse error.
      *
      * @param array<string, string> $defines e.g. ['BASE_URL' => 'https://x/', 'ENV' => 'prod']
      */
     static function patch_script(array $defines, string $file = 'config/config.php'): string {
-        $lines = ['set -eu', 'f=' . self::sh_quote($file)];
+        self::assert_defines($defines);
 
+        $patcher = preg_replace('/^<\?php\s*/', '', (string) file_get_contents(__DIR__ . '/config_patcher.php'));
+        $code = $patcher
+            . "\n\$f = \$argv[1];\n"
+            . '$out = tgc_patch_defines((string) file_get_contents($f), ' . var_export($defines, true) . ");\n"
+            . "if (file_put_contents(\$f, \$out) === false) { fwrite(STDERR, \"Cannot write {\$f}\\n\"); exit(1); }\n";
+
+        return implode("\n", [
+            'set -eu',
+            'f=' . self::sh_quote($file),
+            // FrankenPHP images without a php binary still carry the CLI.
+            'if command -v php >/dev/null 2>&1; then php() { command php "$@"; }; else php() { frankenphp php-cli "$@"; }; fi',
+            'php -r ' . self::sh_quote($code) . ' -- "$f"',
+            'php -l "$f" >/dev/null',
+        ]) . "\n";
+    }
+
+    /**
+     * Rewrite define('NAME', ...) calls in PHP source; the in-process twin of patch_script.
+     *
+     * @param array<string, string> $defines
+     */
+    static function patch_php(string $source, array $defines): string {
+        self::assert_defines($defines);
+        require_once __DIR__ . '/config_patcher.php';
+
+        return tgc_patch_defines($source, $defines);
+    }
+
+    /**
+     * @param array<string, string> $defines
+     */
+    private static function assert_defines(array $defines): void {
         foreach ($defines as $name => $value) {
-            $name = (string) $name;
-            $value = (string) $value;
-
-            if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $name)) {
+            if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', (string) $name)) {
                 throw new InvalidArgumentException("Invalid constant name: {$name}");
             }
 
-            if (preg_match('/[\r\n\0]/', $value)) {
+            if (preg_match('/[\r\n\0]/', (string) $value)) {
                 throw new InvalidArgumentException("Value for {$name} must be a single line");
             }
-
-            $define = 'define(' . self::php_string($name) . ', ' . self::php_string($value) . ');';
-            $pattern = '^[[:space:]]*define\([[:space:]]*[\'"]' . $name . '[\'"]';
-            $sed = 's|' . $pattern . '.*$|' . self::sed_replacement($define) . '|';
-
-            $lines[] = 'if grep -Eq ' . self::sh_quote($pattern) . ' "$f"; then';
-            $lines[] = '    sed -i -E ' . self::sh_quote($sed) . ' "$f"';
-            $lines[] = 'else';
-            $lines[] = '    printf \'%s\n\' ' . self::sh_quote($define) . ' >> "$f"';
-            $lines[] = 'fi';
         }
-
-        return implode("\n", $lines) . "\n";
     }
 
     /**
@@ -121,12 +142,5 @@ class Trongate_config {
      */
     static function sh_quote(string $value): string {
         return "'" . str_replace("'", "'\\''", $value) . "'";
-    }
-
-    /**
-     * Escape a literal for the replacement side of sed s|..|..|
-     */
-    static function sed_replacement(string $value): string {
-        return str_replace(['\\', '&', '|'], ['\\\\', '\\&', '\\|'], $value);
     }
 }
