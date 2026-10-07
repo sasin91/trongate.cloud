@@ -19,6 +19,19 @@ class Platform_task {
     const BUILDKITD_LOG_LINES = 60;
 
     /**
+     * Smoke test attempts after a rollout (smoke_test). The route, a new
+     * certificate or a sleeping app's wake-up can lag the rollout, so it backs
+     * off from 1 s to 5 s between attempts: about 2 minutes in all.
+     */
+    const SMOKE_TEST_ATTEMPTS = 30;
+
+    /**
+     * 200 bodies that mean no app answered: Traefik's (Go net/http's) reply
+     * when no route matches, and Traefik's when a route has no live backend
+     */
+    const FALLBACK_BODIES = ['404 page not found', 'no available server'];
+
+    /**
      * Fetch one row with a prepared statement
      */
     static function row(PDO $db, string $sql, array $params = []): ?array {
@@ -372,6 +385,113 @@ class Platform_task {
         self::log_pod_problems($runtime, $log, $namespace, $name);
 
         return false;
+    }
+
+    /**
+     * Request the app's public URL until it answers 200 with a page of its own.
+     *
+     * A 200 that is only the router's fallback text (FALLBACK_BODIES) does not
+     * count, nor does Sablier's "starting" page: a sleeping app is woken by
+     * this request and gets the next attempts to come up. Sablier answers 200
+     * with that page, so any answer given while the app had no ready pod is
+     * taken as Sablier's. On failure the last status and the start of the body
+     * go to the deploy log.
+     */
+    static function smoke_test(Runtime $runtime, Task_log $log, array $app): bool {
+        $url = Trongate_config::base_url($app);
+        $kube = $runtime->kube();
+        $namespace = Manifests::namespace_name($app);
+        $name = Manifests::app_name((int) $app['id']);
+        $log->info("Smoke testing {$url}");
+        $last = '';
+
+        try {
+            $status = retry(self::SMOKE_TEST_ATTEMPTS, function () use ($url, $kube, $namespace, $name, &$last) {
+                // Before the request: a pod that turns ready during it could still have answered
+                $ready = (int) ($kube->get('apps/v1', 'Deployment', $namespace, $name)['status']['readyReplicas'] ?? 0);
+                [$status, $body] = self::http_get($url);
+                $problem = self::smoke_test_problem($status, $body)
+                    ?? ($ready === 0 ? 'the app is still starting (no ready pod yet)' : null);
+
+                if ($problem !== null) {
+                    $last = $problem;
+                    throw new RuntimeException($problem);
+                }
+
+                return $status;
+            }, fn(int $attempt) => min(1000 * $attempt, 5000));
+        } catch (RuntimeException) {
+            $log->error('Smoke test failed after ' . self::SMOKE_TEST_ATTEMPTS . " attempts: {$last}");
+            return false;
+        }
+
+        $log->info("Smoke test passed (HTTP {$status})");
+
+        return true;
+    }
+
+    /**
+     * Why a smoke test response is not the app, or null when it is
+     */
+    static function smoke_test_problem(int $status, string $body): ?string {
+        $snippet = trim(preg_replace('/\s+/', ' ', mb_substr($body, 0, 200)) ?? '');
+        $snippet = $snippet === '' ? '(empty body)' : '"' . $snippet . '"';
+
+        if ($status === 0) {
+            return 'no response: ' . $body;
+        }
+
+        if ($status !== 200) {
+            return "HTTP {$status}, body {$snippet}";
+        }
+
+        if (in_array(strtolower(trim($body)), self::FALLBACK_BODIES, true)) {
+            return "HTTP 200 but the router's fallback page, body {$snippet}";
+        }
+
+        if (stripos($body, 'sablier') !== false) {
+            return 'the app is still starting (Sablier waiting page)';
+        }
+
+        return null;
+    }
+
+    /**
+     * GET a URL following redirects: [final status, first 64 KiB of the body].
+     * On a connection or TLS error the status is 0 and the body is curl's error.
+     *
+     * @return array{int, string}
+     */
+    static function http_get(string $url): array {
+        $body = '';
+        $curl = curl_init($url);
+        curl_setopt_array($curl, [
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 5,
+            CURLOPT_PROTOCOLS => CURLPROTO_HTTPS | CURLPROTO_HTTP,
+            CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS | CURLPROTO_HTTP,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_TIMEOUT => 20,
+            CURLOPT_USERAGENT => 'trongate.cloud smoke test',
+            CURLOPT_HTTPHEADER => ['Accept: text/html,*/*'],
+            CURLOPT_WRITEFUNCTION => function ($curl, string $chunk) use (&$body): int {
+                $body .= $chunk;
+
+                // Returning less than the chunk aborts the transfer once we have enough
+                return strlen($body) > 65536 ? 0 : strlen($chunk);
+            },
+        ]);
+        $ok = curl_exec($curl);
+        $status = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
+        $error = curl_error($curl);
+        $errno = curl_errno($curl);
+        curl_close($curl);
+
+        if ($ok === false && $errno !== CURLE_WRITE_ERROR) {
+            return [0, $error];
+        }
+
+        return [$status, $body];
     }
 
     /**
