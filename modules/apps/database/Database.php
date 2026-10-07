@@ -243,6 +243,8 @@ class Database extends Trongate {
             'tables' => [],
             'table' => null,
             'columns' => [],
+            'foreign_keys' => [],
+            'where' => [],
             'rows' => [],
             'more' => false,
             'page' => max(1, (int) ($_GET['page'] ?? 1)),
@@ -270,7 +272,10 @@ class Database extends Trongate {
                 if (isset($data['tables'][$table])) {
                     $data['table'] = $data['tables'][$table];
                     $data['columns'] = $database->columns($table);
-                    $browse = $database->rows($table, $data['columns'], $data['page']);
+                    $data['foreign_keys'] = $database->foreign_keys($table, $data['columns']);
+                    // ?where[col]=value, from a foreign key that does not point at a primary key
+                    $data['where'] = array_intersect_key($this->_posted_key($_GET['where'] ?? null), array_flip(array_column($data['columns'], 'name')));
+                    $browse = $database->rows($table, $data['columns'], $data['page'], $data['where']);
                     $data['rows'] = $browse['rows'];
                     $data['more'] = $browse['more'];
                 }
@@ -313,6 +318,7 @@ class Database extends Trongate {
             'app' => $app,
             'table' => $table,
             'columns' => $columns,
+            'foreign_keys' => $database->foreign_keys($table, $columns),
             'key' => $key,
             'row' => $extra['posted'] ?? $row,
             'error' => $extra['error'] ?? null,

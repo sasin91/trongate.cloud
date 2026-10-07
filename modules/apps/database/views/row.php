@@ -1,12 +1,18 @@
 <?php
 /**
  * apps/{id}/database/row (Database::row): edit one row ($key set) or add one ($key empty).
- * Expects: $app, $table, $columns (App_database::columns), $key, $row (values, or null for a
- * new row), $error, $back_url.
+ * Expects: $app, $table, $columns (App_database::columns), $foreign_keys (App_database::foreign_keys),
+ * $key, $row (values, or null for a new row), $error, $back_url.
  */
 $e = fn($value) => htmlspecialchars((string) $value);
 $is_new = $key === [];
 $base = 'apps/' . (int) $app->id . '/database';
+$references = []; // column => foreign keys it is part of
+foreach ($foreign_keys as $foreign_key) {
+    foreach ($foreign_key['columns'] as $name) {
+        $references[$name][] = $foreign_key;
+    }
+}
 ?>
 <div class="content narrow">
     <div class="back-link">
@@ -39,6 +45,15 @@ $base = 'apps/' . (int) $app->id . '/database';
                 <span class="ov-mono"><?= $e($name) ?></span>
                 <span class="db-type"><?= $e($column['column_type']) ?><?= $column['key'] ? ', key' : '' ?></span>
             </label>
+            <?php foreach ($references[$name] ?? [] as $foreign_key):
+                $reference = $is_new ? null : App_database::reference($foreign_key, $row ?? []);
+            ?>
+                <?php if ($reference !== null): ?>
+                    <a class="db-ref-link" href="<?= $e($base . (isset($reference['key']) ? '/row?' : '?') . http_build_query($reference)) ?>">Open in <span class="ov-mono"><?= $e($reference['table']) ?></span> &rarr;</a>
+                <?php else: ?>
+                    <span class="db-ref-link muted">&rarr; <span class="ov-mono"><?= $e($foreign_key['table']) ?></span></span>
+                <?php endif; ?>
+            <?php endforeach; ?>
             <?php if (!$column['editable']): ?>
                 <p class="form-hint" id="<?= $id ?>">
                     <?php if ($is_new): ?>

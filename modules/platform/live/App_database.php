@@ -170,14 +170,87 @@ class App_database {
     }
 
     /**
-     * One page of a table, in primary key order when it has one. more: a later page exists.
+     * The table's foreign keys to tables in this database, in constraint name
+     * order. to_key: they point at the referenced table's primary key, so each
+     * value picks one row. Keys with a binary column are left out (their
+     * values are not shown as text).
+     *
+     * @param list<array{name: string, type: string}> $columns the table's columns()
+     * @return list<array{columns: list<string>, table: string, referenced: list<string>, to_key: bool}>
+     */
+    function foreign_keys(string $table, array $columns): array {
+        $stmt = $this->pdo->prepare(<<<SQL
+            SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+            FROM information_schema.KEY_COLUMN_USAGE
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
+                AND REFERENCED_TABLE_SCHEMA = DATABASE() AND REFERENCED_TABLE_NAME IS NOT NULL
+            ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION
+        SQL);
+        $stmt->execute([$table]);
+
+        $binary = array_column(array_filter($columns, [self::class, 'is_binary']), 'name');
+        $keys = [];
+
+        foreach ($stmt->fetchAll() as $row) {
+            $name = (string) $row['CONSTRAINT_NAME'];
+            $keys[$name] ??= ['columns' => [], 'table' => (string) $row['REFERENCED_TABLE_NAME'], 'referenced' => [], 'to_key' => false];
+            $keys[$name]['columns'][] = (string) $row['COLUMN_NAME'];
+            $keys[$name]['referenced'][] = (string) $row['REFERENCED_COLUMN_NAME'];
+        }
+
+        $primary_keys = [];
+
+        foreach ($keys as $name => $key) {
+            if (array_intersect($key['columns'], $binary) !== []) {
+                unset($keys[$name]);
+                continue;
+            }
+
+            $primary_keys[$key['table']] ??= self::primary_key($this->columns($key['table']));
+            $referenced = $key['referenced'];
+            $primary_key = $primary_keys[$key['table']];
+            sort($referenced);
+            sort($primary_key);
+            $keys[$name]['to_key'] = $referenced === $primary_key;
+        }
+
+        return array_values($keys);
+    }
+
+    /**
+     * Where a row's foreign key leads, as the query of a Database tab URL:
+     * the referenced row (table, key) when the key points at a primary key,
+     * else the matching rows (table, where). Null when a value is NULL.
+     *
+     * @param array{columns: list<string>, table: string, referenced: list<string>, to_key: bool} $foreign_key from foreign_keys()
+     * @param array<string, mixed> $row
+     * @return array{table: string, key?: array<string, string>, where?: array<string, string>}|null
+     */
+    static function reference(array $foreign_key, array $row): ?array {
+        $values = [];
+
+        foreach ($foreign_key['columns'] as $i => $column) {
+            if (!isset($row[$column])) {
+                return null;
+            }
+
+            $values[$foreign_key['referenced'][$i]] = (string) $row[$column];
+        }
+
+        return ['table' => $foreign_key['table'], ($foreign_key['to_key'] ? 'key' : 'where') => $values];
+    }
+
+    /**
+     * One page of a table, in primary key order when it has one, optionally
+     * only the rows where columns equal values. more: a later page exists.
      * Long text is cut to PREVIEW_CHARS and binary columns hold their size in bytes,
      * so a page of large values stays small.
      *
      * @param list<array{name: string, type: string, key: bool, long: bool}> $columns
+     * @param array<string, string> $where column => value, columns of $columns only
      * @return array{rows: list<array<string, string|null>>, more: bool}
      */
-    function rows(string $table, array $columns, int $page): array {
+    function rows(string $table, array $columns, int $page, array $where = []): array {
         $key = self::primary_key($columns);
         $order = $key === [] ? '' : ' ORDER BY ' . implode(', ', array_map([self::class, 'quote_name'], $key));
         $offset = max(0, $page - 1) * self::PAGE_SIZE;
@@ -193,10 +266,13 @@ class App_database {
             };
         }, $columns);
 
-        $rows = $this->pdo->query(
-            'SELECT ' . implode(', ', $select) . ' FROM ' . self::quote_name($table) . $order
+        [$filter, $params] = $where === [] ? ['', []] : self::where($where);
+        $stmt = $this->pdo->prepare(
+            'SELECT ' . implode(', ', $select) . ' FROM ' . self::quote_name($table) . $filter . $order
             . ' LIMIT ' . (self::PAGE_SIZE + 1) . ' OFFSET ' . $offset
-        )->fetchAll();
+        );
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll();
 
         return ['rows' => array_slice($rows, 0, self::PAGE_SIZE), 'more' => count($rows) > self::PAGE_SIZE];
     }
