@@ -11,6 +11,7 @@ require_once APPPATH . 'modules/platform/manifests/Trongate_config.php';
 require_once APPPATH . 'modules/platform/manifests/Manifests.php';
 require_once APPPATH . 'modules/platform/manifests/Domain_dns.php';
 require_once __DIR__ . '/Module_reference.php';
+require_once __DIR__ . '/retry.php';
 require_once __DIR__ . '/Task_log.php';
 
 /**

@@ -175,7 +175,7 @@ CREATE TABLE app_database_log (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   app_id INT NOT NULL,
   customer_id INT NOT NULL,
-  action ENUM('query', 'insert', 'update', 'delete') NOT NULL,
+  action ENUM('query', 'insert', 'update', 'delete', 'restore') NOT NULL,
   statement TEXT NOT NULL,
   allow_changes TINYINT(1) NOT NULL DEFAULT 0,
   affected INT NULL,
@@ -183,6 +183,28 @@ CREATE TABLE app_database_log (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   KEY idx_app (app_id, id),
   KEY idx_customer_time (customer_id, created_at)
+);
+
+-- Backups taken before a change from the Database tab, when the person asks for
+-- one, to restore with one click. Kept here rather than on the apps' database
+-- server; Database_model caps them per app and in total and expires them.
+CREATE TABLE app_database_backup (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  app_id INT NOT NULL,
+  customer_id INT NOT NULL,
+  log_id BIGINT NULL COMMENT 'app_database_log entry of the change',
+  summary VARCHAR(500) NOT NULL COMMENT 'tables, or the row',
+  manifest MEDIUMBLOB NOT NULL COMMENT 'serialize()d structure, triggers, columns and keys per table',
+  data LONGBLOB NOT NULL COMMENT 'rows, deflated (App_database::back_up)',
+  `rows` INT NOT NULL,
+  bytes INT NOT NULL COMMENT 'rows before compression',
+  stored_bytes INT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  expires_at DATETIME NOT NULL,
+  restored_at DATETIME NULL,
+  KEY idx_app (app_id, id),
+  KEY idx_log (log_id),
+  KEY idx_expires (expires_at)
 );
 
 -- Deleting an app soft-deletes the row: it keeps the slug ({slug}.PLATFORM_APPS_DOMAIN
@@ -214,6 +236,8 @@ CREATE TABLE app (
   persistent_paths JSON DEFAULT '[]',
   php_extensions VARCHAR(255) NOT NULL DEFAULT '',
   always_on TINYINT(1) NOT NULL DEFAULT 0,
+  -- Trongate's ENV constant, patched into config/config.php (Trongate_config::env)
+  trongate_env VARCHAR(20) NOT NULL DEFAULT 'dev',
   database_server_id INT NULL,
   current_deployment_id INT NULL,
 

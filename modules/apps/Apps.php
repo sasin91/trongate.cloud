@@ -243,6 +243,7 @@ class Apps extends Trongate {
             'persistent_paths' => $is_resubmit ? (string) post('persistent_paths') : implode("\n", $paths),
             'php_extensions' => $is_resubmit ? (string) post('php_extensions', true) : (string) $app->php_extensions,
             'always_on' => $is_resubmit ? (bool) post('always_on') : (bool) $app->always_on,
+            'trongate_env' => $is_resubmit ? (string) post('trongate_env', true) : Trongate_config::env((array) $app),
             'auto_deploy' => $is_resubmit ? (bool) post('auto_deploy') : (bool) $app->auto_deploy,
             'domain_record' => !empty($app->domain) ? $this->model->domain_verification_record((int) $app->id, (string) $app->domain) : null,
             'domain_routed' => Manifests::custom_domains((array) $app) !== [],
@@ -315,6 +316,7 @@ class Apps extends Trongate {
         $this->validation->set_rules('domain', 'Custom Domain', 'max_length[253]|callback__validate_domain');
         $this->validation->set_rules('persistent_paths', 'Persistent Paths', 'max_length[4000]|callback__validate_persistent_paths');
         $this->validation->set_rules('php_extensions', 'PHP Extensions', 'max_length[255]|callback__validate_php_extensions');
+        $this->validation->set_rules('trongate_env', 'Environment', 'required|callback__validate_trongate_env');
 
         if ($this->validation->run() !== true) {
             $this->settings();
@@ -327,6 +329,7 @@ class Apps extends Trongate {
             'php_extensions' => implode(',', $this->_parse_php_extensions((string) post('php_extensions', true))),
             'always_on' => (bool) post('always_on'),
             'auto_deploy' => (bool) post('auto_deploy'),
+            'trongate_env' => trim((string) post('trongate_env', true)),
         ]);
 
         set_flashdata('Settings saved. They take effect on the next deployment.');
@@ -507,6 +510,14 @@ class Apps extends Trongate {
 
         if (!array_key_exists($name, $env) && count($env) >= App_env::MAX_VARIABLES) {
             return 'An app can have at most ' . App_env::MAX_VARIABLES . ' environment variables.';
+        }
+
+        return true;
+    }
+
+    function _validate_trongate_env(string $value): bool|string {
+        if (!preg_match(Trongate_config::ENV_PATTERN, trim($value))) {
+            return 'The environment may only contain letters, numbers, dashes and underscores (at most 20).';
         }
 
         return true;
