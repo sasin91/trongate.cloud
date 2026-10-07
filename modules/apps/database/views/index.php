@@ -2,7 +2,7 @@
 /**
  * apps/{id}/database (Database::index). Expects: $app, $urls, $live_state, $can_rollback, $database_name,
  * $tables (App_database::tables), $table (one of $tables or null), $columns, $rows, $more, $page,
- * $sql, $result (App_database::run or null), $query_error, $error (the database cannot be opened),
+ * $sql, $results (App_database::run or null), $query_error, $error (the database cannot be opened),
  * $recent_actions (Database_model::recent_actions), $backups (Database_model::backups), $backup_id (the
  * backup taken before $sql ran, or null).
  */
@@ -84,12 +84,12 @@ $row_key = fn(array $row) => array_combine($primary_key, array_map(fn($c) => (st
                 <?= form_open($base . '/query' . ($table !== null ? '?' . http_build_query(['table' => $table['name']]) : ''), [
                     'class' => 'ov-pad db-sql',
                     'onsubmit' => "return !this.allow_changes.checked || confirm(this.backup.checked"
-                        . " ? 'Run this statement with changes allowed? The tables it names are backed up first, so you can restore them under Backups.'"
-                        . " : 'Run this statement with changes allowed and no backup? It can change or delete data in " . $e($database_name) . " for good.')",
+                        . " ? 'Run this SQL with changes allowed? The tables it names are backed up first, so you can restore them under Backups.'"
+                        . " : 'Run this SQL with changes allowed and no backup? It can change or delete data in " . $e($database_name) . " for good.')",
                 ]) ?>
-                    <textarea name="sql" id="db-sql" aria-label="SQL statement" class="form-input mono" rows="4" spellcheck="false" placeholder="SELECT * FROM <?= $e($table['name'] ?? 'users') ?> LIMIT 10"><?= $e($sql) ?></textarea>
+                    <textarea name="sql" id="db-sql" aria-label="SQL statements" class="form-input mono" rows="4" spellcheck="false" placeholder="SELECT * FROM <?= $e($table['name'] ?? 'users') ?> LIMIT 10"><?= $e($sql) ?></textarea>
                     <div class="db-sql-foot">
-                        <span class="form-hint">One statement at a time, as your app's own database user. Read-only unless you allow changes. Stops after <?= App_database::STATEMENT_SECONDS ?> seconds. Every statement is logged.</span>
+                        <span class="form-hint">Separate statements with <code>;</code>. They run in one transaction as your app's own database user, so if one fails the others are rolled back. CREATE, ALTER, DROP, TRUNCATE and RENAME commit at once, with everything before them. Read-only unless you allow changes. Stops after <?= App_database::STATEMENT_SECONDS ?> seconds. Everything is logged.</span>
                         <span class="db-allow">
                             <label class="checkbox-label">
                                 <input type="checkbox" name="allow_changes" value="1" id="db-allow-changes" onchange="this.form.backup.disabled = !this.checked">
@@ -106,15 +106,22 @@ $row_key = fn(array $row) => array_combine($primary_key, array_map(fn($c) => (st
 
                 <?php if ($query_error !== null): ?>
                     <p class="db-error" role="alert"><?= $e($query_error) ?></p>
-                <?php elseif ($result !== null && $result['affected'] !== null): ?>
-                    <p class="db-done" role="status">
-                        Done. <?= (int) $result['affected'] ?> <?= $result['affected'] === 1 ? 'row' : 'rows' ?> changed in <?= number_format($result['seconds'], 2) ?> s.
-                        <?php if ($backup_id !== null): ?><a href="#backup-<?= (int) $backup_id ?>">Backed up first</a>, restore it under Backups.<?php endif; ?>
+                <?php elseif ($results !== null): ?>
+                    <?php if (count($results) > 1): ?>
+                        <p class="db-done" role="status"><?= count($results) ?> statements ran in one transaction in <?= number_format(array_sum(array_column($results, 'seconds')), 2) ?> s.</p>
+                    <?php endif; ?>
+                    <?php foreach ($results as $i => $result): ?>
+                    <p class="db-done"<?= count($results) === 1 ? ' role="status"' : '' ?>>
+                        <?php if (count($results) > 1): ?>
+                            <span class="db-statement"><?= $i + 1 ?>. <code title="<?= $e($result['statement']) ?>"><?= $e(preg_replace('/^(.{80}).+$/us', '$1…', preg_replace('/\s+/', ' ', $result['statement']))) ?></code></span>
+                        <?php endif; ?>
+                        <?php if ($result['affected'] !== null): ?>
+                            <?= count($results) === 1 ? 'Done. ' : '' ?><?= (int) $result['affected'] ?> <?= $result['affected'] === 1 ? 'row' : 'rows' ?> changed in <?= number_format($result['seconds'], 2) ?> s.
+                        <?php else: ?>
+                            <?= count($result['rows']) ?> <?= count($result['rows']) === 1 ? 'row' : 'rows' ?> in <?= number_format($result['seconds'], 2) ?> s<?= $result['truncated'] ? ', only the first ' . count($result['rows']) . ' shown' : '' ?>.
+                        <?php endif; ?>
                     </p>
-                <?php elseif ($result !== null): ?>
-                    <p class="db-done" role="status">
-                        <?= count($result['rows']) ?> <?= count($result['rows']) === 1 ? 'row' : 'rows' ?> in <?= number_format($result['seconds'], 2) ?> s<?= $result['truncated'] ? ', only the first ' . App_database::MAX_RESULT_ROWS . ' shown' : '' ?>.
-                    </p>
+                    <?php if ($result['affected'] === null): ?>
                     <div class="db-grid-wrap">
                         <table class="db-grid">
                             <thead><tr><?php foreach ($result['columns'] as $name): ?><th><?= $e($name) ?></th><?php endforeach; ?></tr></thead>
@@ -125,6 +132,11 @@ $row_key = fn(array $row) => array_combine($primary_key, array_map(fn($c) => (st
                             </tbody>
                         </table>
                     </div>
+                    <?php endif; ?>
+                    <?php endforeach; ?>
+                    <?php if ($backup_id !== null): ?>
+                        <p class="db-done"><a href="#backup-<?= (int) $backup_id ?>">Backed up first</a>, restore it under Backups.</p>
+                    <?php endif; ?>
                 <?php endif; ?>
             </section>
 
@@ -176,7 +188,7 @@ $row_key = fn(array $row) => array_combine($primary_key, array_map(fn($c) => (st
                 </nav>
                 <?php endif; ?>
             </section>
-            <?php elseif ($result === null && $query_error === null && $tables !== []): ?>
+            <?php elseif ($results === null && $query_error === null && $tables !== []): ?>
                 <p class="muted">Pick a table to see its rows.</p>
             <?php endif; ?>
 

@@ -121,6 +121,15 @@
     border-bottom: 1px solid var(--border);
 }
 
+.db-statement {
+    display: block;
+    margin-bottom: 0.125rem;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .db-error {
     background: #fdf0ef;
     color: #8a2a22;

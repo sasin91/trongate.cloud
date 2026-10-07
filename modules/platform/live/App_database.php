@@ -24,8 +24,11 @@ class App_database {
     /** Bytes of result data read for a query, so a SELECT of large blobs cannot exhaust PHP's memory */
     const MAX_RESULT_BYTES = 2 * 1024 * 1024;
 
-    /** A longer statement is refused (the SQL box is for queries, not imports) */
+    /** Longer SQL is refused (the SQL box is for queries, not imports) */
     const MAX_STATEMENT_BYTES = 64 * 1024;
+
+    /** Statements the SQL box runs at once, in one transaction */
+    const MAX_STATEMENTS = 20;
 
     /** First keywords of statements that only read. They run in a read-only transaction. */
     const READ_STATEMENTS = ['SELECT', 'WITH', 'SHOW', 'DESCRIBE', 'DESC', 'EXPLAIN'];
@@ -33,7 +36,7 @@ class App_database {
     /** First keywords of statements that change data or tables; they run only with $allow_changes */
     const WRITE_STATEMENTS = ['INSERT', 'UPDATE', 'DELETE', 'REPLACE', 'CREATE', 'ALTER', 'DROP', 'TRUNCATE', 'RENAME'];
 
-    /** MariaDB aborts a statement after this long, so one query cannot tie up a web worker */
+    /** MariaDB aborts a statement (or the rest of several, see run()) after this long, so one query cannot tie up a web worker */
     const STATEMENT_SECONDS = 15;
 
     const CONNECT_SECONDS = 5;
@@ -264,14 +267,15 @@ class App_database {
     }
 
     /**
-     * Why a statement may not run here, or null when it may (see run()).
-     * Anything but the statements in READ_STATEMENTS and WRITE_STATEMENTS is
-     * refused: SET (which could lift the read-only mode and the time limit),
-     * LOCK, HANDLER, LOAD DATA, CALL, PREPARE and the like.
+     * Why the SQL may not run here, or null when it may (see run()). It may
+     * hold up to MAX_STATEMENTS statements separated by ";". Anything but the
+     * statements in READ_STATEMENTS and WRITE_STATEMENTS is refused: SET (which
+     * could lift the read-only mode and the time limit), BEGIN, COMMIT, LOCK,
+     * HANDLER, LOAD DATA, CALL, PREPARE and the like.
      */
     static function refusal(string $sql, bool $allow_changes): ?string {
         if (strlen($sql) > self::MAX_STATEMENT_BYTES) {
-            return 'That statement is longer than ' . (self::MAX_STATEMENT_BYTES / 1024) . ' KB.';
+            return 'That SQL is longer than ' . (self::MAX_STATEMENT_BYTES / 1024) . ' KB.';
         }
 
         // Executable comments (/*! ... */, /*M! ... */) run their contents as SQL
@@ -284,25 +288,91 @@ class App_database {
             return 'Reading or writing files on the database server is not allowed.';
         }
 
-        $kind = self::statement_kind($sql);
+        $statements = self::statements($sql);
 
-        if ($kind === null) {
-            return 'Only SELECT, SHOW, DESCRIBE and EXPLAIN run here, or with "Allow changes" INSERT, UPDATE, DELETE, REPLACE, CREATE, ALTER, DROP, TRUNCATE and RENAME.';
+        if (count($statements) > self::MAX_STATEMENTS) {
+            return 'Run at most ' . self::MAX_STATEMENTS . ' statements at a time.';
         }
 
-        if ($kind === 'write' && !$allow_changes) {
-            return 'This statement changes your database. Tick "Allow changes" to run it.';
+        foreach ($statements as $i => $statement) {
+            $kind = self::keyword_kind($statement);
+            $which = count($statements) > 1 ? 'Statement ' . ($i + 1) . ': ' : '';
+
+            if ($kind === null) {
+                return $which . 'Only SELECT, SHOW, DESCRIBE and EXPLAIN run here, or with "Allow changes" INSERT, UPDATE, DELETE, REPLACE, CREATE, ALTER, DROP, TRUNCATE and RENAME.';
+            }
+
+            if ($kind === 'write' && !$allow_changes) {
+                return $which . 'This changes your database. Tick "Allow changes" to run it.';
+            }
         }
 
-        return null;
+        return $statements === [] ? 'There is no statement to run.' : null;
     }
 
     /**
-     * 'read' or 'write' by the statement's first keyword (after comments), or null when it is neither
+     * 'write' when any statement in the SQL changes data or tables, 'read' when
+     * all only read, or null when one is neither
      */
     static function statement_kind(string $sql): ?string {
-        $sql = (string) preg_replace('#^(\s+|--(\s[^\n]*)?(\n|$)|\#[^\n]*(\n|$)|/\*.*?\*/)*#s', '', $sql);
-        $keyword = strtoupper((string) preg_replace('/^([A-Za-z]+).*$/s', '$1', $sql));
+        $kinds = array_map([self::class, 'keyword_kind'], self::statements($sql));
+
+        return match (true) {
+            $kinds === [] || in_array(null, $kinds, true) => null,
+            in_array('write', $kinds, true) => 'write',
+            default => 'read',
+        };
+    }
+
+    /**
+     * The statements in SQL separated by ";", without empty ones. A ";" inside
+     * a string, a `quoted name` or a comment does not separate.
+     *
+     * @return list<string>
+     */
+    static function statements(string $sql): array {
+        $statements = [];
+        $start = 0;
+        $length = strlen($sql);
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $sql[$i];
+
+            if ($char === "'" || $char === '"' || $char === '`') {
+                // To the closing quote; a doubled quote, or a backslash in a string, escapes
+                for ($i++; $i < $length; $i++) {
+                    if ($sql[$i] === '\\' && $char !== '`') {
+                        $i++;
+                    } elseif ($sql[$i] === $char) {
+                        if (($sql[$i + 1] ?? '') !== $char) {
+                            break;
+                        }
+
+                        $i++;
+                    }
+                }
+            } elseif ($char === '#' || ($char === '-' && substr($sql, $i, 2) === '--' && ctype_space($sql[$i + 2] ?? ' '))) {
+                $end = strpos($sql, "\n", $i);
+                $i = $end === false ? $length : $end;
+            } elseif ($char === '/' && ($sql[$i + 1] ?? '') === '*') {
+                $end = strpos($sql, '*/', $i + 2);
+                $i = $end === false ? $length : $end + 1;
+            } elseif ($char === ';') {
+                $statements[] = substr($sql, $start, $i - $start);
+                $start = $i + 1;
+            }
+        }
+
+        $statements[] = substr($sql, $start);
+
+        return array_values(array_filter(array_map('trim', $statements), fn($statement) => self::without_comments($statement) !== ''));
+    }
+
+    /**
+     * 'read' or 'write' by one statement's first keyword (after comments), or null when it is neither
+     */
+    private static function keyword_kind(string $statement): ?string {
+        $keyword = strtoupper((string) preg_replace('/^([A-Za-z]+).*$/s', '$1', self::without_comments($statement)));
 
         return match (true) {
             in_array($keyword, self::READ_STATEMENTS, true) => 'read',
@@ -312,16 +382,28 @@ class App_database {
     }
 
     /**
-     * Run one SQL statement as typed, once refusal() allows it. Without
-     * $allow_changes it runs in a read-only transaction, so MariaDB itself
-     * refuses any write (a function with side effects included).
+     * A statement without its leading whitespace and comments
+     */
+    private static function without_comments(string $statement): string {
+        return (string) preg_replace('#^(\s+|--(\s[^\n]*)?(\n|$)|\#[^\n]*(\n|$)|/\*.*?\*/)*#s', '', $statement);
+    }
+
+    /**
+     * Run the SQL as typed, once refusal() allows it: its statements one after
+     * another in one transaction, so when one fails the ones before it are
+     * rolled back (except CREATE, ALTER, DROP, TRUNCATE and RENAME, which
+     * MariaDB commits at once). Without $allow_changes the transaction is
+     * read-only, so MariaDB itself refuses any write (a function with side
+     * effects included). All of them together get STATEMENT_SECONDS.
      *
-     * A statement that returns rows gives its first MAX_RESULT_ROWS rows (and
-     * at most MAX_RESULT_BYTES); any other gives the number of rows it changed.
+     * Per statement: one that returns rows gives its first MAX_RESULT_ROWS rows
+     * (and at most MAX_RESULT_BYTES for all of them); any other gives the number
+     * of rows it changed.
      *
-     * @return array{columns: list<string>, rows: list<list<string|null>>, truncated: bool, affected: int|null, seconds: float}
-     * @throws InvalidArgumentException with refusal() when the statement may not run
-     * @throws PDOException with MariaDB's own message when the statement fails
+     * @return list<array{statement: string, columns: list<string>, rows: list<list<string|null>>, truncated: bool, affected: int|null, seconds: float}>
+     * @throws InvalidArgumentException with refusal() when the SQL may not run
+     * @throws PDOException with MariaDB's own message when a single statement fails
+     * @throws RuntimeException naming the statement when one of several fails
      */
     function run(string $sql, bool $allow_changes = false): array {
         $refusal = self::refusal($sql, $allow_changes);
@@ -330,13 +412,80 @@ class App_database {
             throw new InvalidArgumentException($refusal);
         }
 
-        $this->pdo->exec('SET SESSION TRANSACTION ' . ($allow_changes ? 'READ WRITE' : 'READ ONLY'));
-
+        $statements = self::statements($sql);
+        $results = [];
+        $bytes_left = self::MAX_RESULT_BYTES;
         $started = microtime(true);
-        $stmt = $this->pdo->query($sql);
+        $committed = []; // statements MariaDB committed at once
+
+        $this->pdo->exec('SET SESSION TRANSACTION ' . ($allow_changes ? 'READ WRITE' : 'READ ONLY'));
+        $this->pdo->beginTransaction();
+
+        try {
+            foreach ($statements as $i => $statement) {
+                $seconds_left = self::STATEMENT_SECONDS - (microtime(true) - $started);
+
+                if ($seconds_left < 0.1) {
+                    throw new PDOException('Query execution was interrupted (max_statement_time exceeded)');
+                }
+
+                $this->pdo->exec('SET SESSION max_statement_time = ' . round($seconds_left, 1));
+                $results[] = $this->run_statement($statement, $bytes_left);
+
+                if (preg_match('/^(CREATE|ALTER|DROP|TRUNCATE|RENAME)\b/i', self::without_comments($statement))) {
+                    $committed[] = $i + 1;
+                }
+            }
+
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->commit();
+            }
+        } catch (PDOException $e) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+
+            if (count($statements) === 1) {
+                throw $e;
+            }
+
+            $failed = count($results) + 1;
+            $message = 'Statement ' . $failed . ' failed: ' . rtrim(self::error_message($e), '.') . '. ';
+
+            if ($committed === []) {
+                $message .= 'The statements before it were rolled back, so nothing changed.';
+            } else {
+                // A CREATE, ALTER, ... commits the transaction so far, itself included
+                $last = max($committed);
+                $message .= ($last === 1 ? 'Statement 1 stays' : 'Statements 1 to ' . $last . ' stay') . ' changed: MariaDB commits CREATE, ALTER, DROP, TRUNCATE and RENAME at once, with everything before them.';
+                $message .= $last + 1 < $failed ? ' The ones after were rolled back.' : '';
+            }
+
+            throw new RuntimeException($message, 0, $e);
+        } finally {
+            $this->pdo->exec('SET SESSION max_statement_time = ' . self::STATEMENT_SECONDS);
+        }
+
+        return $results;
+    }
+
+    /**
+     * MariaDB's message without PDO's SQLSTATE prefix
+     */
+    static function error_message(PDOException $e): string {
+        return (string) preg_replace('/^SQLSTATE\[\w+\]: [^:]*: (\d+ )?/', '', $e->getMessage());
+    }
+
+    /**
+     * @param int $bytes_left result bytes still allowed, shared by the statements of one run()
+     * @return array{statement: string, columns: list<string>, rows: list<list<string|null>>, truncated: bool, affected: int|null, seconds: float}
+     */
+    private function run_statement(string $statement, int &$bytes_left): array {
+        $started = microtime(true);
+        $stmt = $this->pdo->query($statement);
 
         if ($stmt->columnCount() === 0) {
-            return ['columns' => [], 'rows' => [], 'truncated' => false, 'affected' => $stmt->rowCount(), 'seconds' => microtime(true) - $started];
+            return ['statement' => $statement, 'columns' => [], 'rows' => [], 'truncated' => false, 'affected' => $stmt->rowCount(), 'seconds' => microtime(true) - $started];
         }
 
         $columns = [];
@@ -346,13 +495,12 @@ class App_database {
         }
 
         $rows = [];
-        $bytes = 0;
         $truncated = false;
 
         while (($row = $stmt->fetch(PDO::FETCH_NUM)) !== false) {
-            $bytes += array_sum(array_map(fn($value) => strlen((string) $value), $row));
+            $bytes_left -= array_sum(array_map(fn($value) => strlen((string) $value), $row));
 
-            if (count($rows) === self::MAX_RESULT_ROWS || $bytes > self::MAX_RESULT_BYTES) {
+            if (count($rows) === self::MAX_RESULT_ROWS || $bytes_left < 0) {
                 $truncated = true;
                 break;
             }
@@ -362,7 +510,7 @@ class App_database {
 
         $stmt->closeCursor();
 
-        return ['columns' => $columns, 'rows' => $rows, 'truncated' => $truncated, 'affected' => null, 'seconds' => microtime(true) - $started];
+        return ['statement' => $statement, 'columns' => $columns, 'rows' => $rows, 'truncated' => $truncated, 'affected' => null, 'seconds' => microtime(true) - $started];
     }
 
     /**

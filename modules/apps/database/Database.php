@@ -29,7 +29,7 @@ class Database extends Trongate {
     }
 
     /**
-     * POST apps/{id}/database/query: run one statement and show its result.
+     * POST apps/{id}/database/query: run the statements (in one transaction) and show their results.
      */
     function query(): void {
         $this->_make_sure_allowed();
@@ -58,10 +58,11 @@ class Database extends Trongate {
                 };
 
                 try {
-                    $page['result'] = $this->_logged($app, 'query', $sql, $allow_changes, function () use ($database, $sql, $allow_changes) {
-                        $result = $database->run($sql, $allow_changes);
+                    $page['results'] = $this->_logged($app, 'query', $sql, $allow_changes, function () use ($database, $sql, $allow_changes) {
+                        $results = $database->run($sql, $allow_changes);
+                        $affected = array_filter(array_column($results, 'affected'), 'is_int');
 
-                        return [$result, $result['affected']];
+                        return [$results, $affected === [] ? null : array_sum($affected)];
                     }, $backup, $page['backup_id']);
                 } catch (PDOException | RuntimeException $e) {
                     $page['query_error'] = $e instanceof PDOException ? $this->_database_error($e) : $e->getMessage();
@@ -336,7 +337,7 @@ class Database extends Trongate {
     }
 
     /**
-     * Render the database page. $page may carry sql, result, query_error and error.
+     * Render the database page. $page may carry sql, results, backup_id, query_error and error.
      */
     function _database_page(object $app, array $page = []): void {
         $data = [
@@ -352,7 +353,7 @@ class Database extends Trongate {
             'more' => false,
             'page' => max(1, (int) ($_GET['page'] ?? 1)),
             'sql' => '',
-            'result' => null,
+            'results' => null,
             'query_error' => null,
             'error' => null,
             'recent_actions' => $this->model->recent_actions((int) $app->id),
@@ -483,7 +484,7 @@ class Database extends Trongate {
      * MariaDB's message without PDO's SQLSTATE prefix
      */
     function _database_error(PDOException $e): string {
-        return (string) preg_replace('/^SQLSTATE\[\w+\]: [^:]*: (\d+ )?/', '', $e->getMessage());
+        return App_database::error_message($e);
     }
 
     /**
