@@ -332,3 +332,53 @@ CREATE TABLE scheduled_jobs (
   last_failed_at TIMESTAMP NULL,
   last_summary JSON NULL
 );
+
+-- ---------------------------------------------------------------------------
+-- AI assistants (MCP): OAuth 2.1 clients, a customer's grants and their tokens
+-- ---------------------------------------------------------------------------
+
+-- Registered by the assistant itself (dynamic client registration, RFC 7591).
+-- provider: which Mcp_provider accepted its redirect URIs (modules/mcp/providers).
+CREATE TABLE mcp_oauth_client (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  client_id VARCHAR(64) NOT NULL,
+  client_secret_hash CHAR(64) NULL COMMENT 'sha256; NULL for public clients (PKCE only)',
+  provider VARCHAR(40) NOT NULL,
+  client_name VARCHAR(200) NOT NULL,
+  redirect_uris JSON NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY unique_client_id (client_id),
+  KEY idx_created (created_at)
+);
+
+-- A customer allowed a client to act for them: one connection on the Claude page.
+-- Revoking it ends every token at once.
+CREATE TABLE mcp_oauth_grant (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  client_id INT NOT NULL,
+  customer_id INT NOT NULL,
+  scope VARCHAR(100) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  last_used_at TIMESTAMP NULL DEFAULT NULL,
+  revoked_at TIMESTAMP NULL DEFAULT NULL,
+  KEY idx_customer (customer_id, revoked_at),
+  CONSTRAINT fk_mcp_grant_client FOREIGN KEY (client_id) REFERENCES mcp_oauth_client (id) ON DELETE CASCADE,
+  CONSTRAINT fk_mcp_grant_customer FOREIGN KEY (customer_id) REFERENCES customer (id)
+);
+
+-- Authorization codes, access and refresh tokens, stored as sha256 only.
+-- used_at: a code or refresh token is spent; spending one twice revokes its grant.
+CREATE TABLE mcp_oauth_token (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  grant_id INT NOT NULL,
+  kind ENUM('code', 'access', 'refresh') NOT NULL,
+  token_hash CHAR(64) NOT NULL,
+  code_challenge VARCHAR(128) NULL,
+  redirect_uri VARCHAR(500) NULL,
+  expires_at DATETIME NOT NULL,
+  used_at TIMESTAMP NULL DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY unique_token_hash (token_hash),
+  KEY idx_expires (expires_at),
+  CONSTRAINT fk_mcp_token_grant FOREIGN KEY (grant_id) REFERENCES mcp_oauth_grant (id) ON DELETE CASCADE
+);

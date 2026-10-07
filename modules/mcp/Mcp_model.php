@@ -1,16 +1,36 @@
 <?php
 
 require_once __DIR__ . '/../platform/traits/Platform_actions.php';
+require_once __DIR__ . '/../apps/traits/App_records.php';
+require_once __DIR__ . '/../apps/database/traits/App_database_log.php';
+require_once __DIR__ . '/traits/Mcp_grants.php';
 
 /**
- * Data access for the admin MCP endpoint. Sees every project: tools look up the
- * owning project of an app or deployment, then go through Platform_actions
- * with that project id.
+ * Data access for the MCP endpoint. Customer tools go through Platform_actions'
+ * member lookups (find_member_app, ...); the admin sees every project: its
+ * tools look up the owning project of an app or deployment, then go through
+ * Platform_actions with that project id.
  *
  * @property-read Db $db
  */
 class Mcp_model extends Model {
     use Platform_actions;
+    use App_records;
+    use App_database_log;
+    use Mcp_grants;
+
+    /**
+     * An active, onboarded customer
+     */
+    function find_customer(int $customer_id): object|false {
+        $rows = $this->db->query_bind(
+            'SELECT * FROM customer WHERE id = :id AND active = 1 AND onboarded_at IS NOT NULL LIMIT 1',
+            ['id' => $customer_id],
+            'object'
+        );
+
+        return $rows[0] ?? false;
+    }
 
     /**
      * Project names keyed by id.

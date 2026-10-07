@@ -1,18 +1,29 @@
 <?php
 
 require_once __DIR__ . '/traits/Mcp_tools.php';
+require_once __DIR__ . '/traits/Mcp_database_tools.php';
+require_once __DIR__ . '/traits/Mcp_admin_tools.php';
 
 /**
- * MCP server over Streamable HTTP (JSON responses, no SSE), authenticated with
- * one admin secret (MCP_SECRET env var) as a Bearer token. URL: POST /mcp
+ * MCP server over Streamable HTTP (JSON responses, no SSE). URL: POST /mcp
+ *
+ * Two kinds of Bearer token:
+ * - an OAuth access token (modules/mcp/oauth): a customer connected an
+ *   assistant such as Claude, and the tools act as that customer, in the
+ *   projects they are a member of, like the control panel does;
+ * - the admin secret (MCP_SECRET env var): every project, plus the admin tools.
  *
  * Stateless: an Mcp-Session-Id is issued on initialize but never required.
  * See docs/mcp.md.
  *
  * @property-read Mcp_model $model
+ * @property-read Services $services
+ * @property-read Secrets $secrets
  */
 class Mcp extends Trongate {
     use Mcp_tools;
+    use Mcp_database_tools;
+    use Mcp_admin_tools;
 
     /** Newest first; the first entry is offered when the client asks for an unknown version */
     const PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26'];
@@ -20,7 +31,7 @@ class Mcp extends Trongate {
     /** Assumed when no MCP-Protocol-Version header is sent (per spec) */
     const FALLBACK_PROTOCOL_VERSION = '2025-03-26';
 
-    const SERVER_VERSION = '1.0.0';
+    const SERVER_VERSION = '2.0.0';
     const MAX_BODY_BYTES = 1048576;
     const MIN_SECRET_LENGTH = 32;
 
@@ -30,6 +41,9 @@ class Mcp extends Trongate {
     const METHOD_NOT_FOUND = -32601;
     const INVALID_PARAMS = -32602;
     const INTERNAL_ERROR = -32603;
+
+    /** The customer the tools act for; null with the admin secret */
+    private ?object $customer = null;
 
     function index(): void {
         // Bearer auth only; don't hold the PHP session lock
@@ -47,8 +61,9 @@ class Mcp extends Trongate {
             $this->_send_json(405, $this->_error(null, self::INVALID_REQUEST, 'Method not allowed'));
         }
 
-        if (!$this->_authorized($this->_bearer_token())) {
-            header('WWW-Authenticate: Bearer realm="trongate.cloud"');
+        if (!$this->_authenticate($this->_bearer_token())) {
+            // Where to get a token (RFC 9728), so clients can start OAuth by themselves
+            header('WWW-Authenticate: Bearer realm="trongate.cloud", resource_metadata="' . BASE_URL . '.well-known/oauth-protected-resource/mcp"');
             $this->_send_json(401, $this->_error(null, self::INVALID_REQUEST, 'Missing or invalid token'));
         }
 
@@ -179,8 +194,7 @@ class Mcp extends Trongate {
                 'title' => 'Trongate Cloud',
                 'version' => self::SERVER_VERSION,
             ],
-            'instructions' => 'Admin access to Trongate Cloud across all projects: list apps and deployments, read build logs, '
-                . 'deploy and roll back. Deploying and rolling back change production; confirm with the user first.',
+            'instructions' => $this->_instructions(),
         ];
     }
 
@@ -271,6 +285,50 @@ class Mcp extends Trongate {
         $default_port = $scheme === 'https' ? 443 : 80;
 
         return $scheme . '://' . strtolower($parts['host']) . ($port !== null && $port !== $default_port ? ':' . $port : '');
+    }
+
+    function _instructions(): string {
+        if ($this->_is_admin()) {
+            return 'Admin access to Trongate Cloud across all projects: list apps and deployments, read build logs, '
+                . 'deploy and roll back, and audit and retry cleanups. Deploying and rolling back change production; confirm with the user first.';
+        }
+
+        return 'Trongate Cloud hosts Trongate PHP apps. You act for the signed-in customer in the projects they are a member of: '
+            . 'a project groups apps; an app is a GitHub repository deployed to {slug}.' . PLATFORM_APPS_DOMAIN . ' (and an optional custom domain), '
+            . 'with its own MariaDB database. Start with list_projects or list_apps. '
+            . 'Deploys, rollbacks, settings, environment variables and database changes affect live apps: say what you will change and confirm with the user first. '
+            . 'Settings and environment variables take effect on the next deploy. '
+            . 'Read a database with query_database (read-only); change it with insert_row, update_row, delete_row or execute_sql, which are logged on the app\'s Database tab. '
+            . 'Deleting apps or projects and managing members is only possible in the control panel.';
+    }
+
+    /**
+     * Who the token belongs to: the admin (MCP_SECRET) or a customer through
+     * an OAuth grant (sets $customer). False when it is neither.
+     */
+    function _authenticate(string $token): bool {
+        if ($token === '') {
+            return false;
+        }
+
+        if ($this->_authorized($token)) {
+            return true;
+        }
+
+        $grant = $this->model->access_grant($token);
+        $customer = $grant === false ? false : $this->model->find_customer((int) $grant->customer_id);
+
+        if ($grant === false || $customer === false) {
+            return false;
+        }
+
+        $this->customer = $customer;
+
+        return true;
+    }
+
+    function _is_admin(): bool {
+        return $this->customer === null;
     }
 
     /**

@@ -3,6 +3,7 @@
 require_once APPPATH . 'modules/customer/traits/Customer_guard.php';
 require_once APPPATH . 'modules/apps/traits/App_page.php';
 require_once APPPATH . 'modules/platform/live/App_database.php';
+require_once __DIR__ . '/traits/App_database_guard.php';
 
 /**
  * Child module of apps: apps/{id}/database, browse and edit an app's own
@@ -17,6 +18,7 @@ require_once APPPATH . 'modules/platform/live/App_database.php';
 class Database extends Trongate {
     use Customer_guard;
     use App_page;
+    use App_database_guard;
 
     /**
      * apps/{id}/database: the tables, one table's rows (?table=, ?page=) and the SQL box.
@@ -208,132 +210,24 @@ class Database extends Trongate {
         $app = $this->_member_app_or_redirect(segment(3, 'int'));
         $this->_require_post_with_csrf();
 
-        $backup = $this->model->backup((int) $app->id, (int) post('backup'));
-
-        if ($backup === false) {
-            set_flashdata('That backup is gone. Backups are kept for ' . Database_model::BACKUP_DAYS . ' days.');
-            redirect($this->_database_url($app));
-        }
-
-        $tables = unserialize((string) $backup->manifest, ['allowed_classes' => false]);
-        $database = $this->_open_app_database($app);
-
-        if (is_string($database) || !is_array($tables)) {
-            set_flashdata(htmlspecialchars(is_string($database) ? $database : 'This backup cannot be read.'));
-            redirect($this->_database_url($app));
-        }
-
-        $taken = substr((string) $backup->created_at, 0, 16);
-
         try {
-            $this->_logged($app, 'restore', 'Restore backup #' . $backup->id . ' of ' . $backup->summary . ' taken ' . $taken, true, function () use ($database, $tables, $backup) {
-                $database->restore($tables, (string) $backup->data);
-
-                return [null, (int) $backup->rows];
-            });
-            $this->model->mark_backup_restored((int) $backup->id);
-            set_flashdata(htmlspecialchars('Restored ' . $backup->summary . ' as it was at ' . $taken . ' UTC.'));
+            $restored = $this->_restore_backup($app, (int) post('backup'));
         } catch (PDOException | RuntimeException $e) {
             set_flashdata(htmlspecialchars('Could not restore: ' . ($e instanceof PDOException ? $this->_database_error($e) : $e->getMessage())));
+            redirect($this->_database_url($app));
         }
 
-        redirect($this->_database_url($app, count($tables) === 1 ? ['table' => $tables[0]['name']] : []));
+        set_flashdata(htmlspecialchars('Restored ' . $restored['summary'] . ' as it was at ' . $restored['taken'] . ' UTC.'));
+        redirect($this->_database_url($app, count($restored['tables']) === 1 ? ['table' => $restored['tables'][0]] : []));
     }
 
     // --- Helpers ---
 
     /**
-     * Run $run (returning [its result, rows affected]) under the customer's
-     * rate limit and lock, and record it in app_database_log, failed or not.
-     * $backup runs first (returning the id of the backup it saved, or null
-     * when there was nothing to back up); when it fails, $run does not run.
-     *
-     * @param ?int $backup_id set to the backup's id
-     * @throws RuntimeException when the customer is over Database_model::ACTIONS_PER_MINUTE
-     *         or already has a statement running, when the backup fails, or from $run
-     * @throws PDOException from $run, after it is logged
+     * Who App_database_guard::_logged() runs statements as
      */
-    function _logged(object $app, string $action, string $statement, bool $allow_changes, callable $run, ?callable $backup = null, ?int &$backup_id = null): mixed {
-        $customer = $this->_customer_or_redirect();
-
-        if ($this->model->over_action_limit((int) $customer->id)) {
-            throw new RuntimeException('You ran ' . Database_model::ACTIONS_PER_MINUTE . ' statements in the last minute. Wait a moment, then try again.');
-        }
-
-        if (!$this->model->take_action_lock((int) $customer->id)) {
-            throw new RuntimeException('Another statement of yours is still running. Wait for it to finish.');
-        }
-
-        $entry = [
-            'app_id' => (int) $app->id,
-            'customer_id' => (int) $customer->id,
-            'action' => $action,
-            'statement' => $statement,
-            'allow_changes' => $allow_changes,
-            'affected' => null,
-            'error' => null,
-        ];
-
-        try {
-            if ($backup !== null) {
-                try {
-                    $backup_id = $backup();
-                } catch (PDOException | RuntimeException $e) {
-                    throw new RuntimeException('Nothing was changed, because the backup failed: ' . ($e instanceof PDOException ? $this->_database_error($e) : $e->getMessage()) . ' Untick the backup to go ahead without one.');
-                }
-            }
-
-            [$result, $entry['affected']] = $run();
-
-            return $result;
-        } catch (PDOException | RuntimeException $e) {
-            $entry['error'] = $e instanceof PDOException ? $this->_database_error($e) : $e->getMessage();
-            throw $e;
-        } finally {
-            $log_id = $this->model->log_action($entry);
-
-            if ($backup_id !== null) {
-                $this->model->link_backup($backup_id, $log_id);
-            }
-
-            $this->model->release_action_lock((int) $customer->id);
-        }
-    }
-
-    /**
-     * Store a backup of the app's database, taken by the current customer
-     *
-     * @param array{tables: list<array<string, mixed>>, data: string, rows: int, bytes: int} $backup
-     */
-    function _save_backup(object $app, string $summary, array $backup): int {
-        return $this->model->save_backup((int) $app->id, (int) $this->_customer_or_redirect()->id, $summary, $backup);
-    }
-
-    /**
-     * A row as named in a backup: its table and primary key
-     *
-     * @param array<string, string> $key
-     */
-    function _describe_row(string $table, array $key): string {
-        return $table . ' row ' . implode(', ', array_map(fn($column, $value) => $column . ' = ' . (App_database::is_text($value) ? $value : bin2hex($value)), array_keys($key), $key));
-    }
-
-    /**
-     * A row change as logged: table, key and the columns written, never the values
-     *
-     * @param string $action insert, update or delete
-     * @param array<string, string> $key
-     * @param list<string> $columns
-     */
-    function _describe_row_change(string $action, string $table, array $key, array $columns = []): string {
-        $where = implode(' AND ', array_map(fn($column, $value) => App_database::quote_name($column) . ' = ' . var_export($value, true), array_keys($key), $key));
-        $set = implode(', ', array_map([App_database::class, 'quote_name'], $columns));
-
-        return match ($action) {
-            'insert' => 'INSERT INTO ' . App_database::quote_name($table) . ' (' . $set . ')',
-            'delete' => 'DELETE FROM ' . App_database::quote_name($table) . ' WHERE ' . $where,
-            default => 'UPDATE ' . App_database::quote_name($table) . ' SET ' . $set . ' WHERE ' . $where,
-        };
+    function _database_customer_id(): int {
+        return (int) $this->_customer_or_redirect()->id;
     }
 
     /**
@@ -460,34 +354,6 @@ class Database extends Trongate {
     }
 
     /**
-     * The app's database, or why it cannot be opened
-     */
-    function _open_app_database(object $app): App_database|string {
-        if (empty($app->database_server_id)) {
-            return 'This app has no database yet. It is created on the first deployment.';
-        }
-
-        $server = $this->model->database_server((int) $app->database_server_id);
-
-        if ($server === false) {
-            return 'The database server of this app is gone.';
-        }
-
-        try {
-            return App_database::open((array) $server, (int) $app->id);
-        } catch (PDOException $e) {
-            return 'Could not reach the database: ' . $this->_database_error($e);
-        }
-    }
-
-    /**
-     * MariaDB's message without PDO's SQLSTATE prefix
-     */
-    function _database_error(PDOException $e): string {
-        return App_database::error_message($e);
-    }
-
-    /**
      * A primary key from key[col]=value request data
      *
      * @return array<string, string>
@@ -520,21 +386,6 @@ class Database extends Trongate {
         }
 
         return $value === '0000-00-00 00:00:00' ? true : 'The [label] field must be a date and time like 2026-10-06 21:04:10.';
-    }
-
-    /**
-     * Whether $key names exactly the table's primary key columns
-     *
-     * @param array<string, string> $key
-     * @param list<array{name: string, key: bool}> $columns
-     */
-    function _is_primary_key(array $key, array $columns): bool {
-        $names = array_keys($key);
-        $primary_key = App_database::primary_key($columns);
-        sort($names);
-        sort($primary_key);
-
-        return $key !== [] && $names === $primary_key;
     }
 
     function _database_url(object $app, array $query = []): string {

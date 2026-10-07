@@ -1,6 +1,7 @@
 <?php
 
 require_once APPPATH . 'modules/platform/manifests/Manifests.php';
+require_once __DIR__ . '/App_rules.php';
 
 /**
  * New-app form shared by onboarding and the apps module:
@@ -14,15 +15,7 @@ require_once APPPATH . 'modules/platform/manifests/Manifests.php';
  * @property-read Validation $validation
  */
 trait App_form {
-
-    /** app.type values */
-    const APP_TYPES = [
-        'trongate_v2' => 'Trongate v2',
-        'trongate_v1' => 'Trongate v1',
-    ];
-
-    /** The app whose settings are being saved, so its own domain does not count as taken */
-    private int $editing_app_id = 0;
+    use App_rules;
 
     /**
      * View data for the repository picker, or false when the customer has not
@@ -136,36 +129,7 @@ trait App_form {
         require APPPATH . 'modules/apps/views/_repository_branch_options.php';
     }
 
-    /**
-     * Hosts (with all their subdomains) an app may never claim: the control
-     * panel (BASE_URL) and the image registry (PLATFORM_REGISTRY).
-     *
-     * @return list<string>
-     */
-    function _platform_hosts(): array {
-        $hosts = [
-            (string) parse_url(BASE_URL, PHP_URL_HOST),
-            (string) parse_url('https://' . PLATFORM_REGISTRY, PHP_URL_HOST),
-        ];
-
-        return array_values(array_unique(array_filter(array_map('strtolower', $hosts))));
-    }
-
-    function _normalise_domain(string $domain): ?string {
-        $domain = rtrim(strtolower(trim($domain)), '.');
-
-        return $domain === '' ? null : $domain;
-    }
-
     // --- Validation callbacks ---
-
-    function _validate_repository(string $repository): bool|string {
-        if (!preg_match('#^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$#', $repository)) {
-            return 'Please choose a repository.';
-        }
-
-        return true;
-    }
 
     /**
      * A repository the customer can see on one of the GitHub App's installations
@@ -192,56 +156,5 @@ trait App_form {
         }
 
         return $pickable ? true : 'The trongate.cloud GitHub App cannot read this repository. Install it there first.';
-    }
-
-    function _validate_branch(string $branch): bool|string {
-        if (!preg_match('#^[A-Za-z0-9._/-]+$#', $branch) || str_contains($branch, '..') || str_starts_with($branch, '-')) {
-            return 'Invalid branch name.';
-        }
-
-        return true;
-    }
-
-    function _validate_app_type(string $type): bool|string {
-        if (!isset(self::APP_TYPES[$type])) {
-            return 'Invalid app type.';
-        }
-
-        return true;
-    }
-
-    /**
-     * Optional custom domain: a valid hostname, not a platform host and not verified by another app.
-     * The app being edited ($editing_app_id) is ignored.
-     */
-
-    function _validate_domain(string $domain): bool|string {
-        $domain = $this->_normalise_domain($domain);
-
-        if ($domain === null) {
-            return true;
-        }
-
-        $label = '[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?';
-        if (!preg_match("/^({$label}\\.)+[a-z]{2,63}$/", $domain)) {
-            return 'Please enter a valid domain, e.g. app.example.com.';
-        }
-
-        $apps_domain = strtolower(PLATFORM_APPS_DOMAIN);
-        if ($domain === $apps_domain || str_ends_with($domain, '.' . $apps_domain)) {
-            return 'Your app already gets a free ' . $apps_domain . ' address; enter your own domain here.';
-        }
-
-        foreach ($this->_platform_hosts() as $host) {
-            if ($domain === $host || str_ends_with($domain, '.' . $host)) {
-                return 'This domain belongs to the platform; enter your own domain.';
-            }
-        }
-
-        if ($this->model->domain_taken($domain, $this->editing_app_id > 0 ? $this->editing_app_id : null)) {
-            return 'This domain is already used by another app.';
-        }
-
-        return true;
     }
 }

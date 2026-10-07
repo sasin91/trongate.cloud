@@ -1,162 +1,51 @@
 <?php
 
-require_once __DIR__ . '/../../platform/manifests/Manifests.php';
-require_once __DIR__ . '/../../platform/live/App_resource_audit.php';
+require_once APPPATH . 'modules/platform/manifests/Manifests.php';
+require_once APPPATH . 'modules/platform/manifests/App_env.php';
+require_once APPPATH . 'modules/platform/traits/Live_app_state.php';
+require_once APPPATH . 'modules/services/traits/Provider_clients.php';
+require_once APPPATH . 'modules/apps/traits/App_rules.php';
 
 /**
- * MCP tools for controllers: definitions (tools/list) and handlers (tools/call).
+ * MCP tools for controllers: the registry (tools/list, tools/call) and the
+ * tools for projects, apps, deployments, logs and environment variables.
+ * Mcp_database_tools and Mcp_admin_tools add their own groups.
  *
- * Admin scope: tools see every project. Handlers resolve the owning project of
- * an app or deployment first and pass that project id to Platform_actions.
+ * Every definition lists the scopes it is offered in: 'customer' (an OAuth
+ * access token: the tools act as that customer, in the projects they are a
+ * member of, like the control panel) and/or 'admin' (MCP_SECRET: every project).
  *
- * Add a tool by adding its name to TOOLS, a definition to _tool_definitions()
- * and a _tool_{name}(array $args): array method. Override any of them in the
- * controller to change behaviour.
+ * Add a tool with a definition in its group's _..._tools() and a
+ * _tool_{name}(array $args): array method. Throw InvalidArgumentException or
+ * RuntimeException for anything the caller should read (bad arguments, not found).
  *
- * Requires the controller's model to be Mcp_model (Platform_actions + project lookups).
+ * The controller provides _is_admin() and $customer, and its model is Mcp_model.
  */
 trait Mcp_tools {
-
-    const TOOLS = [
-        'list_apps',
-        'get_app',
-        'list_deployments',
-        'get_deployment_logs',
-        'platform_status',
-        'deploy_app',
-        'rollback_app',
-        'audit_app_resources',
-        'retry_app_cleanup',
-        'retry_project_cleanup',
-    ];
+    use Live_app_state;
+    use Provider_clients;
+    use App_rules;
 
     /** Deployment statuses after which nothing changes */
     const TERMINAL_STATUSES = ['success', 'failed', 'rolled_back'];
 
-    function _tool_definitions(): array {
-        $read_only = ['readOnlyHint' => true, 'destructiveHint' => false, 'idempotentHint' => true, 'openWorldHint' => false];
-        $app_id = ['type' => 'integer', 'minimum' => 1, 'description' => 'App id (from list_apps)'];
-        $project_filter = ['type' => 'object', 'properties' => ['project_id' => ['type' => 'integer', 'minimum' => 1, 'description' => 'Optional: only the apps of this project (a project groups apps in one namespace)']], 'additionalProperties' => false];
+    // --- Registry ---
 
-        return [
-            [
-                'name' => 'list_apps',
-                'title' => 'List apps',
-                'description' => 'List apps (deployed repositories) across all projects, or in one project, with their project, URLs and current deployment status.',
-                'inputSchema' => $project_filter,
-                'annotations' => $read_only,
-            ],
-            [
-                'name' => 'get_app',
-                'title' => 'Get app',
-                'description' => 'Show one app: source repository, hostnames, settings and current deployment.',
-                'inputSchema' => [
-                    'type' => 'object',
-                    'properties' => ['app_id' => $app_id],
-                    'required' => ['app_id'],
-                    'additionalProperties' => false,
-                ],
-                'annotations' => $read_only,
-            ],
-            [
-                'name' => 'list_deployments',
-                'title' => 'List deployments',
-                'description' => "List an app's latest deployments, newest first.",
-                'inputSchema' => [
-                    'type' => 'object',
-                    'properties' => [
-                        'app_id' => $app_id,
-                        'limit' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 10, 'description' => 'How many deployments to return'],
-                    ],
-                    'required' => ['app_id'],
-                    'additionalProperties' => false,
-                ],
-                'annotations' => $read_only,
-            ],
-            [
-                'name' => 'get_deployment_logs',
-                'title' => 'Get deployment logs',
-                'description' => 'Build and rollout log lines of a deployment, oldest first. Pass next_after_id from the previous call as after_id to follow a running deployment.',
-                'inputSchema' => [
-                    'type' => 'object',
-                    'properties' => [
-                        'deployment_id' => ['type' => 'integer', 'minimum' => 1, 'description' => 'Deployment id'],
-                        'after_id' => ['type' => 'integer', 'minimum' => 0, 'default' => 0, 'description' => 'Only return log lines after this log id'],
-                    ],
-                    'required' => ['deployment_id'],
-                    'additionalProperties' => false,
-                ],
-                'annotations' => $read_only,
-            ],
-            [
-                'name' => 'platform_status',
-                'title' => 'Platform status',
-                'description' => 'Platform overview (all projects, or one): apps and deployments by status, deployments in progress and recent failures.',
-                'inputSchema' => $project_filter,
-                'annotations' => $read_only,
-            ],
-            [
-                'name' => 'deploy_app',
-                'title' => 'Deploy app',
-                'description' => "Build and deploy the app's configured branch (or a given commit) to production.",
-                'inputSchema' => [
-                    'type' => 'object',
-                    'properties' => [
-                        'app_id' => $app_id,
-                        'commit_sha' => ['type' => 'string', 'pattern' => '^[0-9a-fA-F]{7,40}$', 'description' => 'Optional commit to deploy instead of the branch head'],
-                    ],
-                    'required' => ['app_id'],
-                    'additionalProperties' => false,
-                ],
-                'annotations' => ['readOnlyHint' => false, 'destructiveHint' => true, 'idempotentHint' => false, 'openWorldHint' => false],
-            ],
-            [
-                'name' => 'rollback_app',
-                'title' => 'Roll back app',
-                'description' => 'Redeploy an earlier successful image. Without deployment_id, rolls back to the deployment before the current one.',
-                'inputSchema' => [
-                    'type' => 'object',
-                    'properties' => [
-                        'app_id' => $app_id,
-                        'deployment_id' => ['type' => 'integer', 'minimum' => 1, 'description' => 'Optional successful deployment to roll back to'],
-                    ],
-                    'required' => ['app_id'],
-                    'additionalProperties' => false,
-                ],
-                'annotations' => ['readOnlyHint' => false, 'destructiveHint' => true, 'idempotentHint' => false, 'openWorldHint' => false],
-            ],
-            [
-                'name' => 'audit_app_resources',
-                'title' => 'Audit app resources',
-                'description' => "List cluster objects labelled as a trongate.cloud app that no longer match a live app in their project's namespace, deleted apps whose cleanup (destroy_app) failed or has not finished, and deleted projects whose namespace removal (destroy_project) failed or has not finished. Read-only: reports, never repairs.",
-                'inputSchema' => ['type' => 'object', 'properties' => (object) [], 'additionalProperties' => false],
-                'annotations' => $read_only,
-            ],
-            [
-                'name' => 'retry_app_cleanup',
-                'title' => 'Retry app cleanup',
-                'description' => "Queue destroy_app again for a deleted app whose cleanup failed (see audit_app_resources). It removes the app's objects that carry the app's labels; the database and files are kept.",
-                'inputSchema' => [
-                    'type' => 'object',
-                    'properties' => ['app_id' => ['type' => 'integer', 'minimum' => 1, 'description' => 'Deleted app id (from audit_app_resources)']],
-                    'required' => ['app_id'],
-                    'additionalProperties' => false,
-                ],
-                'annotations' => ['readOnlyHint' => false, 'destructiveHint' => true, 'idempotentHint' => false, 'openWorldHint' => false],
-            ],
-            [
-                'name' => 'retry_project_cleanup',
-                'title' => 'Retry project cleanup',
-                'description' => 'Queue destroy_project again for a deleted project whose namespace is still there (see audit_app_resources). It deletes the namespace only if no app object is left in it.',
-                'inputSchema' => [
-                    'type' => 'object',
-                    'properties' => ['project_id' => ['type' => 'integer', 'minimum' => 1, 'description' => 'Deleted project id (from audit_app_resources)']],
-                    'required' => ['project_id'],
-                    'additionalProperties' => false,
-                ],
-                'annotations' => ['readOnlyHint' => false, 'destructiveHint' => true, 'idempotentHint' => false, 'openWorldHint' => false],
-            ],
-        ];
+    /**
+     * The tools offered to this request's caller, as tools/list returns them
+     */
+    function _tool_definitions(): array {
+        $scope = $this->_is_admin() ? 'admin' : 'customer';
+        $tools = [];
+
+        foreach ([...$this->_app_tools(), ...$this->_database_tools(), ...$this->_admin_tools()] as $tool) {
+            if (in_array($scope, $tool['scopes'], true)) {
+                unset($tool['scopes']);
+                $tools[] = $tool;
+            }
+        }
+
+        return $tools;
     }
 
     /**
@@ -176,12 +65,229 @@ trait Mcp_tools {
     }
 
     function _tool_exists(string $name): bool {
-        return in_array($name, self::TOOLS, true) && method_exists($this, '_tool_' . $name);
+        return in_array($name, array_column($this->_tool_definitions(), 'name'), true)
+            && method_exists($this, '_tool_' . $name);
+    }
+
+    /**
+     * MCP tool annotations
+     */
+    function _hints(bool $read_only, bool $destructive = false, bool $idempotent = false): array {
+        return [
+            'readOnlyHint' => $read_only,
+            'destructiveHint' => $destructive,
+            'idempotentHint' => $read_only || $idempotent,
+            'openWorldHint' => false,
+        ];
+    }
+
+    /**
+     * An input schema: properties, the required ones, nothing else
+     */
+    function _schema(array $properties = [], array $required = []): array {
+        return array_filter([
+            'type' => 'object',
+            'properties' => $properties === [] ? (object) [] : $properties,
+            'required' => $required,
+            'additionalProperties' => false,
+        ], fn($value) => $value !== []);
+    }
+
+    // --- Projects, apps, deployments, logs, environment variables ---
+
+    function _app_tools(): array {
+        $app_id = ['type' => 'integer', 'minimum' => 1, 'description' => 'App id (from list_apps)'];
+        $both = ['customer', 'admin'];
+
+        return [
+            [
+                'name' => 'list_projects',
+                'title' => 'List projects',
+                'description' => 'Your projects, with your role (owner or member) and how many apps each holds. A project groups apps that can reach each other.',
+                'inputSchema' => $this->_schema(),
+                'annotations' => $this->_hints(true),
+                'scopes' => ['customer'],
+            ],
+            [
+                'name' => 'create_project',
+                'title' => 'Create project',
+                'description' => 'Create a project, owned by you, to put apps in.',
+                'inputSchema' => $this->_schema(['name' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 255]], ['name']),
+                'annotations' => $this->_hints(false),
+                'scopes' => ['customer'],
+            ],
+            [
+                'name' => 'list_apps',
+                'title' => 'List apps',
+                'description' => 'List apps (deployed repositories), in all projects or one, with their URLs and current deployment status.',
+                'inputSchema' => $this->_schema(['project_id' => ['type' => 'integer', 'minimum' => 1, 'description' => 'Optional: only the apps of this project']]),
+                'annotations' => $this->_hints(true),
+                'scopes' => $both,
+            ],
+            [
+                'name' => 'get_app',
+                'title' => 'Get app',
+                'description' => 'One app: source repository and branch, URLs, custom domain and its DNS status, settings, whether it is running or asleep, current deployment, database name and environment variable names.',
+                'inputSchema' => $this->_schema(['app_id' => $app_id], ['app_id']),
+                'annotations' => $this->_hints(true),
+                'scopes' => $both,
+            ],
+            [
+                'name' => 'create_app',
+                'title' => 'Create app',
+                'description' => 'Add an app to a project from a GitHub repository the trongate.cloud GitHub App can read, and deploy it. Each app gets its own database and {slug}.' . PLATFORM_APPS_DOMAIN . ' address.',
+                'inputSchema' => $this->_schema([
+                    'project_id' => ['type' => 'integer', 'minimum' => 1],
+                    'repository' => ['type' => 'string', 'description' => 'owner/name on GitHub'],
+                    'label' => ['type' => 'string', 'minLength' => 3, 'maxLength' => 50, 'description' => 'App name, also used for its address'],
+                    'branch' => ['type' => 'string', 'default' => 'main'],
+                    'type' => ['type' => 'string', 'enum' => array_keys(self::APP_TYPES), 'default' => 'trongate_v2'],
+                    'domain' => ['type' => 'string', 'description' => 'Optional custom domain, verified later with a DNS TXT record'],
+                    'auto_deploy' => ['type' => 'boolean', 'default' => true, 'description' => 'Deploy on every push to the branch'],
+                    'deploy' => ['type' => 'boolean', 'default' => true, 'description' => 'Deploy it now'],
+                ], ['project_id', 'repository', 'label']),
+                'annotations' => $this->_hints(false),
+                'scopes' => ['customer'],
+            ],
+            [
+                'name' => 'update_app_settings',
+                'title' => 'Update app settings',
+                'description' => "Change an app's settings. Only the fields you pass change. They take effect on the next deploy.",
+                'inputSchema' => $this->_schema([
+                    'app_id' => $app_id,
+                    'domain' => ['type' => ['string', 'null'], 'description' => 'Custom domain; null or "" removes it'],
+                    'persistent_paths' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => "Directories (relative to the app's root) kept across deploys, e.g. modules/blog/uploads"],
+                    'php_extensions' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Extra PHP extensions'],
+                    'always_on' => ['type' => 'boolean', 'description' => 'Never sleep when idle (needed when other apps call it directly)'],
+                    'auto_deploy' => ['type' => 'boolean', 'description' => 'Deploy on every push to the branch'],
+                    'trongate_env' => ['type' => 'string', 'description' => "Trongate's ENV constant in config/config.php, e.g. " . implode(', ', Trongate_config::ENV_SUGGESTIONS) . ' (dev shows errors)'],
+                ], ['app_id']),
+                'annotations' => $this->_hints(false, true, true),
+                'scopes' => ['customer'],
+            ],
+            [
+                'name' => 'verify_domain',
+                'title' => 'Verify custom domain',
+                'description' => "Check the custom domain's TXT record (see get_app for the record to add). Once verified it goes live when its DNS points at trongate.cloud.",
+                'inputSchema' => $this->_schema(['app_id' => $app_id], ['app_id']),
+                'annotations' => $this->_hints(false, false, true),
+                'scopes' => ['customer'],
+            ],
+            [
+                'name' => 'list_deployments',
+                'title' => 'List deployments',
+                'description' => "An app's latest deployments, newest first.",
+                'inputSchema' => $this->_schema([
+                    'app_id' => $app_id,
+                    'limit' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 10],
+                ], ['app_id']),
+                'annotations' => $this->_hints(true),
+                'scopes' => $both,
+            ],
+            [
+                'name' => 'get_deployment_logs',
+                'title' => 'Get deployment logs',
+                'description' => 'Build and rollout log of a deployment, oldest first. Pass next_after_id from the previous call as after_id to follow a running deployment.',
+                'inputSchema' => $this->_schema([
+                    'deployment_id' => ['type' => 'integer', 'minimum' => 1],
+                    'after_id' => ['type' => 'integer', 'minimum' => 0, 'default' => 0, 'description' => 'Only lines after this log id'],
+                ], ['deployment_id']),
+                'annotations' => $this->_hints(true),
+                'scopes' => $both,
+            ],
+            [
+                'name' => 'deploy_app',
+                'title' => 'Deploy app',
+                'description' => "Build and deploy the app's branch (or a given commit) to production.",
+                'inputSchema' => $this->_schema([
+                    'app_id' => $app_id,
+                    'commit_sha' => ['type' => 'string', 'pattern' => '^[0-9a-fA-F]{7,40}$', 'description' => 'Optional commit instead of the branch head'],
+                ], ['app_id']),
+                'annotations' => $this->_hints(false, true),
+                'scopes' => $both,
+            ],
+            [
+                'name' => 'rollback_app',
+                'title' => 'Roll back app',
+                'description' => 'Redeploy an earlier successful build. Without deployment_id, the one before the current deployment.',
+                'inputSchema' => $this->_schema([
+                    'app_id' => $app_id,
+                    'deployment_id' => ['type' => 'integer', 'minimum' => 1, 'description' => 'Optional successful deployment to roll back to'],
+                ], ['app_id']),
+                'annotations' => $this->_hints(false, true),
+                'scopes' => $both,
+            ],
+            [
+                'name' => 'get_app_logs',
+                'title' => 'Get app logs',
+                'description' => "The running app's own output (PHP errors, web server lines), oldest first, with a level per line. An asleep app has no logs; reading never wakes it. Pass next_since from the previous call as since to get only newer lines.",
+                'inputSchema' => $this->_schema([
+                    'app_id' => $app_id,
+                    'since' => ['type' => 'string', 'description' => 'next_since from the previous call'],
+                    'problems_only' => ['type' => 'boolean', 'default' => false, 'description' => 'Only warnings and errors'],
+                ], ['app_id']),
+                'annotations' => $this->_hints(true),
+                'scopes' => $both,
+            ],
+            [
+                'name' => 'list_env_vars',
+                'title' => 'List environment variables',
+                'description' => "Names of the app's environment variables. Values are write-only and never shown.",
+                'inputSchema' => $this->_schema(['app_id' => $app_id], ['app_id']),
+                'annotations' => $this->_hints(true),
+                'scopes' => ['customer'],
+            ],
+            [
+                'name' => 'set_env_var',
+                'title' => 'Set environment variable',
+                'description' => 'Add or replace an environment variable. It takes effect on the next deploy.',
+                'inputSchema' => $this->_schema([
+                    'app_id' => $app_id,
+                    'name' => ['type' => 'string', 'pattern' => '^[A-Za-z_][A-Za-z0-9_]*$', 'maxLength' => App_env::MAX_NAME_LENGTH],
+                    'value' => ['type' => 'string', 'minLength' => 1],
+                ], ['app_id', 'name', 'value']),
+                'annotations' => $this->_hints(false, true, true),
+                'scopes' => ['customer'],
+            ],
+            [
+                'name' => 'delete_env_var',
+                'title' => 'Delete environment variable',
+                'description' => 'Remove an environment variable. It is gone from the app after the next deploy.',
+                'inputSchema' => $this->_schema(['app_id' => $app_id, 'name' => ['type' => 'string']], ['app_id', 'name']),
+                'annotations' => $this->_hints(false, true, true),
+                'scopes' => ['customer'],
+            ],
+        ];
+    }
+
+    function _tool_list_projects(array $args): array {
+        return [
+            'projects' => array_map(fn(object $project) => [
+                'id' => (int) $project->id,
+                'name' => $project->name,
+                'role' => $project->member_role,
+                'app_count' => (int) $project->app_count,
+                'created_at' => $project->created_at,
+            ], $this->model->member_projects((int) $this->customer->id)),
+        ];
+    }
+
+    function _tool_create_project(array $args): array {
+        $project_id = $this->model->create_project((int) $this->customer->id, $this->_string_arg($args, 'name'));
+        $project = $this->model->find_member_project((int) $this->customer->id, $project_id);
+
+        return [
+            'project' => ['id' => $project_id, 'name' => $project === false ? null : $project->name, 'role' => 'owner'],
+            'next' => 'Add an app with create_app {"project_id": ' . $project_id . ', ...}',
+        ];
     }
 
     function _tool_list_apps(array $args): array {
-        $project_names = $this->model->project_names();
         $project_id = $this->_int_arg($args, 'project_id', false);
+
+        $project_names = $this->_is_admin()
+            ? $this->model->project_names()
+            : array_column($this->model->member_projects((int) $this->customer->id), 'name', 'id');
 
         if ($project_id > 0 && !isset($project_names[$project_id])) {
             throw new RuntimeException('Project not found');
@@ -215,11 +321,181 @@ trait Mcp_tools {
             $summary['current_deployed_at'] = $current['completed_at'];
         }
 
-        return $summary + [
+        $summary += [
+            'project_id' => $project_id,
+            'live_state' => $this->_live_app_state($app),
+            'custom_domain' => $this->_domain_status($app),
+            'persistent_paths' => Manifests::persistent_paths((array) $app),
+            'php_extensions' => $this->_parse_php_extensions((string) ($app->php_extensions ?? '')),
+            'auto_deploy' => (bool) ($app->auto_deploy ?? false),
+            'trongate_env' => Trongate_config::env((array) $app),
+            'database' => empty($app->database_server_id) ? null : Manifests::database_name((int) $app->id),
+            'current_deployment' => $current,
+        ];
+
+        if (!$this->_is_admin()) {
+            $summary['env_var_names'] = array_keys($this->_app_env($app));
+            $summary['role'] = $app->member_role;
+        }
+
+        return $summary;
+    }
+
+    function _tool_create_app(array $args): array {
+        $customer_id = (int) $this->customer->id;
+        $project = $this->model->find_member_project($customer_id, $this->_int_arg($args, 'project_id'));
+
+        if ($project === false) {
+            throw new RuntimeException('Project not found');
+        }
+
+        $repository = $this->_string_arg($args, 'repository');
+        $branch = $this->_string_arg($args, 'branch', false, 'main');
+        $label = $this->_string_arg($args, 'label');
+        $type = $this->_string_arg($args, 'type', false, 'trongate_v2');
+        $domain = $this->_string_arg($args, 'domain', false);
+
+        if (mb_strlen($label) < 3 || mb_strlen($label) > 50) {
+            throw new InvalidArgumentException('label must be 3 to 50 characters');
+        }
+
+        $this->_check($this->_validate_repository($repository));
+        $this->_check($this->_validate_branch($branch));
+        $this->_check($this->_validate_app_type($type));
+        $this->_check($this->_validate_domain($domain));
+
+        $provider = $this->_customer_provider($customer_id, 'source');
+
+        if ($provider === false) {
+            throw new RuntimeException('Connect GitHub first: sign in to ' . BASE_URL . ' and press "Connect GitHub" when adding an app.');
+        }
+
+        try {
+            $client = $this->_provider_client($customer_id, $provider);
+            $pickable = $client->can_pick($repository);
+        } catch (Client_Error $e) {
+            throw new RuntimeException('Could not reach GitHub to check the repository. Try again.');
+        }
+
+        if (!$pickable) {
+            throw new RuntimeException('The trongate.cloud GitHub App cannot read ' . $repository . '. Install it on that repository first: ' . $this->services->github_app()->install_url());
+        }
+
+        $app_id = $this->model->create_app(
+            project_id: (int) $project->id,
+            label: $label,
+            type: $type,
+            source_url: $client->url($repository),
+            source_provider: $provider,
+            source_branch: $branch,
+            domain: $this->_normalise_domain($domain),
+            auto_deploy: $this->_bool_arg($args, 'auto_deploy', true),
+        );
+
+        if ($app_id === false) {
+            throw new RuntimeException('The app could not be created. Try again.');
+        }
+
+        $deployment_id = null;
+        if ($this->_bool_arg($args, 'deploy', true)) {
+            $deployment_id = $this->model->queue_deploy((int) $project->id, (int) $app_id, $customer_id, 'mcp');
+        }
+
+        $app = $this->model->find_member_app($customer_id, (int) $app_id);
+
+        return [
+            'app' => $this->_app_summary($app),
+            'deployment_id' => $deployment_id,
+            'next' => $deployment_id === null
+                ? 'Deploy it with deploy_app {"app_id": ' . $app_id . '}'
+                : 'Follow progress with get_deployment_logs {"deployment_id": ' . $deployment_id . '}',
+        ];
+    }
+
+    function _tool_update_app_settings(array $args): array {
+        [$project_id, $app] = $this->_app_or_fail($this->_int_arg($args, 'app_id'));
+        $this->editing_app_id = (int) $app->id;
+
+        $settings = [
+            'domain' => $this->_normalise_domain((string) ($app->domain ?? '')),
             'persistent_paths' => Manifests::persistent_paths((array) $app),
             'php_extensions' => (string) ($app->php_extensions ?? ''),
-            'auto_deploy' => (bool) ($app->auto_deploy ?? false),
-            'current_deployment' => $current,
+            'always_on' => (bool) $app->always_on,
+            'auto_deploy' => (bool) $app->auto_deploy,
+            'trongate_env' => Trongate_config::env((array) $app),
+        ];
+        $changed = [];
+
+        if (array_key_exists('domain', $args)) {
+            $domain = $args['domain'] === null ? '' : $this->_string_arg($args, 'domain', false);
+            $this->_check($this->_validate_domain($domain));
+            $settings['domain'] = $this->_normalise_domain($domain);
+            $changed[] = 'domain';
+        }
+
+        if (array_key_exists('persistent_paths', $args)) {
+            $paths = implode("\n", $this->_strings_arg($args, 'persistent_paths'));
+            $this->_check($this->_validate_persistent_paths($paths));
+            $settings['persistent_paths'] = $this->_parse_persistent_paths($paths);
+            $changed[] = 'persistent_paths';
+        }
+
+        if (array_key_exists('php_extensions', $args)) {
+            $extensions = implode(',', $this->_strings_arg($args, 'php_extensions'));
+            $this->_check($this->_validate_php_extensions($extensions));
+            $settings['php_extensions'] = implode(',', $this->_parse_php_extensions($extensions));
+            $changed[] = 'php_extensions';
+        }
+
+        foreach (['always_on', 'auto_deploy'] as $flag) {
+            if (array_key_exists($flag, $args)) {
+                $settings[$flag] = $this->_bool_arg($args, $flag);
+                $changed[] = $flag;
+            }
+        }
+
+        if (array_key_exists('trongate_env', $args)) {
+            $env = $this->_string_arg($args, 'trongate_env');
+            $this->_check($this->_validate_trongate_env($env));
+            $settings['trongate_env'] = trim($env);
+            $changed[] = 'trongate_env';
+        }
+
+        if ($changed === []) {
+            throw new InvalidArgumentException('Pass at least one setting to change');
+        }
+
+        $this->model->update_app_settings($project_id, (int) $app->id, $settings);
+        [, $app] = $this->_app_or_fail((int) $app->id);
+
+        return [
+            'changed' => $changed,
+            'settings' => [
+                'domain' => $this->_domain_status($app),
+                'persistent_paths' => Manifests::persistent_paths((array) $app),
+                'php_extensions' => $this->_parse_php_extensions((string) $app->php_extensions),
+                'always_on' => (bool) $app->always_on,
+                'auto_deploy' => (bool) $app->auto_deploy,
+                'trongate_env' => Trongate_config::env((array) $app),
+            ],
+            'next' => 'Settings take effect on the next deploy: deploy_app {"app_id": ' . $app->id . '}',
+        ];
+    }
+
+    function _tool_verify_domain(array $args): array {
+        [$project_id, $app] = $this->_app_or_fail($this->_int_arg($args, 'app_id'));
+        $result = $this->model->verify_app_domain($project_id, (int) $app->id);
+
+        if ($result !== true) {
+            throw new RuntimeException((string) $result);
+        }
+
+        [, $app] = $this->_app_or_fail((int) $app->id);
+
+        return [
+            'verified' => true,
+            'custom_domain' => $this->_domain_status($app),
+            'next' => 'It goes live by itself once its DNS points at trongate.cloud; get_app shows when.',
         ];
     }
 
@@ -243,8 +519,14 @@ trait Mcp_tools {
         $deployment_id = $this->_int_arg($args, 'deployment_id');
         $after_id = $this->_int_arg($args, 'after_id', false, 0);
 
-        $project_id = $this->model->deployment_project_id($deployment_id);
-        $deployment = $project_id === false ? false : $this->model->find_project_deployment($project_id, $deployment_id);
+        if ($this->_is_admin()) {
+            $project_id = $this->model->deployment_project_id($deployment_id);
+            $deployment = $project_id === false ? false : $this->model->find_project_deployment($project_id, $deployment_id);
+        } else {
+            $deployment = $this->model->find_member_deployment((int) $this->customer->id, $deployment_id);
+            $project_id = $deployment === false ? false : (int) $deployment->project_id;
+        }
+
         if ($project_id === false || $deployment === false) {
             throw new RuntimeException('Deployment not found');
         }
@@ -267,24 +549,6 @@ trait Mcp_tools {
         ];
     }
 
-    function _tool_platform_status(array $args): array {
-        $project_id = $this->_int_arg($args, 'project_id', false);
-        $status = $this->model->platform_status($project_id > 0 ? $project_id : null);
-        $counts = fn(array $rows) => array_combine(
-            array_map(fn(object $row) => (string) $row->status, $rows),
-            array_map(fn(object $row) => (int) $row->total, $rows)
-        );
-
-        return [
-            'project' => $project_id > 0 ? ($this->model->project_names()[$project_id] ?? null) : 'all',
-            'apps_total' => array_sum($counts($status['apps'])),
-            'apps_by_status' => (object) $counts($status['apps']),
-            'deployments_by_status' => (object) $counts($status['deployments']),
-            'in_progress' => $status['in_progress'],
-            'recent_failures' => $status['recent_failures'],
-        ];
-    }
-
     function _tool_deploy_app(array $args): array {
         [$project_id, $app] = $this->_app_or_fail($this->_int_arg($args, 'app_id'));
         $commit_sha = $args['commit_sha'] ?? null;
@@ -293,8 +557,7 @@ trait Mcp_tools {
             throw new InvalidArgumentException('commit_sha must be 7 to 40 hex characters');
         }
 
-        // Admin deploys have no customer behind them
-        $deployment_id = $this->model->queue_deploy($project_id, (int) $app->id, null, 'mcp', $commit_sha);
+        $deployment_id = $this->model->queue_deploy($project_id, (int) $app->id, $this->_customer_id(), 'mcp', $commit_sha);
 
         return [
             'deployment_id' => $deployment_id,
@@ -308,7 +571,7 @@ trait Mcp_tools {
         [$project_id, $app] = $this->_app_or_fail($this->_int_arg($args, 'app_id'));
         $target_id = isset($args['deployment_id']) ? $this->_int_arg($args, 'deployment_id') : null;
 
-        $deployment_id = $this->model->queue_rollback($project_id, (int) $app->id, null, $target_id);
+        $deployment_id = $this->model->queue_rollback($project_id, (int) $app->id, $this->_customer_id(), $target_id);
 
         return [
             'deployment_id' => $deployment_id,
@@ -318,97 +581,115 @@ trait Mcp_tools {
         ];
     }
 
-    function _tool_audit_app_resources(array $args): array {
-        try {
-            $orphans = App_resource_audit::orphans(Kubernetes::from_env(), $this->model->live_app_refs());
-        } catch (Client_Error $e) {
-            throw new RuntimeException('Could not read the cluster: ' . $e->getMessage());
+    function _tool_get_app_logs(array $args): array {
+        [, $app] = $this->_app_or_fail($this->_int_arg($args, 'app_id'));
+
+        if (empty($app->current_deployment_id)) {
+            throw new RuntimeException('This app was never deployed, so it has no logs.');
         }
 
-        $cleanups = array_map(fn(object $row) => [
-            'app_id' => (int) $row->app_id,
-            'project_id' => (int) $row->project_id,
-            'label' => $row->label,
-            'slug' => $row->slug,
-            'verified_domain' => $row->verified_domain,
-            'deleted_at' => $row->deleted_at,
-            'task_id' => $row->task_id === null ? null : (int) $row->task_id,
-            'state' => match (true) {
-                $row->task_id === null => 'never_queued',
-                $row->failed_at !== null => 'failed',
-                $row->started_at !== null => 'running',
-                default => 'queued',
-            },
-            'error' => $row->error_message,
-        ], $this->model->unfinished_cleanups());
+        $logs = $this->_live_app_logs($app, $this->_string_arg($args, 'since', false));
 
-        $project_cleanups = array_map(fn(object $row) => [
-            'project_id' => (int) $row->project_id,
-            'name' => $row->name,
-            'namespace' => $row->namespace,
-            'deleted_at' => $row->deleted_at,
-            'task_id' => $row->task_id === null ? null : (int) $row->task_id,
-            'state' => match (true) {
-                $row->task_id === null => 'never_queued',
-                $row->failed_at !== null => 'failed',
-                $row->started_at !== null => 'running',
-                default => 'queued',
-            },
-            'error' => $row->error_message,
-        ], $this->model->unfinished_project_cleanups());
+        if ($logs === null) {
+            throw new RuntimeException('Could not read the logs from the cluster right now. Try again.');
+        }
+
+        $lines = $logs['lines'];
+
+        if ($this->_bool_arg($args, 'problems_only', false)) {
+            $lines = array_values(array_filter($lines, fn(array $line) => in_array($line['level'], ['warn', 'error'], true)));
+        }
 
         return [
-            'orphans' => $orphans,
-            'unfinished_cleanups' => $cleanups,
-            'unfinished_project_cleanups' => $project_cleanups,
-            'checked_kinds' => array_column(App_resource_audit::KINDS, 1),
-            'note' => 'Read-only: nothing was changed. Secrets are not listed (the web app cannot read them); a failed or never-queued cleanup may also have left the database Secret. Re-run an app cleanup with retry_app_cleanup {"app_id": ...} and a project cleanup with retry_project_cleanup {"project_id": ...}.',
+            'state' => $logs['state'],
+            'lines' => $lines,
+            'next_since' => $logs['cursor'],
+            'note' => $logs['pods'] === 0 ? 'No running pods: the app is asleep or stopped, so there are no logs to read.' : null,
         ];
     }
 
-    function _tool_retry_app_cleanup(array $args): array {
-        $app_id = $this->_int_arg($args, 'app_id');
-        $project_id = $this->model->app_project_id($app_id);
+    function _tool_list_env_vars(array $args): array {
+        [, $app] = $this->_app_or_fail($this->_int_arg($args, 'app_id'));
 
-        if ($project_id === false) {
-            throw new RuntimeException('App not found');
-        }
-
-        $task_id = $this->model->requeue_app_destroy($project_id, $app_id);
-
-        return [
-            'task_id' => $task_id,
-            'app_id' => $app_id,
-            'next' => 'Check the result with audit_app_resources once the worker has run it',
-        ];
+        return ['names' => array_keys($this->_app_env($app)), 'reserved' => App_env::RESERVED];
     }
 
-    function _tool_retry_project_cleanup(array $args): array {
-        $project_id = $this->_int_arg($args, 'project_id');
-        $task_id = $this->model->requeue_project_destroy($project_id);
+    function _tool_set_env_var(array $args): array {
+        [, $app] = $this->_app_or_fail($this->_int_arg($args, 'app_id'));
+        $this->editing_app_id = (int) $app->id;
 
-        return [
-            'task_id' => $task_id,
-            'project_id' => $project_id,
-            'next' => 'Check the result with audit_app_resources once the worker has run it',
-        ];
+        $name = trim($this->_string_arg($args, 'name'));
+        $value = $args['value'] ?? null;
+
+        if (!is_string($value) || $value === '' || strlen($value) > App_env::MAX_VALUE_BYTES) {
+            throw new InvalidArgumentException('value must be a string of 1 to ' . App_env::MAX_VALUE_BYTES . ' bytes');
+        }
+
+        $this->_check($this->_validate_env_name($name));
+        $this->secrets->update(App_env::MODULE, (int) $app->id, App_env::SERVICE, [$name => $value]);
+
+        return ['saved' => $name, 'next' => 'It takes effect on the next deploy: deploy_app {"app_id": ' . $app->id . '}'];
+    }
+
+    function _tool_delete_env_var(array $args): array {
+        [, $app] = $this->_app_or_fail($this->_int_arg($args, 'app_id'));
+        $name = $this->_string_arg($args, 'name');
+        $env = $this->_app_env($app);
+
+        if (!array_key_exists($name, $env)) {
+            throw new RuntimeException("{$name} is not set on this app");
+        }
+
+        unset($env[$name]);
+
+        $env === []
+            ? $this->secrets->delete(App_env::MODULE, (int) $app->id, App_env::SERVICE)
+            : $this->secrets->save(App_env::MODULE, (int) $app->id, App_env::SERVICE, $env);
+
+        return ['removed' => $name, 'next' => 'It is gone from the app after the next deploy: deploy_app {"app_id": ' . $app->id . '}'];
+    }
+
+    // --- Helpers ---
+
+    /**
+     * Who deploys and rollbacks are recorded as: the customer, or null for the admin
+     */
+    function _customer_id(): ?int {
+        return $this->customer === null ? null : (int) $this->customer->id;
     }
 
     /**
-     * The app's project id and row.
+     * The app's project id and row (with its namespace): one of the
+     * customer's apps, or any app for the admin.
      *
      * @return array{int, object}
-     * @throws RuntimeException when the app doesn't exist
+     * @throws RuntimeException when there is no such app
      */
     function _app_or_fail(int $app_id): array {
-        $project_id = $this->model->app_project_id($app_id);
-        $app = $project_id === false ? false : $this->model->find_project_app($project_id, $app_id);
+        if ($this->_is_admin()) {
+            $project_id = $this->model->app_project_id($app_id);
+            $app = $project_id === false ? false : $this->model->find_project_app($project_id, $app_id);
+        } else {
+            $app = $this->model->find_member_app((int) $this->customer->id, $app_id);
+            $project_id = $app === false ? false : (int) $app->project_id;
+        }
 
         if ($project_id === false || $app === false) {
             throw new RuntimeException('App not found');
         }
 
         return [$project_id, $app];
+    }
+
+    /**
+     * Turn a validation callback's message into a tool error
+     *
+     * @throws InvalidArgumentException
+     */
+    function _check(bool|string $valid): void {
+        if ($valid !== true) {
+            throw new InvalidArgumentException(is_string($valid) ? $valid : 'Invalid value');
+        }
     }
 
     /**
@@ -434,6 +715,79 @@ trait Mcp_tools {
         }
 
         return $value;
+    }
+
+    /**
+     * @throws InvalidArgumentException when missing (and required) or not a string
+     */
+    function _string_arg(array $args, string $key, bool $required = true, string $default = ''): string {
+        if (!array_key_exists($key, $args) || $args[$key] === null) {
+            if ($required) {
+                throw new InvalidArgumentException("Missing required argument: {$key}");
+            }
+            return $default;
+        }
+
+        if (!is_string($args[$key]) || ($required && trim($args[$key]) === '')) {
+            throw new InvalidArgumentException("Argument {$key} must be a non-empty string");
+        }
+
+        return $args[$key];
+    }
+
+    /**
+     * @throws InvalidArgumentException when not a boolean
+     */
+    function _bool_arg(array $args, string $key, bool $default = false): bool {
+        $value = $args[$key] ?? $default;
+
+        if (!is_bool($value)) {
+            throw new InvalidArgumentException("Argument {$key} must be true or false");
+        }
+
+        return $value;
+    }
+
+    /**
+     * A list of strings, or one string split on whitespace and commas
+     *
+     * @return list<string>
+     * @throws InvalidArgumentException
+     */
+    function _strings_arg(array $args, string $key): array {
+        $value = $args[$key] ?? [];
+
+        if (is_string($value)) {
+            $value = preg_split('/[\s,]+/', trim($value)) ?: [];
+        }
+
+        if (!is_array($value) || array_filter($value, fn($item) => !is_string($item)) !== []) {
+            throw new InvalidArgumentException("Argument {$key} must be a list of strings");
+        }
+
+        return array_values(array_filter(array_map('trim', $value), fn(string $item) => $item !== ''));
+    }
+
+    /**
+     * The custom domain and how far it got: requested, verified (TXT record),
+     * pointed here (DNS) and secured (certificate). Null without one.
+     */
+    function _domain_status(object $app): ?array {
+        $domain = (string) ($app->domain ?? '');
+
+        if ($domain === '') {
+            return null;
+        }
+
+        $verified = $domain === (string) ($app->verified_domain ?? '');
+
+        return [
+            'domain' => $domain,
+            'verified' => $verified,
+            'pointed_here' => $verified && !empty($app->domain_pointed_at),
+            'secured' => $verified && !empty($app->domain_secured_at),
+            'verification_record' => $verified ? null : ['type' => 'TXT'] + $this->model->domain_verification_record((int) $app->id, $domain),
+        ];
     }
 
     /**

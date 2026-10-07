@@ -60,7 +60,23 @@ $routes = [
     // The GitHub App's webhook (public, HMAC-signed with GITHUB_APP_WEBHOOK_SECRET)
     'webhooks/github' => 'webhooks/github',
 
-    // Admin MCP endpoint (modules/mcp), MCP_SECRET bearer auth
+    // MCP endpoint (modules/mcp): OAuth access tokens act as a customer, MCP_SECRET as the admin
     'mcp' => 'mcp/index',
+
+    // OAuth 2.1 for assistants connecting to the MCP endpoint (modules/mcp/oauth)
+    '.well-known/oauth-protected-resource' => 'mcp-oauth/protected_resource',
+    '.well-known/oauth-protected-resource/mcp' => 'mcp-oauth/protected_resource',
+    '.well-known/oauth-authorization-server' => 'mcp-oauth/metadata',
+    '.well-known/openid-configuration' => 'mcp-oauth/metadata',
+    'oauth/register' => 'mcp-oauth/register',
+    'oauth/authorize' => 'mcp-oauth/authorize',
+    'oauth/consent' => 'mcp-oauth/consent',
+    'oauth/consent/submit' => 'mcp-oauth/submit_consent',
+    'oauth/token' => 'mcp-oauth/token',
+    'oauth/revoke' => 'mcp-oauth/revoke',
+
+    // Assistants (one child module of mcp each)
+    'integrations/claude' => 'mcp-claude/index',
+    'integrations/claude/(:num)/disconnect' => 'mcp-claude/disconnect/$1',
 ];
 define('CUSTOM_ROUTES', $routes);
