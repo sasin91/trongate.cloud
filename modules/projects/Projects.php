@@ -158,7 +158,7 @@ class Projects extends Trongate {
         try {
             $this->model->queue_project_delete((int) $project->id);
         } catch (RuntimeException $e) {
-            set_flashdata('Could not delete the project: ' . $e->getMessage());
+            set_flashdata('Could not delete the project: ' . htmlspecialchars($e->getMessage()));
             redirect('projects/' . $project->id . '/settings');
         }
 

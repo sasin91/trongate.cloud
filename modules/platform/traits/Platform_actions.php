@@ -794,19 +794,19 @@ trait Platform_actions {
     }
 
     /**
-     * A trimmed project name of 1 to 255 characters
+     * A trimmed project name of 3 to 50 characters (Projects::NAME_RULES)
      *
      * @throws InvalidArgumentException (the message is safe to show)
      */
     function _clean_project_name(string $name): string {
         $name = trim(preg_replace('/\s+/u', ' ', $name) ?? '');
 
-        if ($name === '') {
-            throw new InvalidArgumentException('Enter a name for the project.');
+        if (mb_strlen($name) < 3) {
+            throw new InvalidArgumentException('The project name needs at least 3 characters.');
         }
 
-        if (mb_strlen($name) > 255) {
-            throw new InvalidArgumentException('The project name can be at most 255 characters.');
+        if (mb_strlen($name) > 50) {
+            throw new InvalidArgumentException('The project name can be at most 50 characters.');
         }
 
         return $name;

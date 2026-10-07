@@ -35,11 +35,14 @@ class Language extends Trongate {
      * * @return string
      */
     public function get_language(): string {
-        if (isset($_SESSION['app_lang']) && is_string($_SESSION['app_lang'])) {
+        // The value becomes part of a file path, so only accept codes like "en" or "en_GB"
+        $valid = fn($lang) => is_string($lang) && preg_match('/^[a-z]{2}(_[A-Z]{2})?$/', $lang) === 1;
+
+        if (isset($_SESSION['app_lang']) && $valid($_SESSION['app_lang'])) {
             return $_SESSION['app_lang'];
         }
 
-        if (isset($_COOKIE[$this->cookie_name]) && is_string($_COOKIE[$this->cookie_name])) {
+        if (isset($_COOKIE[$this->cookie_name]) && $valid($_COOKIE[$this->cookie_name])) {
             return $_COOKIE[$this->cookie_name];
         }
 
