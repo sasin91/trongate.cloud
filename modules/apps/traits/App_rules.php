@@ -191,8 +191,7 @@ trait App_rules {
     }
 
     /**
-     * A variable name that may be set on the app being edited ($editing_app_id):
-     * not reserved, and within App_env::MAX_VARIABLES.
+     * Trongate's ENV constant for the app (Trongate_config::ENV_PATTERN)
      */
     function _validate_trongate_env(string $value): bool|string {
         if (!preg_match(Trongate_config::ENV_PATTERN, trim($value))) {
@@ -202,6 +201,10 @@ trait App_rules {
         return true;
     }
 
+    /**
+     * A variable name that may be set on the app being edited ($editing_app_id):
+     * not reserved, and within App_env::MAX_VARIABLES.
+     */
     function _validate_env_name(string $value): bool|string {
         $name = trim($value);
         $error = App_env::name_error($name);

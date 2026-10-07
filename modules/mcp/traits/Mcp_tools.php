@@ -160,7 +160,7 @@ trait Mcp_tools {
                     'php_extensions' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Extra PHP extensions'],
                     'always_on' => ['type' => 'boolean', 'description' => 'Never sleep when idle (needed when other apps call it directly)'],
                     'auto_deploy' => ['type' => 'boolean', 'description' => 'Deploy on every push to the branch'],
-                    'trongate_env' => ['type' => 'string', 'description' => "Trongate's ENV constant, e.g. dev, staging or prod"],
+                    'trongate_env' => ['type' => 'string', 'description' => "Trongate's ENV constant in config/config.php, e.g. " . implode(', ', Trongate_config::ENV_SUGGESTIONS) . ' (dev shows errors)'],
                 ], ['app_id']),
                 'annotations' => $this->_hints(false, true, true),
                 'scopes' => ['customer'],
@@ -328,6 +328,7 @@ trait Mcp_tools {
             'persistent_paths' => Manifests::persistent_paths((array) $app),
             'php_extensions' => $this->_parse_php_extensions((string) ($app->php_extensions ?? '')),
             'auto_deploy' => (bool) ($app->auto_deploy ?? false),
+            'trongate_env' => Trongate_config::env((array) $app),
             'database' => empty($app->database_server_id) ? null : Manifests::database_name((int) $app->id),
             'current_deployment' => $current,
         ];
