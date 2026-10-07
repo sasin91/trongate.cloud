@@ -10,7 +10,8 @@
 
 //The main config file
 define('BASE_URL', getenv('BASE_URL') ?: 'https://trongate.cloud.test/');
-define('ENV', getenv('ENV') ?: 'dev');
+// Fails closed: dev mode auto-signs visitors into tg-admin and enables code generators
+define('ENV', getenv('ENV') ?: 'prod');
 define('DEFAULT_MODULE', 'welcome');
 define('DEFAULT_METHOD', 'index');
 define('MODULE_ASSETS_TRIGGER', '_module');

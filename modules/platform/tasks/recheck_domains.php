@@ -32,7 +32,7 @@
  * so a domain goes live soon after its DNS change propagates and a domain that
  * moved away is noticed.
  *
- * Lessons kept from Scaleweb's CRM (hostname-gate.ts, domain-promotion.ts):
+ * Rules:
  * - Promotion re-applies the image of the app's current (successful)
  *   deployment. It never builds or deploys: a DNS edit at a registrar must not
  *   be able to ship new code.
@@ -48,7 +48,7 @@
 require_once __DIR__ . '/lib/Platform_task.php';
 
 return function (Task_log $log) use ($payload, $runtime): int {
-    // Consecutive failed checks before a routed domain counts as gone (CRM: 3)
+    // Consecutive failed checks before a routed domain counts as gone
     $demote_after_failures = 3;
     // How long to wait for a freshly routed domain's certificate (HTTP-01 usually takes well under a minute)
     $certificate_wait_seconds = 180;

@@ -15,10 +15,8 @@ class Trongate_tokens extends Trongate {
      */
     public function __construct(?string $module_name = null) {
         parent::__construct($module_name);
-        // The regenerate endpoint is intentionally URL-accessible (documented token rotation); block everything else.
-        if (segment(2) !== 'regenerate') {
-            block_url('trongate_tokens');
-        }
+        // No URL access at all: regenerate() would revive expired tokens without a login.
+        block_url('trongate_tokens');
     }
 
     /**
