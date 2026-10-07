@@ -27,9 +27,6 @@ class App_database {
     /** Longer SQL is refused (the SQL box is for queries, not imports) */
     const MAX_STATEMENT_BYTES = 64 * 1024;
 
-    /** Statements the SQL box runs at once, in one transaction */
-    const MAX_STATEMENTS = 20;
-
     /** First keywords of statements that only read. They run in a read-only transaction. */
     const READ_STATEMENTS = ['SELECT', 'WITH', 'SHOW', 'DESCRIBE', 'DESC', 'EXPLAIN'];
 
@@ -268,7 +265,7 @@ class App_database {
 
     /**
      * Why the SQL may not run here, or null when it may (see run()). It may
-     * hold up to MAX_STATEMENTS statements separated by ";". Anything but the
+     * hold several statements separated by ";". Anything but the
      * statements in READ_STATEMENTS and WRITE_STATEMENTS is refused: SET (which
      * could lift the read-only mode and the time limit), BEGIN, COMMIT, LOCK,
      * HANDLER, LOAD DATA, CALL, PREPARE and the like.
@@ -289,10 +286,6 @@ class App_database {
         }
 
         $statements = self::statements($sql);
-
-        if (count($statements) > self::MAX_STATEMENTS) {
-            return 'Run at most ' . self::MAX_STATEMENTS . ' statements at a time.';
-        }
 
         foreach ($statements as $i => $statement) {
             $kind = self::keyword_kind($statement);
