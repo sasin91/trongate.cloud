@@ -29,6 +29,17 @@
         </div>
 
         <div class="form-group">
+            <label for="trongate_env" class="form-label">Environment</label>
+            <input type="text" name="trongate_env" id="trongate_env" class="form-input mono" list="trongate_env_options" value="<?= htmlspecialchars($trongate_env) ?>">
+            <datalist id="trongate_env_options">
+                <?php foreach (Trongate_config::ENV_SUGGESTIONS as $option): ?>
+                <option value="<?= htmlspecialchars($option) ?>">
+                <?php endforeach; ?>
+            </datalist>
+            <p class="form-hint">Your app's <code>ENV</code> constant in <code>config/config.php</code>. In <code>dev</code>, Trongate shows error details; use <code>prod</code> to hide them from visitors.</p>
+        </div>
+
+        <div class="form-group">
             <label for="php_extensions" class="form-label">Extra PHP Extensions</label>
             <input type="text" name="php_extensions" id="php_extensions" class="form-input mono" placeholder="e.g. gd, intl" value="<?= htmlspecialchars($php_extensions) ?>">
             <p class="form-hint">Comma-separated. Installed at build time.</p>

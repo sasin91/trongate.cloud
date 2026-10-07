@@ -10,6 +10,23 @@ require_once __DIR__ . '/../../../config/platform.php';
  */
 class Trongate_config {
 
+    /** ENV for an app that has not picked one: Trongate shows errors in dev */
+    const DEFAULT_ENV = 'dev';
+
+    /** Offered on the app's Settings page; any other value matching ENV_PATTERN works too */
+    const ENV_SUGGESTIONS = ['dev', 'staging', 'prod'];
+
+    const ENV_PATTERN = '/^[A-Za-z0-9_-]{1,20}$/';
+
+    /**
+     * The app's Trongate ENV constant (app.trongate_env), DEFAULT_ENV when unset or invalid
+     */
+    static function env(array $app): string {
+        $env = (string) ($app['trongate_env'] ?? '');
+
+        return preg_match(self::ENV_PATTERN, $env) ? $env : self::DEFAULT_ENV;
+    }
+
     /**
      * Full config/database.php
      *

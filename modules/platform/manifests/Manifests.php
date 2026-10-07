@@ -567,7 +567,7 @@ class Manifests {
     /**
      * Everything one app needs inside its tenant namespace, in apply order
      *
-     * @param array $app        app row (id, namespace, slug, label, type, verified_domain, domain_pointed_at, domain_secured_at, persistent_paths, always_on)
+     * @param array $app        app row (id, namespace, slug, label, type, verified_domain, domain_pointed_at, domain_secured_at, persistent_paths, always_on, trongate_env)
      * @param array $deployment deployment row (id, image)
      * @param array $database   database_server row (host, port, operator_name, operator_namespace); optional 'password'
      */
@@ -701,10 +701,11 @@ class Manifests {
             'paths' => $paths,
             'always_on' => $always_on,
             'base_url' => $base_url,
+            'trongate_env' => Trongate_config::env($app),
             'sessions' => $sessions_ini !== '',
             'env_secret_name' => self::env_secret_name($app_id),
             // Changed variables roll the pods: envFrom is only read at container start
-            'config_hash' => substr(hash('sha256', $database_php . $sessions_ini . $base_url . json_encode($paths) . json_encode($env)), 0, 16),
+            'config_hash' => substr(hash('sha256', $database_php . $sessions_ini . $base_url . json_encode($paths) . json_encode($env) . Trongate_config::env($app)), 0, 16),
         ]);
 
         $manifests[] = [
@@ -974,7 +975,7 @@ class Manifests {
 
         $app_dir = self::APP_DIR;
         $config_script = "set -eu\ncp {$app_dir}/config/config.php /work/config.php\n"
-            . Trongate_config::patch_script(['BASE_URL' => $o['base_url'], 'ENV' => 'prod'], '/work/config.php');
+            . Trongate_config::patch_script(['BASE_URL' => $o['base_url'], 'ENV' => $o['trongate_env']], '/work/config.php');
 
         $volumes = [
             ['name' => 'config', 'emptyDir' => ['sizeLimit' => '1Mi']],

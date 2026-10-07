@@ -236,6 +236,8 @@ CREATE TABLE app (
   persistent_paths JSON DEFAULT '[]',
   php_extensions VARCHAR(255) NOT NULL DEFAULT '',
   always_on TINYINT(1) NOT NULL DEFAULT 0,
+  -- Trongate's ENV constant, patched into config/config.php (Trongate_config::env)
+  trongate_env VARCHAR(20) NOT NULL DEFAULT 'dev',
   database_server_id INT NULL,
   current_deployment_id INT NULL,
 
