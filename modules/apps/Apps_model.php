@@ -18,4 +18,5 @@ class Apps_model extends Model {
     function rollback_target(object $app): object|false {
         return $this->_previous_successful_deployment($app);
     }
+
 }

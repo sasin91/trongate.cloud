@@ -739,14 +739,25 @@ a.status-pill {
     }
 }
 
-/* Four tabs fit a 360px phone without scrolling */
+/* Five tabs fit a 360px phone without scrolling */
 @media (max-width: 400px) {
     .ov-tabs {
         gap: 0;
     }
 
     .ov-tabs a {
-        padding: 0.75rem 0.5rem;
-        font-size: 0.875rem;
+        padding: 0.75rem 0.3rem;
+        font-size: 0.8125rem;
     }
+}
+
+.app-log-copy {
+    min-height: 36px;
+    padding: 0 0.75rem;
+    font-size: 0.875rem;
+}
+
+.app-log-copy:disabled {
+    opacity: 0.5;
+    cursor: default;
 }
