@@ -63,7 +63,7 @@ class App_logs {
      *
      * @return array{state: array{state: string, label: string, detail: string}, lines: list<array{time: string, pod: string, level: string, text: string}>, cursor: string, pods: int}
      */
-    static function read(Kubernetes $kube, string $namespace, int $app_id, string $cursor = ''): array {
+    static function read(Kubernetes $kube, string $namespace, int $app_id, string $cursor = '', int $tail_lines = self::TAIL_LINES): array {
         if (!Manifests::is_tenant_namespace($namespace)) {
             throw new InvalidArgumentException("Not a tenant namespace: '{$namespace}'");
         }
@@ -105,7 +105,7 @@ class App_logs {
             }
 
             try {
-                $log = $kube->pod_log($namespace, (string) $pod['metadata']['name'], self::TAIL_LINES, $options);
+                $log = $kube->pod_log($namespace, (string) $pod['metadata']['name'], $tail_lines, $options);
             } catch (Client_Error $e) {
                 // The pod went away or its container is between restarts; the next read catches up
                 continue;
@@ -120,8 +120,8 @@ class App_logs {
 
         usort($lines, fn(array $a, array $b) => strcmp($a['time'], $b['time']));
 
-        // Two pods each send up to TAIL_LINES; show the newest TAIL_LINES of the merge
-        $lines = array_slice($lines, -self::TAIL_LINES);
+        // Two pods each send up to $tail_lines; keep the newest $tail_lines of the merge
+        $lines = array_slice($lines, -$tail_lines);
 
         return [
             'state' => $state,

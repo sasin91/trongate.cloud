@@ -123,7 +123,7 @@ class Deploy_reconcile {
 
         foreach ($apps as $app) {
             // Customer deploys go first; the rotation picks up from here next run
-            if ($this->project_task_waiting()) {
+            if (Platform_task::project_task_waiting($this->db)) {
                 $stopped = 'project-task-waiting';
                 $this->log->info('A customer task is waiting; stopping until the next run');
                 break;
@@ -201,23 +201,6 @@ class Deploy_reconcile {
 
         $limit = self::MAX_APPS_PER_RUN + 1;
         return Platform_task::rows($this->db, $sql, [$limit]);
-    }
-
-    /**
-     * Whether a project (customer) task is queued and waiting for the worker.
-     */
-    function project_task_waiting(): bool {
-        $row = Platform_task::row(
-            $this->db,
-            'SELECT id FROM tasks
-             WHERE project_id IS NOT NULL
-               AND started_at IS NULL
-               AND completed_at IS NULL
-               AND failed_at IS NULL
-             LIMIT 1'
-        );
-
-        return $row !== null;
     }
 
     /**

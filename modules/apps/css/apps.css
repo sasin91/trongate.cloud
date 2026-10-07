@@ -598,6 +598,81 @@ a.status-pill {
     font-weight: 500;
 }
 
+/* Errors card (views/_log_rates.php): errors stacked under warnings per hour */
+.ov-rates {
+    padding: 1rem 1.25rem 1.125rem;
+    font-size: 0.875rem;
+}
+
+.ov-rates p {
+    margin: 0;
+}
+
+.ov-rates .ov-rates-sum {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 1rem;
+    margin-bottom: 0.875rem;
+}
+
+.ov-swatch {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    margin-right: 0.375rem;
+    vertical-align: -1px;
+}
+
+.ov-swatch-error,
+.ov-rate-error {
+    background: #c4321f;
+}
+
+.ov-swatch-warn,
+.ov-rate-warn {
+    background: #d0912a;
+}
+
+.ov-rates-bars {
+    display: flex;
+    align-items: stretch;
+    gap: 2px;
+    height: 56px;
+    border-bottom: 1px solid var(--border-strong);
+}
+
+.ov-rate-bar {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 2px;
+    min-width: 0;
+}
+
+.ov-rate-bar:hover {
+    background: var(--accent-soft);
+}
+
+.ov-rate-bar i {
+    display: block;
+    min-height: 2px;
+}
+
+/* The top segment gets the rounded data-end */
+.ov-rate-bar i:first-child {
+    border-radius: 3px 3px 0 0;
+}
+
+.ov-rates-axis {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 0.375rem;
+    font-size: 0.75rem;
+}
+
 @media (max-width: 1000px) {
     .ov-main {
         grid-template-columns: minmax(0, 1fr);

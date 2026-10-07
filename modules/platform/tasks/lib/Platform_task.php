@@ -74,6 +74,25 @@ class Platform_task {
     }
 
     /**
+     * Whether a project (customer) task is queued and waiting for the worker.
+     * The worker runs one task at a time, so periodic tasks that loop over
+     * apps check this and stop early rather than hold up a deploy.
+     */
+    static function project_task_waiting(PDO $db): bool {
+        $row = self::row(
+            $db,
+            'SELECT id FROM tasks
+             WHERE project_id IS NOT NULL
+               AND started_at IS NULL
+               AND completed_at IS NULL
+               AND failed_at IS NULL
+             LIMIT 1'
+        );
+
+        return $row !== null;
+    }
+
+    /**
      * The namespace of a project, deleted or not (destroy_app and
      * destroy_project run after the rows are soft-deleted)
      */
