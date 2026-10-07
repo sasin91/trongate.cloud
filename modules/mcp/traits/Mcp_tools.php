@@ -159,6 +159,7 @@ trait Mcp_tools {
                     'persistent_paths' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => "Directories (relative to the app's root) kept across deploys, e.g. modules/blog/uploads"],
                     'php_extensions' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Extra PHP extensions'],
                     'always_on' => ['type' => 'boolean', 'description' => 'Never sleep when idle (needed when other apps call it directly)'],
+                    'laya' => ['type' => 'boolean', 'description' => 'Run the Laya decision model next to the app (LAYA_URL, LAYA_API_KEY)'],
                     'auto_deploy' => ['type' => 'boolean', 'description' => 'Deploy on every push to the branch'],
                     'trongate_env' => ['type' => 'string', 'description' => "Trongate's ENV constant in config/config.php, e.g. " . implode(', ', Trongate_config::ENV_SUGGESTIONS) . ' (dev shows errors)'],
                 ], ['app_id']),
@@ -327,6 +328,7 @@ trait Mcp_tools {
             'custom_domain' => $this->_domain_status($app),
             'persistent_paths' => Manifests::persistent_paths((array) $app),
             'php_extensions' => $this->_parse_php_extensions((string) ($app->php_extensions ?? '')),
+            'laya' => (bool) ($app->laya ?? false),
             'auto_deploy' => (bool) ($app->auto_deploy ?? false),
             'trongate_env' => Trongate_config::env((array) $app),
             'database' => empty($app->database_server_id) ? null : Manifests::database_name((int) $app->id),
@@ -421,6 +423,7 @@ trait Mcp_tools {
             'persistent_paths' => Manifests::persistent_paths((array) $app),
             'php_extensions' => (string) ($app->php_extensions ?? ''),
             'always_on' => (bool) $app->always_on,
+            'laya' => (bool) $app->laya,
             'auto_deploy' => (bool) $app->auto_deploy,
             'trongate_env' => Trongate_config::env((array) $app),
         ];
@@ -447,7 +450,7 @@ trait Mcp_tools {
             $changed[] = 'php_extensions';
         }
 
-        foreach (['always_on', 'auto_deploy'] as $flag) {
+        foreach (['always_on', 'laya', 'auto_deploy'] as $flag) {
             if (array_key_exists($flag, $args)) {
                 $settings[$flag] = $this->_bool_arg($args, $flag);
                 $changed[] = $flag;
@@ -475,6 +478,7 @@ trait Mcp_tools {
                 'persistent_paths' => Manifests::persistent_paths((array) $app),
                 'php_extensions' => $this->_parse_php_extensions((string) $app->php_extensions),
                 'always_on' => (bool) $app->always_on,
+                'laya' => (bool) $app->laya,
                 'auto_deploy' => (bool) $app->auto_deploy,
                 'trongate_env' => Trongate_config::env((array) $app),
             ],

@@ -238,6 +238,7 @@ class Apps extends Trongate {
             'persistent_paths' => $is_resubmit ? (string) post('persistent_paths') : implode("\n", $paths),
             'php_extensions' => $is_resubmit ? (string) post('php_extensions', true) : (string) $app->php_extensions,
             'always_on' => $is_resubmit ? (bool) post('always_on') : (bool) $app->always_on,
+            'laya' => $is_resubmit ? (bool) post('laya') : (bool) $app->laya,
             'trongate_env' => $is_resubmit ? (string) post('trongate_env', true) : Trongate_config::env((array) $app),
             'auto_deploy' => $is_resubmit ? (bool) post('auto_deploy') : (bool) $app->auto_deploy,
             'domain_record' => !empty($app->domain) ? $this->model->domain_verification_record((int) $app->id, (string) $app->domain) : null,
@@ -323,6 +324,7 @@ class Apps extends Trongate {
             'persistent_paths' => $this->_parse_persistent_paths((string) post('persistent_paths')),
             'php_extensions' => implode(',', $this->_parse_php_extensions((string) post('php_extensions', true))),
             'always_on' => (bool) post('always_on'),
+            'laya' => (bool) post('laya'),
             'auto_deploy' => (bool) post('auto_deploy'),
             'trongate_env' => trim((string) post('trongate_env', true)),
         ]);

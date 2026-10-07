@@ -56,6 +56,18 @@ docker buildx build \
     --push \
     .
 
+# Laya, run next to apps that turn it on (PLATFORM_LAYA_IMAGE, laya:0.4.0)
+echo "==> ${REGISTRY}/laya (${sha})"
+docker buildx build \
+    --platform "$PLATFORM" \
+    --file docker/laya/Dockerfile \
+    --build-arg SOURCE_DATE_EPOCH=0 \
+    --provenance=false \
+    --tag "${REGISTRY}/laya:0.4.0" \
+    --tag "${REGISTRY}/laya:${sha}" \
+    --push \
+    .
+
 build trongate-cloud Dockerfile
 build trongate-cloud-worker Dockerfile.worker
 

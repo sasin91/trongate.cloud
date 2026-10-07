@@ -13,7 +13,8 @@
  *   :{short sha}                                         (what bin/push-images.sh tags)
  *
  * Before those it builds docker/app-base, the base of every customer app, and
- * pushes it as PLATFORM_APP_BASE_IMAGE (and :{short sha}). Deploys use it as
+ * pushes it as PLATFORM_APP_BASE_IMAGE (and :{short sha}), then docker/laya as
+ * PLATFORM_LAYA_IMAGE (and :{short sha}), the model apps can run next to them. Deploys use it as
  * soon as it is pushed. It is built with SOURCE_DATE_EPOCH=0 and no revision
  * label, so a commit that leaves it unchanged pushes the same digest and the
  * apps' build caches stay valid.
@@ -107,7 +108,7 @@ return function (Task_log $log) use ($task, $runtime): int {
             throw new RuntimeException('Extracting the repository failed');
         }
 
-        foreach (['docker/app-base/Dockerfile', 'Dockerfile', 'Dockerfile.worker'] as $dockerfile) {
+        foreach (['docker/app-base/Dockerfile', 'docker/laya/Dockerfile', 'Dockerfile', 'Dockerfile.worker'] as $dockerfile) {
             if (!is_file("{$src}/{$dockerfile}")) {
                 throw new RuntimeException("{$dockerfile} not found in {$repo}");
             }
@@ -116,14 +117,28 @@ return function (Task_log $log) use ($task, $runtime): int {
         $own_buildkitd = BUILDKIT_HOST === '';
         $buildkit_host = $own_buildkitd ? Platform_task::start_buildkitd($runtime, $log, $task_id, 'p') : BUILDKIT_HOST;
 
-        // The app base first (deploys and nothing else use it), then the web
-        // app, the worker last: Flux follows the worker image, so once its tag
-        // exists the others do too
-        $scripts = ['app-base' => Platform_task::app_base_build(
-            $buildkit_host,
-            $src,
-            [Platform_task::image_repository(PLATFORM_APP_BASE_IMAGE) . ":{$short_sha}"]
-        )];
+        // The app base first (deploys and nothing else use it), then Laya
+        // (apps that turn it on), the web app, the worker last: Flux follows
+        // the worker image, so once its tag exists the others do too
+        $laya_repository = Platform_task::image_repository(PLATFORM_LAYA_IMAGE);
+        $scripts = [
+            'app-base' => Platform_task::app_base_build(
+                $buildkit_host,
+                $src,
+                [Platform_task::image_repository(PLATFORM_APP_BASE_IMAGE) . ":{$short_sha}"]
+            ),
+            // Its build cache keeps the torch and checkpoint layers, so an
+            // unchanged Dockerfile costs a cache check and a push
+            'laya' => Platform_task::buildctl_build(
+                $buildkit_host,
+                $src,
+                $src,
+                'docker/laya/Dockerfile',
+                [PLATFORM_LAYA_IMAGE, "{$laya_repository}:{$short_sha}"],
+                "{$laya_repository}:buildcache",
+                ['build-arg:SOURCE_DATE_EPOCH=0']
+            ),
+        ];
 
         foreach (['trongate-cloud' => 'Dockerfile', 'trongate-cloud-worker' => 'Dockerfile.worker'] as $image => $dockerfile) {
             $ref = "{$registry}/{$image}";
@@ -143,6 +158,14 @@ return function (Task_log $log) use ($task, $runtime): int {
             $script = 'set -eu' . "\n" . $build . "\n";
 
             if ($runtime->shell($script, $log) !== 0) {
+                // Laya is optional for apps and heavy to build (torch and a
+                // download from Hugging Face): a failure keeps the last pushed
+                // image and must not hold back a platform release
+                if ($image === 'laya') {
+                    $log->warn('Building laya failed; apps keep the last ' . PLATFORM_LAYA_IMAGE);
+                    continue;
+                }
+
                 if ($own_buildkitd) {
                     Platform_task::log_buildkitd($runtime, $log, $task_id, 'p');
                 }
