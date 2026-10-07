@@ -1,6 +1,7 @@
 <?php
 
 require_once APPPATH . 'modules/platform/manifests/App_env.php';
+require_once APPPATH . 'modules/platform/manifests/Trongate_config.php';
 
 /**
  * Rules for an app's settings, shared by the forms (App_form, Apps) and the
@@ -193,6 +194,14 @@ trait App_rules {
      * A variable name that may be set on the app being edited ($editing_app_id):
      * not reserved, and within App_env::MAX_VARIABLES.
      */
+    function _validate_trongate_env(string $value): bool|string {
+        if (!preg_match(Trongate_config::ENV_PATTERN, trim($value))) {
+            return 'The environment may only contain letters, numbers, dashes and underscores (at most 20).';
+        }
+
+        return true;
+    }
+
     function _validate_env_name(string $value): bool|string {
         $name = trim($value);
         $error = App_env::name_error($name);

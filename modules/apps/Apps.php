@@ -400,14 +400,6 @@ class Apps extends Trongate {
 
     // --- Validation callbacks (the settings ones are in App_rules) ---
 
-    function _validate_trongate_env(string $value): bool|string {
-        if (!preg_match(Trongate_config::ENV_PATTERN, trim($value))) {
-            return 'The environment may only contain letters, numbers, dashes and underscores (at most 20).';
-        }
-
-        return true;
-    }
-
     function _validate_delete_confirmation(string $value): bool|string {
         if ($this->app_to_delete === null || trim($value) !== (string) $this->app_to_delete->slug) {
             return 'Type the app name exactly as shown to confirm.';

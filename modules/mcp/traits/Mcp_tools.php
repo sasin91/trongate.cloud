@@ -160,6 +160,7 @@ trait Mcp_tools {
                     'php_extensions' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Extra PHP extensions'],
                     'always_on' => ['type' => 'boolean', 'description' => 'Never sleep when idle (needed when other apps call it directly)'],
                     'auto_deploy' => ['type' => 'boolean', 'description' => 'Deploy on every push to the branch'],
+                    'trongate_env' => ['type' => 'string', 'description' => "Trongate's ENV constant, e.g. dev, staging or prod"],
                 ], ['app_id']),
                 'annotations' => $this->_hints(false, true, true),
                 'scopes' => ['customer'],
@@ -420,6 +421,7 @@ trait Mcp_tools {
             'php_extensions' => (string) ($app->php_extensions ?? ''),
             'always_on' => (bool) $app->always_on,
             'auto_deploy' => (bool) $app->auto_deploy,
+            'trongate_env' => Trongate_config::env((array) $app),
         ];
         $changed = [];
 
@@ -451,6 +453,13 @@ trait Mcp_tools {
             }
         }
 
+        if (array_key_exists('trongate_env', $args)) {
+            $env = $this->_string_arg($args, 'trongate_env');
+            $this->_check($this->_validate_trongate_env($env));
+            $settings['trongate_env'] = trim($env);
+            $changed[] = 'trongate_env';
+        }
+
         if ($changed === []) {
             throw new InvalidArgumentException('Pass at least one setting to change');
         }
@@ -466,6 +475,7 @@ trait Mcp_tools {
                 'php_extensions' => $this->_parse_php_extensions((string) $app->php_extensions),
                 'always_on' => (bool) $app->always_on,
                 'auto_deploy' => (bool) $app->auto_deploy,
+                'trongate_env' => Trongate_config::env((array) $app),
             ],
             'next' => 'Settings take effect on the next deploy: deploy_app {"app_id": ' . $app->id . '}',
         ];
