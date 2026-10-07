@@ -379,6 +379,61 @@ class Platform_task {
     }
 
     /**
+     * Roll $deployment out and keep it only when it passes: the rollout must
+     * finish (a new pod is ready only once its home page answers, see
+     * Manifests::_deployment) and the smoke test must pass. Until the new pod
+     * is ready the old one keeps serving. On failure the app's current
+     * deployment, the last one that passed, is applied again (restore()), so
+     * a failed deploy never stays live.
+     *
+     * $app comes back with the values that were applied (apply()).
+     */
+    static function roll_out(Runtime $runtime, Task_log $log, array &$app, array $deployment, array $database): bool {
+        $current_id = (int) ($app['current_deployment_id'] ?? 0);
+
+        self::apply($runtime, $log, $app, $deployment, $database);
+
+        if (self::wait_for_rollout($runtime, $log, $app) && self::smoke_test($runtime, $log, $app)) {
+            return true;
+        }
+
+        self::restore($runtime, $log, $app, $current_id, (int) $deployment['id'], $database);
+
+        return false;
+    }
+
+    /**
+     * Apply the app's last good deployment again after $failed_id failed, so
+     * its pod (still running while the new one never got ready) stays the one
+     * that serves. Nothing to restore on an app's first deploy.
+     */
+    static function restore(Runtime $runtime, Task_log $log, array &$app, int $current_id, int $failed_id, array $database): void {
+        $current = $current_id > 0 && $current_id !== $failed_id
+            ? self::row($runtime->db(), 'SELECT * FROM deployment WHERE id = ? AND app_id = ?', [$current_id, (int) $app['id']])
+            : null;
+
+        if ($current === null || empty($current['image'])) {
+            $log->warn('No earlier deployment passed, so there is nothing to go back to');
+            return;
+        }
+
+        $log->warn("Restoring deployment #{$current_id} ({$current['image']})");
+
+        try {
+            self::apply($runtime, $log, $app, $current, $database);
+        } catch (Throwable $e) {
+            $log->error("Restoring deployment #{$current_id} failed: " . $e->getMessage());
+            return;
+        }
+
+        if (self::wait_for_rollout($runtime, $log, $app)) {
+            $log->info("Deployment #{$current_id} is live again");
+        } else {
+            $log->error("Deployment #{$current_id} did not come back up; roll back from the app's Deployments");
+        }
+    }
+
+    /**
      * Wait for the app Deployment to roll out, logging progress; on failure log why pods are unhappy
      */
     static function wait_for_rollout(Runtime $runtime, Task_log $log, array $app): bool {

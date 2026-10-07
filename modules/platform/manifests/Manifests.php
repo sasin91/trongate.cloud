@@ -46,6 +46,15 @@ class Manifests {
         'limits' => ['ephemeral-storage' => '1Gi'],
     ];
 
+    // Rollout gate (see _deployment()): a new pod takes no traffic until its
+    // home page answers 2xx/3xx, for up to STARTUP_PROBE_PERIOD *
+    // STARTUP_PROBE_FAILURES seconds (about 2 minutes, like the smoke test).
+    // The old pod keeps serving meanwhile; a rollout that makes no progress
+    // for PROGRESS_DEADLINE_SECONDS fails and the deploy restores the old one.
+    const STARTUP_PROBE_PERIOD = 3;
+    const STARTUP_PROBE_FAILURES = 40;
+    const PROGRESS_DEADLINE_SECONDS = 180;
+
     const INIT_RESOURCES = [
         'requests' => ['cpu' => '10m', 'memory' => '32Mi', 'ephemeral-storage' => '64Mi'],
         'limits' => ['cpu' => '200m', 'memory' => '128Mi', 'ephemeral-storage' => '256Mi'],
@@ -1057,6 +1066,13 @@ class Manifests {
 
         $spec = [
             'revisionHistoryLimit' => 3,
+            // Start the new pod next to the old one and only remove the old
+            // one once the new one is ready (the startup probe below)
+            'strategy' => [
+                'type' => 'RollingUpdate',
+                'rollingUpdate' => ['maxSurge' => 1, 'maxUnavailable' => 0],
+            ],
+            'progressDeadlineSeconds' => self::PROGRESS_DEADLINE_SECONDS,
             'selector' => ['matchLabels' => $o['selector']],
             'template' => [
                 'metadata' => [
@@ -1093,6 +1109,22 @@ class Manifests {
                             ['name' => 'XDG_DATA_HOME', 'value' => '/tmp/caddy/data'],
                         ],
                         'volumeMounts' => $mounts,
+                        // The gate: until the home page answers (any 2xx or
+                        // 3xx), the pod is not ready, takes no traffic and the
+                        // old pod is not removed. A startup probe runs only
+                        // until it first passes, so the app is not polled for
+                        // as long as it runs; the TCP readiness probe takes
+                        // over after it.
+                        'startupProbe' => [
+                            'httpGet' => [
+                                'path' => '/',
+                                'port' => 'http',
+                                'httpHeaders' => [['name' => 'Host', 'value' => (string) parse_url($o['base_url'], PHP_URL_HOST)]],
+                            ],
+                            'periodSeconds' => self::STARTUP_PROBE_PERIOD,
+                            'timeoutSeconds' => 10,
+                            'failureThreshold' => self::STARTUP_PROBE_FAILURES,
+                        ],
                         'readinessProbe' => [
                             'tcpSocket' => ['port' => 'http'],
                             'initialDelaySeconds' => 1,

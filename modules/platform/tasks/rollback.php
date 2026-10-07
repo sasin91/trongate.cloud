@@ -37,9 +37,8 @@ return function (Task_log $log) use ($payload, $runtime): int {
     $deployment['image'] = $image;
 
     $database = Platform_task::database_server($db, $app, $log);
-    Platform_task::apply($runtime, $log, $app, $deployment, $database);
 
-    if (!Platform_task::wait_for_rollout($runtime, $log, $app) || !Platform_task::smoke_test($runtime, $log, $app)) {
+    if (!Platform_task::roll_out($runtime, $log, $app, $deployment, $database)) {
         return 1;
     }
 
