@@ -69,6 +69,13 @@ $base = 'apps/' . (int) $app->id . '/database';
             <p class="form-hint">Leave a field empty to use its default.</p>
         <?php endif; ?>
 
+        <?php if (!$is_new): ?>
+            <label class="checkbox-label db-backup-toggle">
+                <input type="checkbox" name="backup" value="1" checked>
+                Back up this row first, to restore it under Backups
+            </label>
+        <?php endif; ?>
+
         <div class="form-actions">
             <button type="submit" class="btn-primary"><?= $is_new ? 'Add row' : 'Save row' ?></button>
             <a href="<?= $e($back_url) ?>" class="btn-secondary">Cancel</a>
@@ -78,11 +85,15 @@ $base = 'apps/' . (int) $app->id . '/database';
 
     <?php if (!$is_new): ?>
     <div class="card danger-card">
-        <?= form_open($base . '/row/delete', ['onsubmit' => "return confirm('Delete this row? This cannot be undone.')"]) ?>
+        <?= form_open($base . '/row/delete', ['onsubmit' => "return confirm(this.backup.checked ? 'Delete this row? It is backed up first, so you can restore it under Backups.' : 'Delete this row without a backup? This cannot be undone.')"]) ?>
             <input type="hidden" name="table" value="<?= $e($table) ?>">
             <?php foreach ($key as $name => $value): ?>
                 <input type="hidden" name="key[<?= $e($name) ?>]" value="<?= $e($value) ?>">
             <?php endforeach; ?>
+            <label class="checkbox-label db-backup-toggle">
+                <input type="checkbox" name="backup" value="1" checked>
+                Back up this row first
+            </label>
             <button type="submit" class="btn-danger">Delete row</button>
         <?= form_close() ?>
     </div>

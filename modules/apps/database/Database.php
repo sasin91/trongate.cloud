@@ -31,7 +31,7 @@ class Database extends Trongate {
     }
 
     /**
-     * POST apps/{id}/database/query: run one statement and show its result.
+     * POST apps/{id}/database/query: run the statements (in one transaction) and show their results.
      */
     function query(): void {
         $this->_make_sure_allowed();
@@ -40,6 +40,7 @@ class Database extends Trongate {
 
         $sql = trim((string) post('sql'));
         $allow_changes = (bool) post('allow_changes');
+        $back_up = $allow_changes && (bool) post('backup') && App_database::statement_kind($sql) === 'write';
         $page = ['sql' => $sql];
         $refusal = $sql === '' ? null : App_database::refusal($sql, $allow_changes);
 
@@ -51,12 +52,20 @@ class Database extends Trongate {
             if (is_string($database)) {
                 $page['error'] = $database;
             } else {
-                try {
-                    $page['result'] = $this->_logged($app, 'query', $sql, $allow_changes, function () use ($database, $sql, $allow_changes) {
-                        $result = $database->run($sql, $allow_changes);
+                // The tables it names, whole; none for a CREATE TABLE of a new one
+                $backup = !$back_up ? null : function () use ($app, $database, $sql): ?int {
+                    $tables = App_database::tables_named_in($sql, $database->tables());
 
-                        return [$result, $result['affected']];
-                    });
+                    return $tables === [] ? null : $this->_save_backup($app, implode(', ', $tables), $database->back_up_tables($tables));
+                };
+
+                try {
+                    $page['results'] = $this->_logged($app, 'query', $sql, $allow_changes, function () use ($database, $sql, $allow_changes) {
+                        $results = $database->run($sql, $allow_changes);
+                        $affected = array_filter(array_column($results, 'affected'), 'is_int');
+
+                        return [$results, $affected === [] ? null : array_sum($affected)];
+                    }, $backup, $page['backup_id']);
                 } catch (PDOException | RuntimeException $e) {
                     $page['query_error'] = $e instanceof PDOException ? $this->_database_error($e) : $e->getMessage();
                 }
@@ -130,12 +139,20 @@ class Database extends Trongate {
             return;
         }
 
+        $backup = null;
+
+        if (!$is_new && post('backup')) {
+            // A changed primary key moves the row: restoring removes it from there too
+            $new_key = array_map('strval', array_intersect_key($values, $key) + $key);
+            $backup = fn() => $this->_save_backup($app, $this->_describe_row($table, $key), $database->back_up_row($table, $key, $new_key));
+        }
+
         try {
             $this->_logged($app, $is_new ? 'insert' : 'update', $this->_describe_row_change($is_new ? 'insert' : 'update', $table, $key, array_keys($values)), true, function () use ($database, $table, $key, $values, $is_new) {
                 $affected = $is_new ? $database->insert($table, $values) : $database->update($table, $key, $values);
 
                 return [$affected, $affected];
-            });
+            }, $backup, $backup_id);
         } catch (PDOException | RuntimeException $e) {
             $this->_database_row_page($app, $table, $key, [
                 'error' => $e instanceof PDOException ? $this->_database_error($e) : $e->getMessage(),
@@ -144,7 +161,7 @@ class Database extends Trongate {
             return;
         }
 
-        set_flashdata($is_new ? 'Row added.' : 'Row saved.');
+        set_flashdata($is_new ? 'Row added.' : ($backup_id !== null ? 'Row saved. How it was is under Backups.' : 'Row saved.'));
         redirect($this->_database_url($app, ['table' => $table]));
     }
 
@@ -165,18 +182,43 @@ class Database extends Trongate {
             redirect($this->_database_url($app, ['table' => $table]));
         }
 
+        $backup = !post('backup') ? null : fn() => $this->_save_backup($app, $this->_describe_row($table, $key), $database->back_up_row($table, $key));
+
         try {
             $deleted = $this->_logged($app, 'delete', $this->_describe_row_change('delete', $table, $key), true, function () use ($database, $table, $key) {
                 $deleted = $database->delete($table, $key);
 
                 return [$deleted, $deleted];
+            }, $backup, $backup_id);
+            set_flashdata(match (true) {
+                $deleted === 0 => 'That row was already gone.',
+                $backup_id !== null => 'Row deleted. Its backup is under Backups.',
+                default => 'Row deleted.',
             });
-            set_flashdata($deleted > 0 ? 'Row deleted.' : 'That row was already gone.');
         } catch (PDOException | RuntimeException $e) {
             set_flashdata('Could not delete the row: ' . htmlspecialchars($e instanceof PDOException ? $this->_database_error($e) : $e->getMessage()));
         }
 
         redirect($this->_database_url($app, ['table' => $table]));
+    }
+
+    /**
+     * POST apps/{id}/database/backups/restore: put back what a backup holds (backup).
+     */
+    function restore_backup(): void {
+        $this->_make_sure_allowed();
+        $app = $this->_member_app_or_redirect(segment(3, 'int'));
+        $this->_require_post_with_csrf();
+
+        try {
+            $restored = $this->_restore_backup($app, (int) post('backup'));
+        } catch (PDOException | RuntimeException $e) {
+            set_flashdata(htmlspecialchars('Could not restore: ' . ($e instanceof PDOException ? $this->_database_error($e) : $e->getMessage())));
+            redirect($this->_database_url($app));
+        }
+
+        set_flashdata(htmlspecialchars('Restored ' . $restored['summary'] . ' as it was at ' . $restored['taken'] . ' UTC.'));
+        redirect($this->_database_url($app, count($restored['tables']) === 1 ? ['table' => $restored['tables'][0]] : []));
     }
 
     // --- Helpers ---
@@ -189,7 +231,7 @@ class Database extends Trongate {
     }
 
     /**
-     * Render the database page. $page may carry sql, result, query_error and error.
+     * Render the database page. $page may carry sql, results, backup_id, query_error and error.
      */
     function _database_page(object $app, array $page = []): void {
         $data = [
@@ -205,10 +247,12 @@ class Database extends Trongate {
             'more' => false,
             'page' => max(1, (int) ($_GET['page'] ?? 1)),
             'sql' => '',
-            'result' => null,
+            'results' => null,
             'query_error' => null,
             'error' => null,
             'recent_actions' => $this->model->recent_actions((int) $app->id),
+            'backups' => $this->model->backups((int) $app->id),
+            'backup_id' => null,
             'crumbs' => [...$this->_app_crumbs($app), ['apps/' . $app->id . '/database', 'Database']],
             'additional_includes_top' => ['apps_module/css/apps.css', 'apps-database_module/css/database.css'],
         ];

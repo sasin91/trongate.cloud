@@ -5,7 +5,8 @@ require_once APPPATH . 'modules/platform/live/App_database.php';
 /**
  * Controller side of the Database tab's guardrails, shared with the MCP tools:
  * open an app's database as the app's own user, and run statements and row
- * changes under the customer's rate limit and lock, recorded in app_database_log.
+ * changes under the customer's rate limit and lock, recorded in app_database_log,
+ * after an optional backup (app_database_backup) that can be restored.
  *
  * The using controller defines _database_customer_id() (who the statements run
  * as), and its model uses App_database_log.
@@ -15,12 +16,15 @@ trait App_database_guard {
     /**
      * Run $run (returning [its result, rows affected]) under the customer's
      * rate limit and lock, and record it in app_database_log, failed or not.
+     * $backup runs first (returning the id of the backup it saved, or null
+     * when there was nothing to back up); when it fails, $run does not run.
      *
+     * @param ?int $backup_id set to the backup's id
      * @throws RuntimeException when the customer is over App_database_log::ACTIONS_PER_MINUTE
-     *         or already has a statement running
+     *         or already has a statement running, when the backup fails, or from $run
      * @throws PDOException from $run, after it is logged
      */
-    function _logged(object $app, string $action, string $statement, bool $allow_changes, callable $run): mixed {
+    function _logged(object $app, string $action, string $statement, bool $allow_changes, callable $run, ?callable $backup = null, ?int &$backup_id = null): mixed {
         $customer_id = $this->_database_customer_id();
 
         if ($this->model->over_action_limit($customer_id)) {
@@ -42,16 +46,84 @@ trait App_database_guard {
         ];
 
         try {
+            if ($backup !== null) {
+                try {
+                    $backup_id = $backup();
+                } catch (PDOException | RuntimeException $e) {
+                    throw new RuntimeException('Nothing was changed, because the backup failed: ' . ($e instanceof PDOException ? $this->_database_error($e) : $e->getMessage()) . ' Untick the backup to go ahead without one.');
+                }
+            }
+
             [$result, $entry['affected']] = $run();
 
             return $result;
-        } catch (PDOException $e) {
-            $entry['error'] = $this->_database_error($e);
+        } catch (PDOException | RuntimeException $e) {
+            $entry['error'] = $e instanceof PDOException ? $this->_database_error($e) : $e->getMessage();
             throw $e;
         } finally {
-            $this->model->log_action($entry);
+            $log_id = $this->model->log_action($entry);
+
+            if ($backup_id !== null) {
+                $this->model->link_backup($backup_id, $log_id);
+            }
+
             $this->model->release_action_lock($customer_id);
         }
+    }
+
+    /**
+     * Put back what one of the app's backups holds, logged as a 'restore'
+     *
+     * @return array{summary: string, taken: string, tables: list<string>}
+     * @throws RuntimeException when the backup is gone or unreadable, the database cannot be opened, or from _logged()
+     * @throws PDOException when restoring fails
+     */
+    function _restore_backup(object $app, int $backup_id): array {
+        $backup = $this->model->backup((int) $app->id, $backup_id);
+
+        if ($backup === false) {
+            throw new RuntimeException('That backup is gone. Backups are kept for ' . $this->model->backup_days() . ' days.');
+        }
+
+        $tables = unserialize((string) $backup->manifest, ['allowed_classes' => false]);
+        $database = $this->_open_app_database($app);
+
+        if (is_string($database)) {
+            throw new RuntimeException($database);
+        }
+
+        if (!is_array($tables)) {
+            throw new RuntimeException('This backup cannot be read.');
+        }
+
+        $taken = substr((string) $backup->created_at, 0, 16);
+
+        $this->_logged($app, 'restore', 'Restore backup #' . $backup->id . ' of ' . $backup->summary . ' taken ' . $taken, true, function () use ($database, $tables, $backup) {
+            $database->restore($tables, (string) $backup->data);
+
+            return [null, (int) $backup->rows];
+        });
+        $this->model->mark_backup_restored((int) $backup->id);
+
+        return ['summary' => (string) $backup->summary, 'taken' => $taken, 'tables' => array_column($tables, 'name')];
+    }
+
+    /**
+     * Store a backup of the app's database, taken by the current customer
+     *
+     * @param array{tables: list<array<string, mixed>>, data: string, rows: int, bytes: int} $backup
+     */
+    function _save_backup(object $app, string $summary, array $backup): int {
+        return $this->model->save_backup((int) $app->id, $this->_database_customer_id(), $summary, $backup);
+    }
+
+    /**
+     * A row as named in a backup: its table and primary key
+     *
+     * @param array<string, string> $key
+     */
+    function _describe_row(string $table, array $key): string {
+        return $table . ' row ' . implode(', ', array_map(fn($column, $value) => $column . ' = ' . (App_database::is_text($value) ? $value : bin2hex($value)), array_keys($key), $key));
     }
 
     /**
@@ -97,7 +169,7 @@ trait App_database_guard {
      * MariaDB's message without PDO's SQLSTATE prefix
      */
     function _database_error(PDOException $e): string {
-        return (string) preg_replace('/^SQLSTATE\[\w+\]: [^:]*: (\d+ )?/', '', $e->getMessage());
+        return App_database::error_message($e);
     }
 
     /**
@@ -113,4 +185,5 @@ trait App_database_guard {
         sort($primary_key);
 
         return $key !== [] && $names === $primary_key;
-    }}
+    }
+}

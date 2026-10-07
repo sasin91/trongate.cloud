@@ -68,16 +68,17 @@ Customer tools act as the signed-in customer. Write tools carry `destructiveHint
 | `get_app_logs` | both | The running app's output (`App_logs`); never wakes an asleep app; `problems_only` |
 | `list_env_vars`, `set_env_var`, `delete_env_var` | customer | Values are write-only |
 | `list_tables`, `describe_table`, `browse_table` | customer | The app's own database, as the app's own user |
-| `query_database` | customer | Read-only transaction; same allowlist and limits as the Database tab |
-| `execute_sql` | customer | Writes allowed ("Allow changes") |
-| `insert_row`, `update_row`, `delete_row` | customer | One row by primary key |
-| `database_activity` | customer | The app's `app_database_log` |
+| `query_database` | customer | Up to 20 statements in one read-only transaction; one result per statement; same allowlist and limits as the Database tab |
+| `execute_sql` | customer | Writes allowed ("Allow changes"), up to 20 statements in one transaction; backs up the tables it names first unless `backup: false` |
+| `insert_row`, `update_row`, `delete_row` | customer | One row by primary key; `update_row` and `delete_row` back up the row first unless `backup: false` |
+| `list_backups`, `restore_backup` | customer | The Database tab's Backups (kept 7 days); restoring puts the tables or row back as they were |
+| `database_activity` | customer | The app's `app_database_log`, with the backup each change took |
 | `platform_status` | admin | All projects or one |
 | `audit_app_resources`, `retry_app_cleanup`, `retry_project_cleanup` | admin | See below |
 
 Deleting apps or projects and managing members stay in the control panel.
 
-Database tools share the Database tab's guardrails (`App_database_guard`, `App_database_log`): statement allowlist (`App_database::refusal`), 15 s per statement, 500 rows / 2 MB, one statement at a time and 30 per minute per customer, and every statement and row change in `app_database_log`, shown under Recent activity on the Database tab.
+Database tools share the Database tab's guardrails (`App_database_guard`, `App_database_log`): statement allowlist (`App_database::refusal`), 15 s for the whole run, 500 rows / 2 MB, one run at a time and 30 per minute per customer, backups in `app_database_backup` with the tab's size caps, and every run, row change and restore in `app_database_log`, shown under Recent activity on the Database tab. If one statement of several fails, the others are rolled back, except what a CREATE, ALTER, DROP, TRUNCATE or RENAME already committed (the error says which).
 
 - `audit_app_resources`: per-app objects in tenant namespaces that carry trongate.cloud's labels but match no live app, deleted apps whose `destroy_app` did not finish (`unfinished_cleanups`), and deleted projects whose `destroy_project` did not finish. Never repairs; Secrets are not listed.
 - `retry_app_cleanup` / `retry_project_cleanup`: queue the cleanup again (refused while one is queued or running).

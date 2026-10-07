@@ -6,8 +6,9 @@ require_once APPPATH . 'modules/apps/database/traits/App_database_guard.php';
 /**
  * MCP tools for an app's own database, with the Database tab's guardrails
  * (App_database_guard): the app's own database user, statements read-only
- * unless a write tool is used, the statement allowlist, limits, and every
- * statement and row change in app_database_log, shown under "Recent activity".
+ * unless a write tool is used, the statement allowlist, limits, every
+ * statement and row change in app_database_log ("Recent activity"), and a
+ * backup before each change by default, which restore_backup puts back.
  *
  * Customer scope only: the log records who ran what. Registered by Mcp_tools.
  */
@@ -19,7 +20,8 @@ trait Mcp_database_tools {
         $table = ['type' => 'string', 'minLength' => 1, 'description' => 'Table name (from list_tables)'];
         $key = ['type' => 'object', 'additionalProperties' => ['type' => ['string', 'number']], 'description' => 'The row\'s primary key: every primary key column => value (see describe_table)'];
         $values = ['type' => 'object', 'additionalProperties' => ['type' => ['string', 'number', 'boolean', 'null']], 'description' => 'column => value; null stores NULL'];
-        $sql = ['type' => 'string', 'minLength' => 1, 'maxLength' => App_database::MAX_STATEMENT_BYTES, 'description' => 'One MariaDB statement'];
+        $sql = ['type' => 'string', 'minLength' => 1, 'maxLength' => App_database::MAX_STATEMENT_BYTES, 'description' => 'Up to ' . App_database::MAX_STATEMENTS . ' MariaDB statements separated by ";", run in one transaction'];
+        $backup = ['type' => 'boolean', 'default' => true, 'description' => 'Back up what it changes first, so restore_backup can undo it'];
         $customer = ['customer'];
 
         return [
@@ -54,7 +56,7 @@ trait Mcp_database_tools {
             [
                 'name' => 'query_database',
                 'title' => 'Query database',
-                'description' => 'Run one SELECT, WITH, SHOW, DESCRIBE or EXPLAIN in a read-only transaction. At most ' . App_database::MAX_RESULT_ROWS . ' rows, ' . App_database::STATEMENT_SECONDS . ' seconds.',
+                'description' => 'Run SELECT, WITH, SHOW, DESCRIBE or EXPLAIN statements in a read-only transaction. At most ' . App_database::MAX_RESULT_ROWS . ' rows per statement and ' . App_database::STATEMENT_SECONDS . ' seconds in all.',
                 'inputSchema' => $this->_schema(['app_id' => $app_id, 'sql' => $sql], ['app_id', 'sql']),
                 'annotations' => $this->_hints(true),
                 'scopes' => $customer,
@@ -62,8 +64,8 @@ trait Mcp_database_tools {
             [
                 'name' => 'execute_sql',
                 'title' => 'Execute SQL',
-                'description' => 'Run one statement that changes data or tables: INSERT, UPDATE, DELETE, REPLACE, CREATE, ALTER, DROP, TRUNCATE or RENAME (reads work too). Prefer insert_row, update_row and delete_row for single rows. Show the user the statement and confirm first.',
-                'inputSchema' => $this->_schema(['app_id' => $app_id, 'sql' => $sql], ['app_id', 'sql']),
+                'description' => 'Run statements that change data or tables: INSERT, UPDATE, DELETE, REPLACE, CREATE, ALTER, DROP, TRUNCATE or RENAME (reads work too), in one transaction: when one fails, the data changes before it are rolled back (CREATE, ALTER, DROP, TRUNCATE and RENAME commit at once). The tables they name are backed up first unless backup is false. Prefer insert_row, update_row and delete_row for single rows. Show the user the SQL and confirm first.',
+                'inputSchema' => $this->_schema(['app_id' => $app_id, 'sql' => $sql, 'backup' => $backup], ['app_id', 'sql']),
                 'annotations' => $this->_hints(false, true),
                 'scopes' => $customer,
             ],
@@ -78,17 +80,33 @@ trait Mcp_database_tools {
             [
                 'name' => 'update_row',
                 'title' => 'Update row',
-                'description' => 'Change columns of the one row whose primary key is key.',
-                'inputSchema' => $this->_schema(['app_id' => $app_id, 'table' => $table, 'key' => $key, 'values' => $values], ['app_id', 'table', 'key', 'values']),
+                'description' => 'Change columns of the one row whose primary key is key. The row is backed up first unless backup is false.',
+                'inputSchema' => $this->_schema(['app_id' => $app_id, 'table' => $table, 'key' => $key, 'values' => $values, 'backup' => $backup], ['app_id', 'table', 'key', 'values']),
                 'annotations' => $this->_hints(false, true, true),
                 'scopes' => $customer,
             ],
             [
                 'name' => 'delete_row',
                 'title' => 'Delete row',
-                'description' => 'Delete the one row whose primary key is key.',
-                'inputSchema' => $this->_schema(['app_id' => $app_id, 'table' => $table, 'key' => $key], ['app_id', 'table', 'key']),
+                'description' => 'Delete the one row whose primary key is key. The row is backed up first unless backup is false.',
+                'inputSchema' => $this->_schema(['app_id' => $app_id, 'table' => $table, 'key' => $key, 'backup' => $backup], ['app_id', 'table', 'key']),
                 'annotations' => $this->_hints(false, true, true),
+                'scopes' => $customer,
+            ],
+            [
+                'name' => 'list_backups',
+                'title' => 'List backups',
+                'description' => "Backups taken before changes to the app's database (from the Database tab and from here), newest first, with the change each was taken for.",
+                'inputSchema' => $this->_schema(['app_id' => $app_id], ['app_id']),
+                'annotations' => $this->_hints(true),
+                'scopes' => $customer,
+            ],
+            [
+                'name' => 'restore_backup',
+                'title' => 'Restore backup',
+                'description' => 'Put back the tables or the row a backup holds, as they were when it was taken. Changes made since to those tables or that row are lost. Confirm with the user first.',
+                'inputSchema' => $this->_schema(['app_id' => $app_id, 'backup_id' => ['type' => 'integer', 'minimum' => 1, 'description' => 'From list_backups']], ['app_id', 'backup_id']),
+                'annotations' => $this->_hints(false, true),
                 'scopes' => $customer,
             ],
             [
@@ -189,28 +207,42 @@ trait Mcp_database_tools {
         }
 
         $statement = $this->_describe_row_change('update', $table, $key, array_keys($values));
+        $backup = null;
+        $backup_id = null;
 
-        $changed = $this->_database_call(fn() => $this->_logged($app, 'update', $statement, true, function () use ($database, $table, $key, $values) {
-            $changed = $database->update($table, $key, $values);
+        if ($this->_bool_arg($args, 'backup', true)) {
+            // A changed primary key moves the row: restoring removes it from there too
+            $new_key = array_map('strval', array_intersect_key($values, $key) + $key);
+            $backup = fn() => $this->_save_backup($app, $this->_describe_row($table, $key), $database->back_up_row($table, $key, $new_key));
+        }
 
-            return [$changed, $changed];
-        }));
+        $changed = $this->_database_call(function () use ($app, $statement, $database, $table, $key, $values, $backup, &$backup_id) {
+            return $this->_logged($app, 'update', $statement, true, function () use ($database, $table, $key, $values) {
+                $changed = $database->update($table, $key, $values);
 
-        return ['changed' => $changed, 'statement' => $statement, 'note' => $changed === 0 ? 'The row already had these values.' : null];
+                return [$changed, $changed];
+            }, $backup, $backup_id);
+        });
+
+        return ['changed' => $changed, 'statement' => $statement, 'backup_id' => $backup_id, 'note' => $changed === 0 ? 'The row already had these values.' : null];
     }
 
     function _tool_delete_row(array $args): array {
         [$app, $database, $table, $columns] = $this->_app_table_or_fail($args);
         $key = $this->_row_key($args, $columns);
         $statement = $this->_describe_row_change('delete', $table, $key);
+        $backup = !$this->_bool_arg($args, 'backup', true) ? null : fn() => $this->_save_backup($app, $this->_describe_row($table, $key), $database->back_up_row($table, $key));
+        $backup_id = null;
 
-        $deleted = $this->_database_call(fn() => $this->_logged($app, 'delete', $statement, true, function () use ($database, $table, $key) {
-            $deleted = $database->delete($table, $key);
+        $deleted = $this->_database_call(function () use ($app, $statement, $database, $table, $key, $backup, &$backup_id) {
+            return $this->_logged($app, 'delete', $statement, true, function () use ($database, $table, $key) {
+                $deleted = $database->delete($table, $key);
 
-            return [$deleted, $deleted];
-        }));
+                return [$deleted, $deleted];
+            }, $backup, $backup_id);
+        });
 
-        return ['deleted' => $deleted, 'statement' => $statement, 'note' => $deleted === 0 ? 'That row was already gone.' : null];
+        return ['deleted' => $deleted, 'statement' => $statement, 'backup_id' => $backup_id, 'note' => $deleted === 0 ? 'That row was already gone.' : null];
     }
 
     function _tool_database_activity(array $args): array {
@@ -224,8 +256,36 @@ trait Mcp_database_tools {
                 'error' => $entry->error,
                 'who' => $entry->who,
                 'at' => $entry->created_at,
+                'backup_id' => $entry->backup_id === null ? null : (int) $entry->backup_id,
             ], $this->model->recent_actions((int) $app->id, 20)),
         ];
+    }
+
+    function _tool_list_backups(array $args): array {
+        [, $app] = $this->_app_or_fail($this->_int_arg($args, 'app_id'));
+
+        return [
+            'kept_days' => $this->model->backup_days(),
+            'backups' => array_map(fn(object $backup) => [
+                'id' => (int) $backup->id,
+                'of' => $backup->summary,
+                'rows' => (int) $backup->rows,
+                'bytes' => (int) $backup->bytes,
+                'taken_at' => $backup->created_at,
+                'taken_by' => $backup->who,
+                'before' => $backup->statement,
+                'change_failed' => $backup->error,
+                'restored_at' => $backup->restored_at,
+                'expires_at' => $backup->expires_at,
+            ], $this->model->backups((int) $app->id)),
+        ];
+    }
+
+    function _tool_restore_backup(array $args): array {
+        [, $app] = $this->_app_or_fail($this->_int_arg($args, 'app_id'));
+        $restored = $this->_database_call(fn() => $this->_restore_backup($app, $this->_int_arg($args, 'backup_id')));
+
+        return ['restored' => $restored['summary'], 'as_it_was_at' => $restored['taken'] . ' UTC', 'tables' => $restored['tables']];
     }
 
     // --- Helpers ---
@@ -243,18 +303,33 @@ trait Mcp_database_tools {
             throw new InvalidArgumentException(str_replace('Tick "Allow changes" to run it.', 'Use execute_sql to run it.', $refusal));
         }
 
-        $result = $this->_database_call(fn() => $this->_logged($app, 'query', $sql, $allow_changes, function () use ($database, $sql, $allow_changes) {
-            $result = $database->run($sql, $allow_changes);
+        // The tables it names, whole; none for a CREATE TABLE of a new one (as the Database tab does)
+        $backup = !$allow_changes || !$this->_bool_arg($args, 'backup', true) || App_database::statement_kind($sql) !== 'write' ? null : function () use ($app, $database, $sql): ?int {
+            $tables = App_database::tables_named_in($sql, $database->tables());
 
-            return [$result, $result['affected']];
-        }));
+            return $tables === [] ? null : $this->_save_backup($app, implode(', ', $tables), $database->back_up_tables($tables));
+        };
+        $backup_id = null;
+
+        $results = $this->_database_call(function () use ($app, $sql, $database, $allow_changes, $backup, &$backup_id) {
+            return $this->_logged($app, 'query', $sql, $allow_changes, function () use ($database, $sql, $allow_changes) {
+                $results = $database->run($sql, $allow_changes);
+                $affected = array_filter(array_column($results, 'affected'), 'is_int');
+
+                return [$results, $affected === [] ? null : array_sum($affected)];
+            }, $backup, $backup_id);
+        });
 
         return [
-            'columns' => $result['columns'],
-            'rows' => array_map(fn(array $row) => $this->_text_row($row), $result['rows']),
-            'truncated' => $result['truncated'],
-            'affected' => $result['affected'],
-            'seconds' => round($result['seconds'], 3),
+            'results' => array_map(fn(array $result) => [
+                'statement' => $result['statement'],
+                'columns' => $result['columns'],
+                'rows' => array_map(fn(array $row) => $this->_text_row($row), $result['rows']),
+                'truncated' => $result['truncated'],
+                'affected' => $result['affected'],
+                'seconds' => round($result['seconds'], 3),
+            ], $results),
+            'backup_id' => $backup_id,
         ];
     }
 
