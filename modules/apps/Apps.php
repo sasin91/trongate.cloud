@@ -3,13 +3,14 @@
 require_once APPPATH . 'modules/customer/traits/Customer_guard.php';
 require_once APPPATH . 'modules/services/traits/Provider_clients.php';
 require_once __DIR__ . '/traits/App_form.php';
+require_once __DIR__ . '/traits/App_page.php';
 require_once APPPATH . 'modules/platform/manifests/Manifests.php';
 require_once APPPATH . 'modules/platform/manifests/App_env.php';
 require_once APPPATH . 'modules/platform/manifests/Domain_dns.php';
-require_once APPPATH . 'modules/platform/traits/Live_app_state.php';
 
 /**
- * Apps inside a project: create, overview, deploy/rollback, platform settings and delete.
+ * Apps inside a project: create, overview, deploy/rollback, logs, platform settings and delete.
+ * The database page is the child module apps-database (database/Database.php).
  * Every member of the app's project may do all of it except delete, which is the owner's.
  *
  * @property-read Apps_model $model
@@ -23,7 +24,7 @@ class Apps extends Trongate {
     use Customer_guard;
     use Provider_clients;
     use App_form;
-    use Live_app_state;
+    use App_page;
 
     const MAX_PERSISTENT_PATHS = 20;
 
@@ -125,6 +126,53 @@ class Apps extends Trongate {
         }
 
         $this->view('_live_state', ['live_state' => $this->_live_app_state($app)]);
+    }
+
+    /**
+     * apps/{id}/logs: the app's recent output, kept up to date by logs_partial().
+     */
+    function logs(): void {
+        $this->_make_sure_allowed();
+        $app = $this->_member_app_or_redirect(segment(3, 'int'));
+        $logs = $this->_live_app_logs($app);
+
+        $data = [
+            'view_module' => 'apps',
+            'view_file' => 'logs',
+            'app' => $app,
+            'urls' => $this->_app_urls($app),
+            'can_rollback' => $this->model->rollback_target($app) !== false,
+            'live_state' => $logs['state'] ?? null,
+            'logs' => $logs,
+            'crumbs' => $this->_app_crumbs($app),
+            'additional_includes_top' => ['apps_module/css/apps.css'],
+            'additional_includes_btm' => ['apps_module/js/app_logs.js'],
+        ];
+        $this->module('templates');
+        $this->templates->customer($data);
+    }
+
+    /**
+     * MX partial polled by the logs page: lines newer than ?since= (a log
+     * timestamp, see App_logs), the next cursor and what the app is doing.
+     */
+    function logs_partial(): void {
+        $this->_make_sure_allowed();
+        $customer = $this->_customer_or_redirect();
+        $app = $this->model->find_member_app((int) $customer->id, segment(3, 'int'));
+
+        if ($app === false) {
+            http_response_code(404);
+            return;
+        }
+
+        $cursor = (string) ($_GET['since'] ?? '');
+
+        $this->view('_logs_partial', [
+            'app' => $app,
+            'logs' => $this->_live_app_logs($app, $cursor),
+            'cursor' => $cursor,
+        ]);
     }
 
     function deploy(): void {
@@ -355,18 +403,6 @@ class Apps extends Trongate {
     // --- Helpers ---
 
     /**
-     * Header breadcrumb: the app's project, then the app
-     *
-     * @return list<array{0: string, 1: string}>
-     */
-    function _app_crumbs(object $app): array {
-        return [
-            ['projects/' . $app->project_id, (string) $app->project_name],
-            ['apps/' . $app->id, (string) $app->label],
-        ];
-    }
-
-    /**
      * The app's environment variables, decrypted (App_env)
      *
      * @return array<string, string>
@@ -377,15 +413,6 @@ class Apps extends Trongate {
         return $this->secrets->exists(App_env::MODULE, (int) $app->id, App_env::SERVICE)
             ? $this->secrets->get(App_env::MODULE, (int) $app->id, App_env::SERVICE)
             : [];
-    }
-
-    /**
-     * Public URLs of an app: the platform subdomain first, then the custom domain.
-     *
-     * @return list<string>
-     */
-    function _app_urls(object $app): array {
-        return array_map(fn(string $host) => 'https://' . $host, Manifests::hostnames((array) $app));
     }
 
     /**

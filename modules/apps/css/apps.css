@@ -620,3 +620,133 @@ a.status-pill {
         box-sizing: border-box;
     }
 }
+
+/* Logs page (views/logs.php) */
+.app-logs .ov-card-head {
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.log-note {
+    margin: 0;
+    padding: 0.75rem 1.25rem;
+    font-size: 0.875rem;
+    background: var(--accent-soft);
+    border-bottom: 1px solid var(--border);
+}
+
+.log-note-crashing {
+    background: #fdf0ef;
+    color: #8a2a22;
+}
+
+.app-log-box {
+    background: var(--bg-subtle);
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    padding: 0.75rem 1.25rem;
+    height: min(65vh, 640px);
+    min-height: 240px;
+    overflow: auto;
+    box-sizing: border-box;
+}
+
+.app-log-box:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+
+#app-log-lines:empty::before {
+    content: 'No output yet.';
+    color: var(--text-muted);
+}
+
+.app-log-line {
+    display: flex;
+    gap: 0.75rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.app-log-line:hover {
+    background: var(--accent-soft);
+}
+
+.app-log-time {
+    flex: none;
+    color: var(--text-muted);
+    user-select: none;
+}
+
+/* Level read from the line (App_logs::level); lines without one keep the column */
+.app-log-level {
+    flex: none;
+    width: 3rem;
+    font-size: 0.6875rem;
+    line-height: 1.8;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    user-select: none;
+}
+
+.app-log-line[data-level="warn"] {
+    background: #fdf6e7;
+}
+
+.app-log-line[data-level="warn"] .app-log-level {
+    color: #8a5a00;
+    font-weight: 600;
+}
+
+.app-log-line[data-level="error"] {
+    background: #fdf0ef;
+}
+
+.app-log-line[data-level="error"] .app-log-level {
+    color: #b42318;
+    font-weight: 600;
+}
+
+.app-log-text {
+    min-width: 0;
+}
+
+.app-log-filter {
+    margin-left: auto;
+    font-size: 0.875rem;
+}
+
+.app-logs:has(#log-problems-only:checked) .app-log-line:not([data-level="warn"], [data-level="error"]) {
+    display: none;
+}
+
+@media (max-width: 550px) {
+    .app-log-box {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.75rem;
+    }
+
+    .app-log-line {
+        flex-wrap: wrap;
+        gap: 0 0.75rem;
+        margin-bottom: 0.25rem;
+    }
+
+    .app-log-text {
+        flex-basis: 100%;
+    }
+}
+
+/* Five tabs fit a 360px phone without scrolling */
+@media (max-width: 400px) {
+    .ov-tabs {
+        gap: 0;
+    }
+
+    .ov-tabs a {
+        padding: 0.75rem 0.3rem;
+        font-size: 0.8125rem;
+    }
+}

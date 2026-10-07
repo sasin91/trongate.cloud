@@ -30,6 +30,13 @@ rules:
   - apiGroups: ["apps"]
     resources: ["deployments/scale", "statefulsets/scale"]
     verbs: ["get", "list", "watch", "patch", "update"]
+  # Sablier 1.18 also lists CloudNativePG Clusters on every group refresh and has
+  # no switch to turn that off. A Forbidden here fails the whole refresh, so it
+  # learns no groups and every app's Middleware 404s. Without the CNPG CRD the
+  # list returns NotFound, which Sablier skips.
+  - apiGroups: ["postgresql.cnpg.io"]
+    resources: ["clusters"]
+    verbs: ["get", "list", "watch", "patch", "update"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
