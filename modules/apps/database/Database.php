@@ -38,6 +38,7 @@ class Database extends Trongate {
 
         $sql = trim((string) post('sql'));
         $allow_changes = (bool) post('allow_changes');
+        $back_up = $allow_changes && (bool) post('backup') && App_database::statement_kind($sql) === 'write';
         $page = ['sql' => $sql];
         $refusal = $sql === '' ? null : App_database::refusal($sql, $allow_changes);
 
@@ -49,12 +50,19 @@ class Database extends Trongate {
             if (is_string($database)) {
                 $page['error'] = $database;
             } else {
+                // The tables it names, whole; none for a CREATE TABLE of a new one
+                $backup = !$back_up ? null : function () use ($app, $database, $sql): ?int {
+                    $tables = App_database::tables_named_in($sql, $database->tables());
+
+                    return $tables === [] ? null : $this->_save_backup($app, implode(', ', $tables), $database->back_up_tables($tables));
+                };
+
                 try {
                     $page['result'] = $this->_logged($app, 'query', $sql, $allow_changes, function () use ($database, $sql, $allow_changes) {
                         $result = $database->run($sql, $allow_changes);
 
                         return [$result, $result['affected']];
-                    });
+                    }, $backup, $page['backup_id']);
                 } catch (PDOException | RuntimeException $e) {
                     $page['query_error'] = $e instanceof PDOException ? $this->_database_error($e) : $e->getMessage();
                 }
@@ -128,12 +136,20 @@ class Database extends Trongate {
             return;
         }
 
+        $backup = null;
+
+        if (!$is_new && post('backup')) {
+            // A changed primary key moves the row: restoring removes it from there too
+            $new_key = array_map('strval', array_intersect_key($values, $key) + $key);
+            $backup = fn() => $this->_save_backup($app, $this->_describe_row($table, $key), $database->back_up_row($table, $key, $new_key));
+        }
+
         try {
             $this->_logged($app, $is_new ? 'insert' : 'update', $this->_describe_row_change($is_new ? 'insert' : 'update', $table, $key, array_keys($values)), true, function () use ($database, $table, $key, $values, $is_new) {
                 $affected = $is_new ? $database->insert($table, $values) : $database->update($table, $key, $values);
 
                 return [$affected, $affected];
-            });
+            }, $backup, $backup_id);
         } catch (PDOException | RuntimeException $e) {
             $this->_database_row_page($app, $table, $key, [
                 'error' => $e instanceof PDOException ? $this->_database_error($e) : $e->getMessage(),
@@ -142,7 +158,7 @@ class Database extends Trongate {
             return;
         }
 
-        set_flashdata($is_new ? 'Row added.' : 'Row saved.');
+        set_flashdata($is_new ? 'Row added.' : ($backup_id !== null ? 'Row saved. How it was is under Backups.' : 'Row saved.'));
         redirect($this->_database_url($app, ['table' => $table]));
     }
 
@@ -163,13 +179,19 @@ class Database extends Trongate {
             redirect($this->_database_url($app, ['table' => $table]));
         }
 
+        $backup = !post('backup') ? null : fn() => $this->_save_backup($app, $this->_describe_row($table, $key), $database->back_up_row($table, $key));
+
         try {
             $deleted = $this->_logged($app, 'delete', $this->_describe_row_change('delete', $table, $key), true, function () use ($database, $table, $key) {
                 $deleted = $database->delete($table, $key);
 
                 return [$deleted, $deleted];
+            }, $backup, $backup_id);
+            set_flashdata(match (true) {
+                $deleted === 0 => 'That row was already gone.',
+                $backup_id !== null => 'Row deleted. Its backup is under Backups.',
+                default => 'Row deleted.',
             });
-            set_flashdata($deleted > 0 ? 'Row deleted.' : 'That row was already gone.');
         } catch (PDOException | RuntimeException $e) {
             set_flashdata('Could not delete the row: ' . htmlspecialchars($e instanceof PDOException ? $this->_database_error($e) : $e->getMessage()));
         }
@@ -177,17 +199,60 @@ class Database extends Trongate {
         redirect($this->_database_url($app, ['table' => $table]));
     }
 
+    /**
+     * POST apps/{id}/database/backups/restore: put back what a backup holds (backup).
+     */
+    function restore_backup(): void {
+        $this->_make_sure_allowed();
+        $app = $this->_member_app_or_redirect(segment(3, 'int'));
+        $this->_require_post_with_csrf();
+
+        $backup = $this->model->backup((int) $app->id, (int) post('backup'));
+
+        if ($backup === false) {
+            set_flashdata('That backup is gone. Backups are kept for ' . Database_model::BACKUP_DAYS . ' days.');
+            redirect($this->_database_url($app));
+        }
+
+        $tables = unserialize((string) $backup->manifest, ['allowed_classes' => false]);
+        $database = $this->_open_app_database($app);
+
+        if (is_string($database) || !is_array($tables)) {
+            set_flashdata(htmlspecialchars(is_string($database) ? $database : 'This backup cannot be read.'));
+            redirect($this->_database_url($app));
+        }
+
+        $taken = substr((string) $backup->created_at, 0, 16);
+
+        try {
+            $this->_logged($app, 'restore', 'Restore backup #' . $backup->id . ' of ' . $backup->summary . ' taken ' . $taken, true, function () use ($database, $tables, $backup) {
+                $database->restore($tables, (string) $backup->data);
+
+                return [null, (int) $backup->rows];
+            });
+            $this->model->mark_backup_restored((int) $backup->id);
+            set_flashdata(htmlspecialchars('Restored ' . $backup->summary . ' as it was at ' . $taken . ' UTC.'));
+        } catch (PDOException | RuntimeException $e) {
+            set_flashdata(htmlspecialchars('Could not restore: ' . ($e instanceof PDOException ? $this->_database_error($e) : $e->getMessage())));
+        }
+
+        redirect($this->_database_url($app, count($tables) === 1 ? ['table' => $tables[0]['name']] : []));
+    }
+
     // --- Helpers ---
 
     /**
      * Run $run (returning [its result, rows affected]) under the customer's
      * rate limit and lock, and record it in app_database_log, failed or not.
+     * $backup runs first (returning the id of the backup it saved, or null
+     * when there was nothing to back up); when it fails, $run does not run.
      *
+     * @param ?int $backup_id set to the backup's id
      * @throws RuntimeException when the customer is over Database_model::ACTIONS_PER_MINUTE
-     *         or already has a statement running
+     *         or already has a statement running, when the backup fails, or from $run
      * @throws PDOException from $run, after it is logged
      */
-    function _logged(object $app, string $action, string $statement, bool $allow_changes, callable $run): mixed {
+    function _logged(object $app, string $action, string $statement, bool $allow_changes, callable $run, ?callable $backup = null, ?int &$backup_id = null): mixed {
         $customer = $this->_customer_or_redirect();
 
         if ($this->model->over_action_limit((int) $customer->id)) {
@@ -209,16 +274,47 @@ class Database extends Trongate {
         ];
 
         try {
+            if ($backup !== null) {
+                try {
+                    $backup_id = $backup();
+                } catch (PDOException | RuntimeException $e) {
+                    throw new RuntimeException('Nothing was changed, because the backup failed: ' . ($e instanceof PDOException ? $this->_database_error($e) : $e->getMessage()) . ' Untick the backup to go ahead without one.');
+                }
+            }
+
             [$result, $entry['affected']] = $run();
 
             return $result;
-        } catch (PDOException $e) {
-            $entry['error'] = $this->_database_error($e);
+        } catch (PDOException | RuntimeException $e) {
+            $entry['error'] = $e instanceof PDOException ? $this->_database_error($e) : $e->getMessage();
             throw $e;
         } finally {
-            $this->model->log_action($entry);
+            $log_id = $this->model->log_action($entry);
+
+            if ($backup_id !== null) {
+                $this->model->link_backup($backup_id, $log_id);
+            }
+
             $this->model->release_action_lock((int) $customer->id);
         }
+    }
+
+    /**
+     * Store a backup of the app's database, taken by the current customer
+     *
+     * @param array{tables: list<array<string, mixed>>, data: string, rows: int, bytes: int} $backup
+     */
+    function _save_backup(object $app, string $summary, array $backup): int {
+        return $this->model->save_backup((int) $app->id, (int) $this->_customer_or_redirect()->id, $summary, $backup);
+    }
+
+    /**
+     * A row as named in a backup: its table and primary key
+     *
+     * @param array<string, string> $key
+     */
+    function _describe_row(string $table, array $key): string {
+        return $table . ' row ' . implode(', ', array_map(fn($column, $value) => $column . ' = ' . (App_database::is_text($value) ? $value : bin2hex($value)), array_keys($key), $key));
     }
 
     /**
@@ -260,6 +356,8 @@ class Database extends Trongate {
             'query_error' => null,
             'error' => null,
             'recent_actions' => $this->model->recent_actions((int) $app->id),
+            'backups' => $this->model->backups((int) $app->id),
+            'backup_id' => null,
             'crumbs' => [...$this->_app_crumbs($app), ['apps/' . $app->id . '/database', 'Database']],
             'additional_includes_top' => ['apps_module/css/apps.css', 'apps-database_module/css/database.css'],
         ];

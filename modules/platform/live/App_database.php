@@ -9,6 +9,9 @@ require_once __DIR__ . '/../manifests/Manifests.php';
  *
  * Framework-free, like App_logs. Talks to the database server only, never to
  * the app's pod, so reading it never wakes an asleep app.
+ *
+ * @phpstan-type Backup_table array{name: string, create: string, triggers: list<string>, columns: list<string>, rows: int, keys: list<array<string, string>>|null}
+ * @phpstan-type Backup array{tables: list<Backup_table>, data: string, rows: int, bytes: int}
  */
 class App_database {
 
@@ -52,6 +55,13 @@ class App_database {
     /** Column types edited in a textarea */
     const LONG_TYPES = ['text', 'tinytext', 'mediumtext', 'longtext', 'json'];
 
+    /** Bytes of rows one backup may hold, before compression (see back_up_tables()) */
+    const MAX_BACKUP_BYTES = 16 * 1024 * 1024;
+
+    /** Rows, and bytes, per INSERT when restoring a backup */
+    const RESTORE_BATCH_ROWS = 500;
+    const RESTORE_BATCH_BYTES = 1024 * 1024;
+
     private function __construct(private PDO $pdo, public readonly string $name) {
     }
 
@@ -74,6 +84,8 @@ class App_database {
             // The server could otherwise ask this pod to upload any of its files (LOAD DATA LOCAL)
             PDO::MYSQL_ATTR_LOCAL_INFILE => false,
             PDO::MYSQL_ATTR_MULTI_STATEMENTS => false,
+            // Numbers as MariaDB writes them, so a backed-up DOUBLE is restored exactly
+            PDO::ATTR_STRINGIFY_FETCHES => true,
         ]);
         $pdo->exec('SET SESSION max_statement_time = ' . self::STATEMENT_SECONDS);
 
@@ -110,9 +122,9 @@ class App_database {
 
     /**
      * A table's columns in order. editable: shown in the row form (not
-     * binary, not generated).
+     * binary, not generated). generated: computed by MariaDB, never written.
      *
-     * @return list<array{name: string, type: string, column_type: string, nullable: bool, key: bool, auto_increment: bool, default: string|null, editable: bool, long: bool}>
+     * @return list<array{name: string, type: string, column_type: string, nullable: bool, key: bool, auto_increment: bool, default: string|null, editable: bool, long: bool, generated: bool}>
      */
     function columns(string $table): array {
         $stmt = $this->pdo->prepare(<<<SQL
@@ -140,6 +152,7 @@ class App_database {
                 'default' => $row['COLUMN_DEFAULT'] === null ? null : (string) $row['COLUMN_DEFAULT'],
                 'editable' => !$generated && !in_array($type, self::BINARY_TYPES, true),
                 'long' => in_array($type, self::LONG_TYPES, true),
+                'generated' => $generated,
             ];
         }
 
@@ -350,6 +363,301 @@ class App_database {
         $stmt->closeCursor();
 
         return ['columns' => $columns, 'rows' => $rows, 'truncated' => $truncated, 'affected' => null, 'seconds' => microtime(true) - $started];
+    }
+
+    /**
+     * Base tables (not views) a statement names, to back up before it runs.
+     * Generous on purpose: any word or `quoted name` equal to a table's name
+     * counts, also as a column name or inside a string.
+     *
+     * @param array<string, array{name: string, view: bool}> $tables tables()
+     * @return list<string>
+     */
+    static function tables_named_in(string $sql, array $tables): array {
+        preg_match_all('/`((?:[^`]|``)+)`|([A-Za-z0-9_$]+)/', $sql, $matches, PREG_SET_ORDER);
+        $named = [];
+
+        foreach ($matches as $match) {
+            $name = ($match[2] ?? '') !== '' ? $match[2] : str_replace('``', '`', $match[1]);
+
+            if (isset($tables[$name]) && !$tables[$name]['view']) {
+                $named[$name] = $name;
+            }
+        }
+
+        return array_values($named);
+    }
+
+    /**
+     * Back up whole tables (structure, triggers and every row) for restore().
+     *
+     * @param list<string> $tables base tables
+     * @return Backup
+     * @throws RuntimeException when the rows are larger than MAX_BACKUP_BYTES
+     */
+    function back_up_tables(array $tables): array {
+        $sizes = $this->tables();
+
+        foreach ($tables as $table) {
+            // Data and indexes, an estimate: refuse the hopeless ones before reading a row
+            if (($sizes[$table]['bytes'] ?? 0) > 4 * self::MAX_BACKUP_BYTES) {
+                throw new RuntimeException(self::too_large($table));
+            }
+        }
+
+        return $this->back_up(array_fill_keys($tables, null));
+    }
+
+    /**
+     * Back up one row, for restore() to put back. $replaced_key: the key the
+     * row gets from the change (when it changes the primary key), so restoring
+     * removes the changed row too.
+     *
+     * @param array<string, string> $key
+     * @param array<string, string> $replaced_key
+     * @return Backup
+     */
+    function back_up_row(string $table, array $key, array $replaced_key = []): array {
+        $keys = $replaced_key === [] || $replaced_key === $key ? [$key] : [$key, $replaced_key];
+
+        return $this->back_up([$table => $keys]);
+    }
+
+    /**
+     * Put tables back as a backup holds them. A row backup replaces only its
+     * rows. A whole table without triggers whose structure is unchanged gets its
+     * rows replaced in one transaction; any other is dropped and created again
+     * as backed up, triggers included. Foreign keys are not checked meanwhile,
+     * so nothing cascades and the tables may come back in any order.
+     *
+     * @param list<Backup_table> $tables
+     * @param string $data the backup's compressed rows
+     * @throws RuntimeException when the backup cannot be read or a row's table is gone
+     * @throws PDOException when MariaDB refuses a step (an earlier table may already be restored)
+     */
+    function restore(array $tables, string $data): void {
+        $rows = gzinflate($data, 2 * self::MAX_BACKUP_BYTES);
+
+        if ($rows === false) {
+            throw new RuntimeException('This backup cannot be read.');
+        }
+
+        $records = self::records($rows);
+        $current = $this->tables();
+
+        $this->pdo->exec('SET SESSION TRANSACTION READ WRITE');
+        $this->pdo->exec('SET SESSION foreign_key_checks = 0');
+
+        try {
+            foreach ($tables as $index => $table) {
+                $name = self::quote_name($table['name']);
+
+                if ($table['keys'] !== null && !isset($current[$table['name']])) {
+                    throw new RuntimeException('The table ' . $table['name'] . ' is gone, so its row cannot be put back.');
+                }
+
+                if ($table['keys'] !== null || $this->unchanged($table, $current)) {
+                    $this->pdo->beginTransaction();
+
+                    foreach ($table['keys'] ?? [] as $key) {
+                        [$where, $params] = self::where($key);
+                        $this->pdo->prepare('DELETE FROM ' . $name . $where . ' LIMIT 1')->execute($params);
+                    }
+
+                    if ($table['keys'] === null) {
+                        $this->pdo->exec('DELETE FROM ' . $name);
+                    }
+
+                    $this->insert_rows($table, $records, $index);
+                    $this->pdo->commit();
+                    continue;
+                }
+
+                $this->pdo->exec(($current[$table['name']]['view'] ?? false ? 'DROP VIEW IF EXISTS ' : 'DROP TABLE IF EXISTS ') . $name);
+                $this->pdo->exec($table['create']);
+                $this->insert_rows($table, $records, $index);
+
+                foreach ($table['triggers'] as $trigger) {
+                    $this->pdo->exec($trigger); // after the rows, so they do not fire for them
+                }
+            }
+        } catch (Throwable $e) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+
+            throw $e;
+        } finally {
+            $this->pdo->exec('SET SESSION foreign_key_checks = 1');
+        }
+    }
+
+    /**
+     * Back up tables, whole (null) or only the row of their first key; the
+     * other keys are rows restore() removes.
+     *
+     * Rows are stored as records (table index, length, serialize()d row) in one
+     * deflate stream, read unbuffered so a large table never sits in memory twice.
+     *
+     * @param array<string, list<array<string, string>>|null> $targets table => keys
+     * @return Backup
+     */
+    private function back_up(array $targets): array {
+        $deflate = deflate_init(ZLIB_ENCODING_RAW);
+        $data = '';
+        $bytes = 0;
+        $tables = [];
+
+        foreach ($targets as $table => $keys) {
+            $table = (string) $table;
+            $columns = array_values(array_map(fn($c) => $c['name'], array_filter($this->columns($table), fn($c) => !$c['generated'])));
+            $index = count($tables);
+            $tables[] = [
+                'name' => $table,
+                'create' => (string) $this->pdo->query('SHOW CREATE TABLE ' . self::quote_name($table))->fetch(PDO::FETCH_NUM)[1],
+                'triggers' => $this->triggers($table),
+                'columns' => $columns,
+                'rows' => 0,
+                'keys' => $keys,
+            ];
+
+            $sql = 'SELECT ' . implode(', ', array_map([self::class, 'quote_name'], $columns)) . ' FROM ' . self::quote_name($table);
+            $params = [];
+
+            if ($keys !== null) {
+                [$where, $params] = self::where($keys[0]);
+                $sql .= $where . ' LIMIT 1';
+            }
+
+            $this->pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, false);
+
+            try {
+                $stmt = $this->pdo->prepare($sql);
+                $stmt->execute($params);
+
+                while (($row = $stmt->fetch(PDO::FETCH_NUM)) !== false) {
+                    $record = serialize($row);
+                    $bytes += strlen($record);
+
+                    if ($bytes > self::MAX_BACKUP_BYTES) {
+                        $stmt->closeCursor();
+                        throw new RuntimeException(self::too_large($table));
+                    }
+
+                    $data .= deflate_add($deflate, pack('nN', $index, strlen($record)) . $record, ZLIB_NO_FLUSH);
+                    $tables[$index]['rows']++;
+                }
+
+                $stmt->closeCursor();
+            } finally {
+                $this->pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, true);
+            }
+        }
+
+        return [
+            'tables' => $tables,
+            'data' => $data . deflate_add($deflate, '', ZLIB_FINISH),
+            'rows' => array_sum(array_column($tables, 'rows')),
+            'bytes' => $bytes,
+        ];
+    }
+
+    /**
+     * CREATE TRIGGER statements of a table, in firing order
+     *
+     * @return list<string>
+     */
+    private function triggers(string $table): array {
+        $stmt = $this->pdo->prepare(<<<SQL
+            SELECT TRIGGER_NAME FROM information_schema.TRIGGERS
+            WHERE TRIGGER_SCHEMA = DATABASE() AND EVENT_OBJECT_TABLE = ?
+            ORDER BY ACTION_TIMING, EVENT_MANIPULATION, ACTION_ORDER
+        SQL);
+        $stmt->execute([$table]);
+        $triggers = [];
+
+        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $name) {
+            $sql = (string) $this->pdo->query('SHOW CREATE TRIGGER ' . self::quote_name((string) $name))->fetch()['SQL Original Statement'];
+            // Recreated as the app's own user, which may not name another definer
+            $triggers[] = (string) preg_replace('/^CREATE\s+DEFINER\s*=\s*(`[^`]*`|\S+?)@(`[^`]*`|\S+)\s+/i', 'CREATE ', $sql);
+        }
+
+        return $triggers;
+    }
+
+    /**
+     * Whether a backed-up whole table can get its rows back in place: it is
+     * still a table with the same structure, and neither has triggers (they would fire)
+     *
+     * @param Backup_table $table
+     * @param array<string, array{view: bool}> $current tables()
+     */
+    private function unchanged(array $table, array $current): bool {
+        if (!isset($current[$table['name']]) || $current[$table['name']]['view'] || $table['triggers'] !== [] || $this->triggers($table['name']) !== []) {
+            return false;
+        }
+
+        $create = (string) $this->pdo->query('SHOW CREATE TABLE ' . self::quote_name($table['name']))->fetch(PDO::FETCH_NUM)[1];
+        $without_counter = fn(string $sql) => preg_replace('/ AUTO_INCREMENT=\d+/', '', $sql);
+
+        return $without_counter($create) === $without_counter($table['create']);
+    }
+
+    /**
+     * Insert the backup's rows of one table (its records come next in $records)
+     *
+     * @param Backup_table $table
+     * @param Generator<int, array{0: int, 1: list<string|null>}> $records
+     */
+    private function insert_rows(array $table, Generator $records, int $index): void {
+        $insert = 'INSERT INTO ' . self::quote_name($table['name']) . ' (' . implode(', ', array_map([self::class, 'quote_name'], $table['columns'])) . ') VALUES ';
+        $placeholders = '(' . implode(', ', array_fill(0, count($table['columns']), '?')) . ')';
+        $batch = 0;
+        $params = [];
+        $bytes = 0;
+
+        while ($records->valid() && $records->current()[0] === $index) {
+            $row = $records->current()[1];
+            array_push($params, ...$row);
+            $bytes += array_sum(array_map(fn($value) => strlen((string) $value), $row));
+            $batch++;
+            $records->next();
+
+            if ($batch === self::RESTORE_BATCH_ROWS || $bytes >= self::RESTORE_BATCH_BYTES) {
+                $this->pdo->prepare($insert . implode(', ', array_fill(0, $batch, $placeholders)))->execute($params);
+                [$batch, $params, $bytes] = [0, [], 0];
+            }
+        }
+
+        if ($batch > 0) {
+            $this->pdo->prepare($insert . implode(', ', array_fill(0, $batch, $placeholders)))->execute($params);
+        }
+    }
+
+    /**
+     * The records back_up() wrote: [table index, row]
+     *
+     * @return Generator<int, array{0: int, 1: list<string|null>}>
+     */
+    private static function records(string $rows): Generator {
+        $offset = 0;
+
+        while ($offset < strlen($rows)) {
+            $header = unpack('nindex/Nlength', $rows, $offset);
+            $row = $header === false ? false : unserialize(substr($rows, $offset + 6, $header['length']), ['allowed_classes' => false]);
+
+            if ($header === false || !is_array($row)) {
+                throw new RuntimeException('This backup cannot be read.');
+            }
+
+            $offset += 6 + $header['length'];
+
+            yield [$header['index'], array_values($row)];
+        }
+    }
+
+    private static function too_large(string $table): string {
+        return 'The table ' . $table . ' is too large to back up here (over ' . (self::MAX_BACKUP_BYTES / 1024 / 1024) . ' MB).';
     }
 
     /**
