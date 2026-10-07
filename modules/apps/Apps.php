@@ -188,7 +188,7 @@ class Apps extends Trongate {
                 'manual'
             );
         } catch (RuntimeException $e) {
-            set_flashdata('Could not queue a deployment: ' . $e->getMessage());
+            set_flashdata('Could not queue a deployment: ' . htmlspecialchars($e->getMessage()));
             redirect('apps/' . $app->id);
         }
 
@@ -215,7 +215,7 @@ class Apps extends Trongate {
                 $target_id > 0 ? $target_id : null
             );
         } catch (RuntimeException $e) {
-            set_flashdata('Could not roll back: ' . $e->getMessage());
+            set_flashdata('Could not roll back: ' . htmlspecialchars($e->getMessage()));
             redirect('apps/' . $app->id);
         }
 
@@ -392,7 +392,7 @@ class Apps extends Trongate {
         try {
             $this->model->queue_app_delete((int) $app->project_id, (int) $app->id);
         } catch (RuntimeException $e) {
-            set_flashdata('Could not delete the app: ' . $e->getMessage());
+            set_flashdata('Could not delete the app: ' . htmlspecialchars($e->getMessage()));
             redirect('apps/' . $app->id);
         }
 

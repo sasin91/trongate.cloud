@@ -91,7 +91,8 @@ trait App_rules {
     // --- Validation callbacks ---
 
     function _validate_repository(string $repository): bool|string {
-        if (!preg_match('#^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$#', $repository)) {
+        if (!preg_match('#^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$#', $repository)
+            || preg_match('#(^|/)\.{1,2}(/|$)#', $repository)) {
             return 'Please choose a repository.';
         }
 
