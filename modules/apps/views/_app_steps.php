@@ -116,6 +116,7 @@ $errors = validation_errors('<p>', '</p>');
                         </label>
                     <?php endforeach; ?>
                 </div>
+                <p class="wz-hint wz-tip"><strong>Tip:</strong> your app gets its own MariaDB database, already set up in <code>config/database.php</code>. Deploys never change its tables, so run your modules' <code>.sql</code> files from the app's Database tab.</p>
             </fieldset>
 
             <div class="wz-nav">
