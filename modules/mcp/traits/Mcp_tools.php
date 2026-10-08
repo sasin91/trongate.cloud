@@ -2,6 +2,7 @@
 
 require_once APPPATH . 'modules/platform/manifests/Manifests.php';
 require_once APPPATH . 'modules/platform/manifests/App_env.php';
+require_once APPPATH . 'modules/platform/manifests/Project_service.php';
 require_once APPPATH . 'modules/platform/traits/Live_app_state.php';
 require_once APPPATH . 'modules/services/traits/Provider_clients.php';
 require_once APPPATH . 'modules/apps/traits/App_rules.php';
@@ -97,6 +98,8 @@ trait Mcp_tools {
 
     function _app_tools(): array {
         $app_id = ['type' => 'integer', 'minimum' => 1, 'description' => 'App id (from list_apps)'];
+        $project_id = ['type' => 'integer', 'minimum' => 1, 'description' => 'Project id (from list_projects)'];
+        $service_id = ['type' => 'integer', 'minimum' => 1, 'description' => 'Service id (from list_services)'];
         $both = ['customer', 'admin'];
 
         return [
@@ -228,6 +231,45 @@ trait Mcp_tools {
                 ], ['app_id']),
                 'annotations' => $this->_hints(true),
                 'scopes' => $both,
+            ],
+            [
+                'name' => 'list_services',
+                'title' => 'List services',
+                'description' => "A project's services: images that run next to its apps, always on, reachable by them at {NAME}_URL. With each one's image, port, memory and state.",
+                'inputSchema' => $this->_schema(['project_id' => $project_id], ['project_id']),
+                'annotations' => $this->_hints(true),
+                'scopes' => ['customer'],
+            ],
+            [
+                'name' => 'add_service',
+                'title' => 'Add service',
+                'description' => 'Run a container image next to a project\'s apps. They get {NAME}_URL (http://s{id}:{port}) on their next deploy. The container runs without root, gets PORT, and is reachable only from the project.',
+                'inputSchema' => $this->_schema([
+                    'project_id' => $project_id,
+                    'name' => ['type' => 'string', 'pattern' => '^[a-z][a-z0-9_]{0,39}$', 'description' => 'e.g. search; the apps get SEARCH_URL'],
+                    'image' => ['type' => 'string', 'maxLength' => Project_service::MAX_IMAGE_LENGTH, 'description' => 'With a version, e.g. ghcr.io/owner/name:1.2.3 (not :latest)'],
+                    'port' => ['type' => 'integer', 'minimum' => 1024, 'maximum' => 65535, 'description' => 'Where it listens (default ' . Project_service::DEFAULT_PORT . ')'],
+                    'memory_mb' => ['type' => 'integer', 'minimum' => Project_service::MIN_MEMORY_MB, 'maximum' => Project_service::MAX_MEMORY_MB, 'description' => 'Memory request and limit (default ' . Project_service::DEFAULT_MEMORY_MB . ')'],
+                    'env' => ['type' => 'object', 'additionalProperties' => ['type' => 'string'], 'description' => 'Environment variables, write-only'],
+                ], ['project_id', 'name', 'image']),
+                'annotations' => $this->_hints(false),
+                'scopes' => ['customer'],
+            ],
+            [
+                'name' => 'redeploy_service',
+                'title' => 'Redeploy service',
+                'description' => 'Apply a service again, e.g. after it crashed.',
+                'inputSchema' => $this->_schema(['project_id' => $project_id, 'service_id' => $service_id], ['project_id', 'service_id']),
+                'annotations' => $this->_hints(false, false, true),
+                'scopes' => ['customer'],
+            ],
+            [
+                'name' => 'delete_service',
+                'title' => 'Delete service',
+                'description' => 'Stop and remove a service and its environment variables. Apps keep its URL until their next deploy.',
+                'inputSchema' => $this->_schema(['project_id' => $project_id, 'service_id' => $service_id], ['project_id', 'service_id']),
+                'annotations' => $this->_hints(false, true, true),
+                'scopes' => ['customer'],
             ],
             [
                 'name' => 'list_env_vars',
@@ -647,6 +689,91 @@ trait Mcp_tools {
             : $this->secrets->save(App_env::MODULE, (int) $app->id, App_env::SERVICE, $env);
 
         return ['removed' => $name, 'next' => 'It is gone from the app after the next deploy: deploy_app {"app_id": ' . $app->id . '}'];
+    }
+
+    function _tool_list_services(array $args): array {
+        $project_id = $this->_member_project_id_or_fail($this->_int_arg($args, 'project_id'));
+
+        return ['services' => array_map(fn(object $service) => $this->_service_summary($service), $this->model->project_services($project_id))];
+    }
+
+    function _tool_add_service(array $args): array {
+        $project_id = $this->_member_project_id_or_fail($this->_int_arg($args, 'project_id'));
+        $name = $this->_string_arg($args, 'name');
+        $env = $args['env'] ?? [];
+
+        if (!is_array($env)) {
+            throw new InvalidArgumentException('env must be an object of names to values');
+        }
+
+        foreach ($env as $key => $value) {
+            $this->_check(App_env::name_error((string) $key) ?? true);
+
+            if (!is_string($value) || strlen($value) > App_env::MAX_VALUE_BYTES) {
+                throw new InvalidArgumentException("{$key} must be a string of at most " . App_env::MAX_VALUE_BYTES . ' bytes');
+            }
+        }
+
+        $service_id = $this->model->add_service($project_id, [
+            'name' => $name,
+            'image' => $this->_string_arg($args, 'image'),
+            'port' => $this->_int_arg($args, 'port', false, Project_service::DEFAULT_PORT),
+            'memory_mb' => $this->_int_arg($args, 'memory_mb', false, Project_service::DEFAULT_MEMORY_MB),
+        ]);
+
+        if ($env !== []) {
+            $this->module('secrets');
+            $this->secrets->save(Project_service::MODULE, $service_id, Project_service::SERVICE, array_map('strval', $env));
+        }
+
+        $this->model->queue_service_deploy($project_id, $service_id);
+        $service = $this->model->find_project_service($project_id, $service_id);
+
+        return [
+            'service' => $service === false ? ['id' => $service_id] : $this->_service_summary($service),
+            'next' => 'It is starting (list_services shows when it runs). Deploy the project\'s apps to give them ' . Project_service::url_variable($name) . '.',
+        ];
+    }
+
+    function _tool_redeploy_service(array $args): array {
+        $project_id = $this->_member_project_id_or_fail($this->_int_arg($args, 'project_id'));
+        $this->model->queue_service_deploy($project_id, $this->_int_arg($args, 'service_id'));
+
+        return ['queued' => true];
+    }
+
+    function _tool_delete_service(array $args): array {
+        $project_id = $this->_member_project_id_or_fail($this->_int_arg($args, 'project_id'));
+        $this->model->queue_service_delete($project_id, $this->_int_arg($args, 'service_id'));
+
+        return ['deleted' => true, 'next' => "Deploy the project's apps to drop its URL from them."];
+    }
+
+    function _service_summary(object $service): array {
+        return [
+            'id' => (int) $service->id,
+            'name' => $service->name,
+            'image' => $service->image,
+            'port' => (int) $service->port,
+            'memory_mb' => (int) $service->memory_mb,
+            'status' => $service->status ?? 'queued',
+            'deployed_at' => $service->deployed_at,
+            'app_variable' => Project_service::url_variable($service->name),
+            'url' => Project_service::url((int) $service->id, (int) $service->port),
+        ];
+    }
+
+    /**
+     * A project the customer is a member of
+     *
+     * @throws RuntimeException when it is not
+     */
+    function _member_project_id_or_fail(int $project_id): int {
+        if ($this->model->find_member_project((int) $this->customer->id, $project_id) === false) {
+            throw new RuntimeException('Project not found');
+        }
+
+        return $project_id;
     }
 
     // --- Helpers ---

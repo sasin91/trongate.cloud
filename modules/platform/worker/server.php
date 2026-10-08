@@ -9,6 +9,7 @@
 defined('APPPATH') || define('APPPATH', dirname(__DIR__, 3) . '/');
 
 require __DIR__ . '/Runtime.php';
+require __DIR__ . '/Migrations.php';
 
 // Retry the first connection: a new pod's IP is refused by the platform MariaDB's
 // NetworkPolicy until k3s's policy controller has synced it (about a second), and
@@ -23,6 +24,17 @@ try {
     });
 } catch (PDOException $e) {
     error_log("DB connection failed (attempt {$max_attempts}/{$max_attempts}): {$e->getMessage()}");
+    exit(1);
+}
+
+// This rollout's schema changes (db/migrations), before any task runs. A
+// failing migration stops the worker; the pod restarts and retries it.
+try {
+    foreach (Migrations::apply($db) as $name) {
+        error_log("Applied migration {$name}");
+    }
+} catch (RuntimeException $e) {
+    error_log($e->getMessage());
     exit(1);
 }
 

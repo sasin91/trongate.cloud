@@ -3,8 +3,10 @@
 -- The whole schema in one file, applied once to an empty database:
 --   bin/import-db.sh            (local dev; drops and recreates tcloud first)
 --   deploy/k8s/README.md        (cluster; the operator creates tcloud)
--- Change it in place while there are no customers to migrate; once there are,
--- add numbered migrations next to it.
+-- An existing database is upgraded by db/migrations/{NNNN}_{name}.sql, which
+-- the worker applies on startup (Migrations). Change a table here AND add a
+-- migration for it, then record the migration in schema_migrations at the end
+-- of this file; CI (bin/check-migrations.php) checks both agree.
 --
 -- Model: a customer belongs to projects (project_member). A project is one
 -- Kubernetes namespace and holds apps. An app is one repository, deployed as a
@@ -283,6 +285,27 @@ CREATE TABLE deployment (
   CONSTRAINT fk_deployment_customer FOREIGN KEY (customer_id) REFERENCES customer (id)
 );
 
+-- A project's services (Project_service): an image that runs next to the
+-- project's apps, always on, reachable by them at {NAME}_URL. Environment
+-- variables live in secrets as (module 'service', id, service 'env').
+CREATE TABLE service (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  project_id INT NOT NULL,
+  -- Lowercase slug; the apps get {NAME}_URL
+  name VARCHAR(40) NOT NULL,
+  image VARCHAR(500) NOT NULL,
+  port SMALLINT UNSIGNED NOT NULL,
+  -- The container's memory request and limit
+  memory_mb INT UNSIGNED NOT NULL,
+  deployed_at TIMESTAMP NULL DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  deleted_at TIMESTAMP NULL DEFAULT NULL,
+  -- NULL once deleted, so a live name is unique and a deleted one can be reused
+  live_name VARCHAR(40) AS (IF(deleted_at IS NULL, name, NULL)) VIRTUAL,
+  UNIQUE KEY unique_project_live_name (project_id, live_name),
+  CONSTRAINT fk_service_project FOREIGN KEY (project_id) REFERENCES project (id)
+);
+
 ALTER TABLE app
   ADD CONSTRAINT fk_app_current_deployment FOREIGN KEY (current_deployment_id) REFERENCES deployment (id) ON DELETE SET NULL;
 
@@ -377,3 +400,13 @@ CREATE TABLE mcp_oauth_token (
   KEY idx_expires (expires_at),
   CONSTRAINT fk_mcp_token_grant FOREIGN KEY (grant_id) REFERENCES mcp_oauth_grant (id) ON DELETE CASCADE
 );
+
+-- Migrations (db/migrations) already contained in this file; the worker
+-- applies the rest on startup (Migrations::apply)
+CREATE TABLE schema_migrations (
+  name VARCHAR(190) PRIMARY KEY,
+  applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO schema_migrations (name) VALUES
+  ('0001_service');

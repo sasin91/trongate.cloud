@@ -96,6 +96,13 @@
     font-size: 0.9375rem;
 }
 
+/* Redeploy and Remove next to a service */
+.service-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-shrink: 0;
+}
+
 /* The dashboard's pointer to integrations/claude */
 .dashboard-aside {
     margin-top: 2rem;
