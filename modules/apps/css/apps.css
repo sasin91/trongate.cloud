@@ -472,6 +472,13 @@ textarea.form-input {
     align-items: center;
 }
 
+.ov-deps {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.75rem;
+}
+
 .ov-link-v {
     width: 2px;
     height: 24px;

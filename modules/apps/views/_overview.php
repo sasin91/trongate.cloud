@@ -4,9 +4,11 @@
  * Shared by apps/show and the landing page's product shot.
  *
  * Expects: $app, $urls, $current (deployment|false), $deployments, $can_rollback,
- * $live_state (array|null), $database_name, and optionally $preview (true: no forms, no polling).
+ * $live_state (array|null), $database_name, and optionally $services (the project's services)
+ * and $preview (true: no forms, no polling).
  */
 $preview = $preview ?? false;
+$services = $services ?? [];
 $e = fn($value) => htmlspecialchars((string) $value);
 $short_sha = fn(?string $sha) => $sha ? substr($sha, 0, 7) : '';
 $is_finished = fn(object $d) => in_array($d->status, ['success', 'failed', 'rolled_back'], true);
@@ -73,13 +75,26 @@ $platform_host = $app->slug . '.' . PLATFORM_APPS_DOMAIN;
                     </div>
                     <div class="ov-db-wrap">
                         <div class="ov-link-v" aria-hidden="true"></div>
-                        <div class="ov-node ov-node-db">
-                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>
-                            <div>
-                                <span class="ov-node-kind">Database</span>
-                                <strong class="ov-mono"><?= $e($database_name) ?></strong>
-                                <span class="muted">MariaDB<?php if (!$preview): ?> &middot; <a href="apps/<?= (int) $app->id ?>/database">Open</a><?php endif; ?></span>
+                        <div class="ov-deps">
+                            <div class="ov-node ov-node-db">
+                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>
+                                <div>
+                                    <span class="ov-node-kind">Database</span>
+                                    <strong class="ov-mono"><?= $e($database_name) ?></strong>
+                                    <span class="muted">MariaDB<?php if (!$preview): ?> &middot; <a href="apps/<?= (int) $app->id ?>/database">Open</a><?php endif; ?></span>
+                                </div>
                             </div>
+                            <?php foreach ($services as $service): ?>
+                                <?php $status = (string) ($service->status ?? 'queued'); ?>
+                                <div class="ov-node ov-node-db">
+                                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>
+                                    <div>
+                                        <span class="ov-node-kind">Service</span>
+                                        <strong class="ov-mono"><?= $e($service->name) ?></strong>
+                                        <span class="muted"><?= $e($status) ?><?php if (!$preview): ?> &middot; <a href="projects/<?= (int) $app->project_id ?>#services">Manage</a><?php endif; ?></span>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
                         </div>
                     </div>
                 </div>
