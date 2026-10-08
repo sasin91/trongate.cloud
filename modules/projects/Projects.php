@@ -213,8 +213,7 @@ class Projects extends Trongate {
 
     /**
      * POST projects/{id}/services/add: add a service (name, image, port,
-     * memory, KEY=value lines) and queue its first deploy. A preset name
-     * (Project_service::presets) fills in what is left empty.
+     * memory, KEY=value lines) and queue its first deploy
      */
     function add_service(): void {
         $this->_make_sure_allowed();
@@ -282,22 +281,21 @@ class Projects extends Trongate {
     }
 
     /**
-     * The Add service form's values, with a preset's filled in for empty fields
+     * The Add service form's values, with the defaults for an empty port or memory
      *
      * @return array{name: string, image: string, port: int, memory_mb: int, env: string}
      */
     function _service_form(): array {
         $name = strtolower(trim((string) post('service_name', true)));
-        $preset = Project_service::presets()[$name] ?? null;
         $image = trim((string) post('service_image', true));
         $port = trim((string) post('service_port', true));
         $memory = trim((string) post('service_memory_mb', true));
 
         return [
             'name' => $name,
-            'image' => $image !== '' ? $image : (string) ($preset['image'] ?? ''),
-            'port' => $port !== '' ? (int) $port : (int) ($preset['port'] ?? Project_service::DEFAULT_PORT),
-            'memory_mb' => $memory !== '' ? (int) $memory : (int) ($preset['memory_mb'] ?? Project_service::DEFAULT_MEMORY_MB),
+            'image' => $image,
+            'port' => $port !== '' ? (int) $port : Project_service::DEFAULT_PORT,
+            'memory_mb' => $memory !== '' ? (int) $memory : Project_service::DEFAULT_MEMORY_MB,
             'env' => (string) post('service_env'),
         ];
     }

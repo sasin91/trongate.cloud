@@ -4,7 +4,7 @@ require_once __DIR__ . '/Manifests.php';
 
 /**
  * A project's services: a container image that runs next to the project's
- * apps (a model like Laya, a search engine, a queue), always on, reachable by
+ * apps (a model server, a search engine, a queue), always on, reachable by
  * the project's own pods only. Each service is a Deployment, a ClusterIP
  * Service and two NetworkPolicies named s{id} in the project's namespace; the
  * apps get {NAME}_URL (http://s{id}:{port}) on their next deploy
@@ -33,28 +33,11 @@ final class Project_service {
     const LABEL = Manifests::LABEL_PREFIX . '/service-id';
 
     /**
-     * Ready-made services, by name: what the Add service form and the MCP's
-     * add_service fill in when only the name is given.
-     *
-     * @return array<string, array{image: string, port: int, memory_mb: int, description: string}>
-     */
-    static function presets(): array {
-        return [
-            'laya' => [
-                'image' => PLATFORM_LAYA_IMAGE,
-                'port' => self::DEFAULT_PORT,
-                'memory_mb' => 3072,
-                'description' => 'Laya decision model (English checkpoint), POST /v1/systemone',
-            ],
-        ];
-    }
-
-    /**
      * @return string|null why the name cannot be used, or null when it can
      */
     static function name_error(string $name): ?string {
         if (preg_match(self::NAME_PATTERN, $name) !== 1) {
-            return 'Use a lowercase name of up to 40 letters, digits and underscores, starting with a letter (e.g. laya).';
+            return 'Use a lowercase name of up to 40 letters, digits and underscores, starting with a letter (e.g. search).';
         }
 
         return null;
@@ -101,7 +84,7 @@ final class Project_service {
     }
 
     /**
-     * The variable the project's apps read the service's URL from: laya → LAYA_URL
+     * The variable the project's apps read the service's URL from: search → SEARCH_URL
      */
     static function url_variable(string $name): string {
         return strtoupper($name) . '_URL';

@@ -70,12 +70,12 @@ $new_app_href = 'projects/' . (int) $project->id . '/apps/new';
                         <?= form_open('projects/' . (int) $project->id . '/services/add') ?>
                             <div class="form-group">
                                 <label for="service_name" class="form-label">Name</label>
-                                <input type="text" name="service_name" id="service_name" class="form-input mono" placeholder="laya" value="<?= $e($service_form['name']) ?>" required maxlength="40" pattern="[a-z][a-z0-9_]*">
-                                <p class="form-hint">Your apps get <code>{NAME}_URL</code> on their next deploy. Leave the rest empty for a ready-made one: <?= implode(', ', array_map(fn(string $preset) => '<code>' . $e($preset) . '</code>', array_keys(Project_service::presets()))) ?>.</p>
+                                <input type="text" name="service_name" id="service_name" class="form-input mono" placeholder="search" value="<?= $e($service_form['name']) ?>" required maxlength="40" pattern="[a-z][a-z0-9_]*">
+                                <p class="form-hint">Your apps get <code>{NAME}_URL</code> on their next deploy.</p>
                             </div>
                             <div class="form-group">
                                 <label for="service_image" class="form-label">Image</label>
-                                <input type="text" name="service_image" id="service_image" class="form-input mono" placeholder="ghcr.io/owner/name:1.2.3" value="<?= $e(post('service_image', true)) ?>" maxlength="<?= Project_service::MAX_IMAGE_LENGTH ?>">
+                                <input type="text" name="service_image" id="service_image" class="form-input mono" placeholder="ghcr.io/owner/name:1.2.3" value="<?= $e(post('service_image', true)) ?>" maxlength="<?= Project_service::MAX_IMAGE_LENGTH ?>" required>
                             </div>
                             <div class="form-group">
                                 <label for="service_port" class="form-label">Port</label>

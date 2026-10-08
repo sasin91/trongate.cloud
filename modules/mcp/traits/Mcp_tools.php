@@ -243,15 +243,15 @@ trait Mcp_tools {
             [
                 'name' => 'add_service',
                 'title' => 'Add service',
-                'description' => 'Run a container image next to a project\'s apps. They get {NAME}_URL (http://s{id}:{port}) on their next deploy. Presets fill in the rest from the name alone: ' . implode(', ', array_keys(Project_service::presets())) . '. The container runs without root, gets PORT, and is reachable only from the project.',
+                'description' => 'Run a container image next to a project\'s apps. They get {NAME}_URL (http://s{id}:{port}) on their next deploy. The container runs without root, gets PORT, and is reachable only from the project.',
                 'inputSchema' => $this->_schema([
                     'project_id' => $project_id,
-                    'name' => ['type' => 'string', 'pattern' => '^[a-z][a-z0-9_]{0,39}$', 'description' => 'e.g. laya; the apps get LAYA_URL'],
-                    'image' => ['type' => 'string', 'maxLength' => Project_service::MAX_IMAGE_LENGTH, 'description' => 'With a version, e.g. ghcr.io/owner/name:1.2.3 (not :latest); optional for a preset'],
+                    'name' => ['type' => 'string', 'pattern' => '^[a-z][a-z0-9_]{0,39}$', 'description' => 'e.g. search; the apps get SEARCH_URL'],
+                    'image' => ['type' => 'string', 'maxLength' => Project_service::MAX_IMAGE_LENGTH, 'description' => 'With a version, e.g. ghcr.io/owner/name:1.2.3 (not :latest)'],
                     'port' => ['type' => 'integer', 'minimum' => 1024, 'maximum' => 65535, 'description' => 'Where it listens (default ' . Project_service::DEFAULT_PORT . ')'],
                     'memory_mb' => ['type' => 'integer', 'minimum' => Project_service::MIN_MEMORY_MB, 'maximum' => Project_service::MAX_MEMORY_MB, 'description' => 'Memory request and limit (default ' . Project_service::DEFAULT_MEMORY_MB . ')'],
                     'env' => ['type' => 'object', 'additionalProperties' => ['type' => 'string'], 'description' => 'Environment variables, write-only'],
-                ], ['project_id', 'name']),
+                ], ['project_id', 'name', 'image']),
                 'annotations' => $this->_hints(false),
                 'scopes' => ['customer'],
             ],
@@ -700,7 +700,6 @@ trait Mcp_tools {
     function _tool_add_service(array $args): array {
         $project_id = $this->_member_project_id_or_fail($this->_int_arg($args, 'project_id'));
         $name = $this->_string_arg($args, 'name');
-        $preset = Project_service::presets()[$name] ?? [];
         $env = $args['env'] ?? [];
 
         if (!is_array($env)) {
@@ -717,9 +716,9 @@ trait Mcp_tools {
 
         $service_id = $this->model->add_service($project_id, [
             'name' => $name,
-            'image' => $this->_string_arg($args, 'image', false, (string) ($preset['image'] ?? '')),
-            'port' => $this->_int_arg($args, 'port', false, (int) ($preset['port'] ?? Project_service::DEFAULT_PORT)),
-            'memory_mb' => $this->_int_arg($args, 'memory_mb', false, (int) ($preset['memory_mb'] ?? Project_service::DEFAULT_MEMORY_MB)),
+            'image' => $this->_string_arg($args, 'image'),
+            'port' => $this->_int_arg($args, 'port', false, Project_service::DEFAULT_PORT),
+            'memory_mb' => $this->_int_arg($args, 'memory_mb', false, Project_service::DEFAULT_MEMORY_MB),
         ]);
 
         if ($env !== []) {
