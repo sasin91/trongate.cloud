@@ -472,6 +472,18 @@ textarea.form-input {
     align-items: center;
 }
 
+.ov-attached {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.75rem;
+}
+
+.ov-add-service {
+    margin-top: 0.625rem;
+    font-size: 0.875rem;
+}
+
 .ov-link-v {
     width: 2px;
     height: 24px;
@@ -693,6 +705,11 @@ a.status-pill {
         min-width: 0;
         width: 100%;
         box-sizing: border-box;
+    }
+
+    .ov-attached {
+        flex-direction: column;
+        width: 100%;
     }
 }
 

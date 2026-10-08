@@ -99,6 +99,7 @@ class Apps extends Trongate {
             'live_state' => $this->_live_app_state($app),
             'log_rates' => $this->_log_rates($app),
             'database_name' => Manifests::database_name((int) $app->id),
+            'services' => $this->model->project_services($project_id),
             'crumbs' => $this->_app_crumbs($app),
             'additional_includes_top' => [
                 'deployments_module/css/deployments.css',
