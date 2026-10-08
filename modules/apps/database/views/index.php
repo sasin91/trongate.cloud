@@ -1,7 +1,8 @@
 <?php
 /**
  * apps/{id}/database (Database::index). Expects: $app, $urls, $live_state, $can_rollback, $database_name,
- * $tables (App_database::tables), $table (one of $tables or null), $columns, $rows, $more, $page,
+ * $tables (App_database::tables), $table (one of $tables or null), $columns, $foreign_keys (App_database::foreign_keys),
+ * $where (the column => value filter on $rows), $rows, $more, $page,
  * $sql, $results (App_database::run or null), $query_error, $error (the database cannot be opened),
  * $recent_actions (Database_model::recent_actions), $backups (Database_model::backups), $backup_id (the
  * backup taken before $sql ran, or null).
@@ -40,6 +41,17 @@ $cell = function ($value) use ($e): string {
 
     return $short === $value ? $e($value) : '<span title="' . $e(preg_replace('/^(.{1000}).+$/us', '$1…', $value)) . '">' . $e($short) . '</span>';
 };
+// A foreign key's target: the referenced row, or the rows matching its values
+$reference_url = fn(array $reference) => isset($reference['key'])
+    ? $base . '/row?' . http_build_query($reference)
+    : $base . '?' . http_build_query($reference);
+$references = []; // column => foreign keys it is part of
+foreach ($foreign_keys as $foreign_key) {
+    foreach ($foreign_key['columns'] as $name) {
+        $references[$name][] = $foreign_key;
+    }
+}
+$page_url = fn(int $to) => $table_url($table['name'] ?? '', ['page' => $to] + ($where === [] ? [] : ['where' => $where]));
 $primary_key = $table !== null ? App_database::primary_key($columns) : [];
 $row_key = fn(array $row) => array_combine($primary_key, array_map(fn($c) => (string) $row[$c], $primary_key));
 ?>
@@ -149,11 +161,17 @@ $row_key = fn(array $row) => array_combine($primary_key, array_map(fn($c) => (st
                         <?php if (!$table['view']): ?><a href="<?= $e($base . '/row?' . http_build_query(['table' => $table['name']])) ?>">Add row</a><?php endif; ?>
                     </span>
                 </div>
+                <?php if ($where !== []): ?>
+                    <p class="db-note">
+                        Rows where <?= implode(' and ', array_map(fn($column, $value) => '<span class="ov-mono">' . $e($column) . ' = ' . $e($value) . '</span>', array_keys($where), $where)) ?>.
+                        <a href="<?= $e($table_url($table['name'])) ?>">Show all rows</a>
+                    </p>
+                <?php endif; ?>
                 <?php if (!$table['view'] && $primary_key === []): ?>
                     <p class="db-note">This table has no primary key, so its rows can only be changed with SQL.</p>
                 <?php endif; ?>
                 <?php if ($rows === []): ?>
-                    <p class="ov-empty muted"><?= $page > 1 ? 'No more rows.' : 'No rows yet.' ?></p>
+                    <p class="ov-empty muted"><?= $page > 1 ? 'No more rows.' : ($where !== [] ? 'No matching rows.' : 'No rows yet.') ?></p>
                 <?php else: ?>
                 <div class="db-grid-wrap">
                     <table class="db-grid">
@@ -161,7 +179,7 @@ $row_key = fn(array $row) => array_combine($primary_key, array_map(fn($c) => (st
                             <tr>
                                 <?php if ($primary_key !== []): ?><th aria-label="Actions"></th><?php endif; ?>
                                 <?php foreach ($columns as $column): ?>
-                                <th title="<?= $e($column['column_type']) ?>"><?= $e($column['name']) ?><?= $column['key'] ? ' <span class="db-key">key</span>' : '' ?></th>
+                                <th title="<?= $e($column['column_type']) ?>"><?= $e($column['name']) ?><?= $column['key'] ? ' <span class="db-key">key</span>' : '' ?><?php foreach ($references[$column['name']] ?? [] as $foreign_key): ?> <span class="db-key">&rarr; <?= $e($foreign_key['table']) ?></span><?php endforeach; ?></th>
                                 <?php endforeach; ?>
                             </tr>
                         </thead>
@@ -172,7 +190,8 @@ $row_key = fn(array $row) => array_combine($primary_key, array_map(fn($c) => (st
                                 <td><a href="<?= $e($base . '/row?' . http_build_query(['table' => $table['name'], 'key' => $row_key($row)])) ?>">Edit</a></td>
                                 <?php endif; ?>
                                 <?php foreach ($columns as $column): ?>
-                                <td><?= App_database::is_binary($column) && !$column['key'] && $row[$column['name']] !== null ? '<span class="db-null">' . (int) $row[$column['name']] . ' bytes</span>' : $cell($row[$column['name']] ?? null) ?></td>
+                                <?php $reference = isset($references[$column['name']]) ? App_database::reference($references[$column['name']][0], $row) : null; ?>
+                                <td><?php if ($reference !== null): ?><a href="<?= $e($reference_url($reference)) ?>" class="db-ref" title="Open in <?= $e($reference['table']) ?>"><?= $cell($row[$column['name']]) ?></a><?php else: ?><?= App_database::is_binary($column) && !$column['key'] && $row[$column['name']] !== null ? '<span class="db-null">' . (int) $row[$column['name']] . ' bytes</span>' : $cell($row[$column['name']] ?? null) ?><?php endif; ?></td>
                                 <?php endforeach; ?>
                             </tr>
                             <?php endforeach; ?>
@@ -182,9 +201,9 @@ $row_key = fn(array $row) => array_combine($primary_key, array_map(fn($c) => (st
                 <?php endif; ?>
                 <?php if ($page > 1 || $more): ?>
                 <nav class="db-pages" aria-label="Pages">
-                    <?php if ($page > 1): ?><a href="<?= $e($table_url($table['name'], ['page' => $page - 1])) ?>">&larr; Previous</a><?php else: ?><span></span><?php endif; ?>
+                    <?php if ($page > 1): ?><a href="<?= $e($page_url($page - 1)) ?>">&larr; Previous</a><?php else: ?><span></span><?php endif; ?>
                     <span class="muted">Page <?= $page ?></span>
-                    <?php if ($more): ?><a href="<?= $e($table_url($table['name'], ['page' => $page + 1])) ?>">Next &rarr;</a><?php else: ?><span></span><?php endif; ?>
+                    <?php if ($more): ?><a href="<?= $e($page_url($page + 1)) ?>">Next &rarr;</a><?php else: ?><span></span><?php endif; ?>
                 </nav>
                 <?php endif; ?>
             </section>
