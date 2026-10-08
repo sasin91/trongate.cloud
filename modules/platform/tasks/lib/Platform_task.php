@@ -214,7 +214,8 @@ class Platform_task {
 
         self::release_domains($runtime, $log, $app);
 
-        $env = self::app_env($runtime, $log, (int) $app['id']);
+        // The app's own variables win over a service URL of the same name
+        $env = self::app_env($runtime, $log, (int) $app['id']) + self::service_urls($runtime, $log, (int) $app['project_id']);
         $manifests = Manifests::app($app, $deployment, $database, self::ensure_session_user($runtime, $log, (int) $app['id']), $env);
 
         foreach ($manifests as $manifest) {
@@ -243,6 +244,26 @@ class Platform_task {
         $log->info('Environment variables: ' . implode(', ', array_keys($env)));
 
         return $env;
+    }
+
+    /**
+     * {NAME}_URL of each of the project's live services (Project_service)
+     *
+     * @return array<string, string>
+     */
+    static function service_urls(Runtime $runtime, Task_log $log, int $project_id): array {
+        $services = self::rows(
+            $runtime->db(),
+            'SELECT id, name, port FROM service WHERE project_id = ? AND deleted_at IS NULL ORDER BY name',
+            [$project_id]
+        );
+        $urls = Project_service::app_urls($services);
+
+        if ($urls !== []) {
+            $log->info('Service URLs: ' . implode(', ', array_keys($urls)));
+        }
+
+        return $urls;
     }
 
     /**

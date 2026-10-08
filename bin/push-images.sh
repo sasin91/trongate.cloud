@@ -56,7 +56,7 @@ docker buildx build \
     --push \
     .
 
-# Laya, run next to apps that turn it on (PLATFORM_LAYA_IMAGE, laya:0.4.0)
+# Laya, the image of the laya service preset (PLATFORM_LAYA_IMAGE, laya:0.4.0)
 echo "==> ${REGISTRY}/laya (${sha})"
 docker buildx build \
     --platform "$PLATFORM" \

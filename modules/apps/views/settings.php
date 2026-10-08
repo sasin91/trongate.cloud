@@ -55,14 +55,6 @@
 
         <div class="form-group">
             <label class="checkbox-label">
-                <input type="checkbox" name="laya" value="1" <?= $laya ? 'checked' : '' ?>>
-                Laya decision model
-            </label>
-            <p class="form-hint">Runs <a href="https://huggingface.co/convaiinnovations/laya" target="_blank" rel="noopener">Laya</a> (English checkpoint) next to your app, reachable only from it. Your app gets <code>LAYA_URL</code> and <code>LAYA_API_KEY</code>; send <code>POST /v1/systemone</code>. Needs about 1.5 GB of memory and takes about 20 seconds to load after each start.</p>
-        </div>
-
-        <div class="form-group">
-            <label class="checkbox-label">
                 <input type="checkbox" name="auto_deploy" value="1" <?= $auto_deploy ? 'checked' : '' ?>>
                 Deploy on push
             </label>

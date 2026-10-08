@@ -2,12 +2,15 @@
 
 require_once APPPATH . 'modules/customer/traits/Customer_guard.php';
 require_once APPPATH . 'modules/platform/traits/Live_app_state.php';
+require_once APPPATH . 'modules/platform/manifests/Project_service.php';
 
 /**
  * Projects: a group of apps sharing one namespace, and the people who work on them.
- * Every member sees and deploys all of a project's apps; the owner also renames
- * and deletes the project and manages its members.
+ * Every member sees and deploys all of a project's apps and adds or removes its
+ * services (Project_service); the owner also renames and deletes the project
+ * and manages its members.
  *
+ * @property-read Secrets $secrets
  * @property-read Projects_model $model
  * @property-read Trongate_tokens $trongate_tokens
  * @property-read Templates $templates
@@ -82,6 +85,8 @@ class Projects extends Trongate {
             'project' => $project,
             'apps' => $apps,
             'members' => $this->model->project_members((int) $project->id),
+            'services' => $this->model->project_services((int) $project->id),
+            'service_form' => $this->_service_form(),
             'is_owner' => $this->_is_owner($project),
             'customer_id' => (int) $customer->id,
             'email' => REQUEST_TYPE === 'POST' ? (string) post('email', true) : '',
@@ -204,6 +209,135 @@ class Projects extends Trongate {
 
         set_flashdata($result === true ? 'Member removed.' : htmlspecialchars($result));
         redirect('projects/' . $project->id);
+    }
+
+    /**
+     * POST projects/{id}/services/add: add a service (name, image, port,
+     * memory, KEY=value lines) and queue its first deploy. A preset name
+     * (Project_service::presets) fills in what is left empty.
+     */
+    function add_service(): void {
+        $this->_make_sure_allowed();
+        $project = $this->_member_project_or_redirect(segment(3, 'int'));
+        $this->_require_post_with_csrf();
+
+        $form = $this->_service_form();
+        $back = 'projects/' . $project->id . '#services';
+
+        try {
+            $env = $this->_parse_service_env($form['env']);
+            $service_id = $this->model->add_service((int) $project->id, $form);
+        } catch (InvalidArgumentException $e) {
+            set_flashdata(htmlspecialchars($e->getMessage()));
+            redirect($back);
+        }
+
+        if ($env !== []) {
+            $this->module('secrets');
+            $this->secrets->save(Project_service::MODULE, $service_id, Project_service::SERVICE, $env);
+        }
+
+        $this->model->queue_service_deploy((int) $project->id, $service_id);
+
+        set_flashdata(htmlspecialchars($form['name']) . ' is starting. Deploy your apps to give them '
+            . htmlspecialchars(Project_service::url_variable($form['name'])) . '.');
+        redirect($back);
+    }
+
+    /**
+     * POST projects/{id}/services/{service id}/redeploy: apply it again (a
+     * crashed service, or a new image under the same tag)
+     */
+    function redeploy_service(): void {
+        $this->_make_sure_allowed();
+        $project = $this->_member_project_or_redirect(segment(3, 'int'));
+        $this->_require_post_with_csrf();
+
+        try {
+            $this->model->queue_service_deploy((int) $project->id, segment(4, 'int'));
+            set_flashdata('Redeploy queued.');
+        } catch (RuntimeException $e) {
+            set_flashdata(htmlspecialchars($e->getMessage()));
+        }
+
+        redirect('projects/' . $project->id . '#services');
+    }
+
+    /**
+     * POST projects/{id}/services/{service id}/delete
+     */
+    function delete_service(): void {
+        $this->_make_sure_allowed();
+        $project = $this->_member_project_or_redirect(segment(3, 'int'));
+        $this->_require_post_with_csrf();
+
+        try {
+            $this->model->queue_service_delete((int) $project->id, segment(4, 'int'));
+            set_flashdata('Service removed. Deploy your apps to drop its URL from them.');
+        } catch (RuntimeException $e) {
+            set_flashdata(htmlspecialchars($e->getMessage()));
+        }
+
+        redirect('projects/' . $project->id . '#services');
+    }
+
+    /**
+     * The Add service form's values, with a preset's filled in for empty fields
+     *
+     * @return array{name: string, image: string, port: int, memory_mb: int, env: string}
+     */
+    function _service_form(): array {
+        $name = strtolower(trim((string) post('service_name', true)));
+        $preset = Project_service::presets()[$name] ?? null;
+        $image = trim((string) post('service_image', true));
+        $port = trim((string) post('service_port', true));
+        $memory = trim((string) post('service_memory_mb', true));
+
+        return [
+            'name' => $name,
+            'image' => $image !== '' ? $image : (string) ($preset['image'] ?? ''),
+            'port' => $port !== '' ? (int) $port : (int) ($preset['port'] ?? Project_service::DEFAULT_PORT),
+            'memory_mb' => $memory !== '' ? (int) $memory : (int) ($preset['memory_mb'] ?? Project_service::DEFAULT_MEMORY_MB),
+            'env' => (string) post('service_env'),
+        ];
+    }
+
+    /**
+     * KEY=value lines (blank lines and # comments skipped)
+     *
+     * @return array<string, string>
+     * @throws InvalidArgumentException
+     */
+    function _parse_service_env(string $text): array {
+        $env = [];
+
+        foreach (preg_split('/\r\n|\r|\n/', $text) ?: [] as $line) {
+            $line = trim($line);
+
+            if ($line === '' || str_starts_with($line, '#')) {
+                continue;
+            }
+
+            [$name, $value] = array_pad(explode('=', $line, 2), 2, null);
+            $name = trim((string) $name);
+            $error = $value === null ? "Write {$name} as {$name}=value." : App_env::name_error($name);
+
+            if ($error !== null) {
+                throw new InvalidArgumentException($error);
+            }
+
+            if (strlen((string) $value) > App_env::MAX_VALUE_BYTES) {
+                throw new InvalidArgumentException("{$name} is too long.");
+            }
+
+            $env[$name] = (string) $value;
+        }
+
+        if (count($env) > App_env::MAX_VARIABLES) {
+            throw new InvalidArgumentException('A service can have at most ' . App_env::MAX_VARIABLES . ' environment variables.');
+        }
+
+        return $env;
     }
 
     /**

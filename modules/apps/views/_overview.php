@@ -181,7 +181,6 @@ $platform_host = $app->slug . '.' . PLATFORM_APPS_DOMAIN;
                 <dl class="ov-settings">
                     <div><dt>Deploy on push</dt><dd><?= $auto_deploy ? 'On' : 'Off' ?></dd></div>
                     <div><dt>Always on</dt><dd><?= !empty($app->always_on) ? 'On' : 'Off' ?></dd></div>
-                    <div><dt>Laya</dt><dd><?= !empty($app->laya) ? 'On' : 'Off' ?></dd></div>
                 </dl>
             </section>
         </div>

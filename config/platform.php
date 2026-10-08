@@ -42,8 +42,8 @@ defined('PLATFORM_IMAGES_REGISTRY') || define('PLATFORM_IMAGES_REGISTRY', getenv
 // What every customer app is built FROM (docker/app-base/Dockerfile); build_platform
 // pushes it as app-base:php8.4 before the worker image, so a worker always finds it
 defined('PLATFORM_APP_BASE_IMAGE') || define('PLATFORM_APP_BASE_IMAGE', getenv('PLATFORM_APP_BASE_IMAGE') ?: PLATFORM_IMAGES_REGISTRY . '/app-base:php8.4');
-// The Laya decision model (docker/laya/Dockerfile), run next to apps that turn it
-// on; build_platform pushes it before the worker image, like the app base
+// The Laya decision model (docker/laya/Dockerfile), the image of the laya service
+// preset (Project_service::presets); build_platform pushes it before the worker image
 defined('PLATFORM_LAYA_IMAGE') || define('PLATFORM_LAYA_IMAGE', getenv('PLATFORM_LAYA_IMAGE') ?: PLATFORM_IMAGES_REGISTRY . '/laya:0.4.0');
 // Seconds between reconcile_deploys runs: the worker queues a deploy for a branch
 // head that a missed GitHub push webhook never built. 0 turns it off.

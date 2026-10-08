@@ -231,8 +231,6 @@ CREATE TABLE app (
   persistent_paths JSON DEFAULT '[]',
   php_extensions VARCHAR(255) NOT NULL DEFAULT '',
   always_on TINYINT(1) NOT NULL DEFAULT 0,
-  -- Runs the Laya decision model next to the app (Manifests::_deployment)
-  laya TINYINT(1) NOT NULL DEFAULT 0,
   -- Trongate's ENV constant, patched into config/config.php (Trongate_config::env)
   trongate_env VARCHAR(20) NOT NULL DEFAULT 'dev',
   database_server_id INT NULL,
@@ -283,6 +281,27 @@ CREATE TABLE deployment (
   CONSTRAINT fk_deployment_project FOREIGN KEY (project_id) REFERENCES project (id),
   CONSTRAINT fk_deployment_app FOREIGN KEY (app_id) REFERENCES app (id),
   CONSTRAINT fk_deployment_customer FOREIGN KEY (customer_id) REFERENCES customer (id)
+);
+
+-- A project's services (Project_service): an image that runs next to the
+-- project's apps, always on, reachable by them at {NAME}_URL. Environment
+-- variables live in secrets as (module 'service', id, service 'env').
+CREATE TABLE service (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  project_id INT NOT NULL,
+  -- Lowercase slug; the apps get {NAME}_URL
+  name VARCHAR(40) NOT NULL,
+  image VARCHAR(500) NOT NULL,
+  port SMALLINT UNSIGNED NOT NULL,
+  -- The container's memory request and limit
+  memory_mb INT UNSIGNED NOT NULL,
+  deployed_at TIMESTAMP NULL DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  deleted_at TIMESTAMP NULL DEFAULT NULL,
+  -- NULL once deleted, so a live name is unique and a deleted one can be reused
+  live_name VARCHAR(40) AS (IF(deleted_at IS NULL, name, NULL)) VIRTUAL,
+  UNIQUE KEY unique_project_live_name (project_id, live_name),
+  CONSTRAINT fk_service_project FOREIGN KEY (project_id) REFERENCES project (id)
 );
 
 ALTER TABLE app

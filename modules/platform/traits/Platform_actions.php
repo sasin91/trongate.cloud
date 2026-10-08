@@ -1,11 +1,12 @@
 <?php
 
 require_once __DIR__ . '/../manifests/Manifests.php';
+require_once __DIR__ . '/../manifests/Project_service.php';
 
 /**
  * Platform actions for models: projects and their members, queue
- * deployments/rollbacks, delete apps and projects, and read apps, deployments
- * and logs.
+ * deployments/rollbacks, delete apps and projects, add and remove services
+ * (Project_service), and read apps, deployments and logs.
  *
  * Every method takes an explicit project (or customer) id instead of reading
  * the session, so the same code serves the customer UI, GitHub webhooks, the
@@ -752,6 +753,16 @@ trait Platform_actions {
                 throw new RuntimeException('Delete the apps in this project first.');
             }
 
+            $services = (int) $this->db->query_bind(
+                'SELECT COUNT(*) FROM service WHERE project_id = :project_id AND deleted_at IS NULL',
+                ['project_id' => $project_id],
+                'column'
+            );
+
+            if ($services > 0) {
+                throw new RuntimeException('Delete the services in this project first.');
+            }
+
             if ($this->_open_project_tasks($project_id) !== []) {
                 throw new RuntimeException('An app of this project is still being removed. Try again in a minute.');
             }
@@ -790,6 +801,153 @@ trait Platform_actions {
             }
 
             return $this->_queue_task($project_id, null, null, 'destroy_project', ['project_id' => $project_id]);
+        });
+    }
+
+    /**
+     * The project's live services, by name. Lists columns explicitly so the
+     * rows are safe to return to API clients.
+     */
+    function project_services(int $project_id): array {
+        $sql = <<<SQL
+            SELECT s.id, s.project_id, s.name, s.image, s.port, s.memory_mb, s.deployed_at, s.created_at,
+                (
+                    SELECT CASE
+                        WHEN t.failed_at IS NOT NULL THEN 'failed'
+                        WHEN t.completed_at IS NOT NULL THEN 'running'
+                        WHEN t.started_at IS NOT NULL THEN 'deploying'
+                        ELSE 'queued'
+                    END
+                    FROM tasks t
+                    WHERE t.project_id = s.project_id
+                      AND t.script = 'deploy_service'
+                      AND JSON_EXTRACT(t.payload, '$.service_id') = s.id
+                    ORDER BY t.id DESC
+                    LIMIT 1
+                ) AS status
+            FROM service s
+            WHERE s.project_id = :project_id AND s.deleted_at IS NULL
+            ORDER BY s.name
+        SQL;
+        return $this->db->query_bind($sql, ['project_id' => $project_id], 'object');
+    }
+
+    function find_project_service(int $project_id, int $service_id): object|false {
+        foreach ($this->project_services($project_id) as $service) {
+            if ((int) $service->id === $service_id) {
+                return $service;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Add a service to the project. Its environment variables are saved by the
+     * caller (Project_service::MODULE), then queue_service_deploy() starts it,
+     * so the worker never runs it without them.
+     *
+     * @param array{name: string, image: string, port: int, memory_mb: int} $fields
+     * @return int The service id
+     * @throws InvalidArgumentException when a field is invalid (the message is safe to show)
+     */
+    function add_service(int $project_id, array $fields): int {
+        $name = (string) $fields['name'];
+        $image = trim((string) $fields['image']);
+        $port = (int) $fields['port'];
+        $memory_mb = (int) $fields['memory_mb'];
+
+        foreach ([
+            Project_service::name_error($name),
+            Project_service::image_error($image),
+            Project_service::port_error($port),
+            Project_service::memory_error($memory_mb),
+        ] as $error) {
+            if ($error !== null) {
+                throw new InvalidArgumentException($error);
+            }
+        }
+
+        return $this->db->transaction(function () use ($project_id, $name, $image, $port, $memory_mb) {
+            // Row lock on the project: two adds wait for each other, so the count holds
+            $live = $this->db->query_bind(
+                'SELECT id FROM project WHERE id = :project_id AND deleted_at IS NULL FOR UPDATE',
+                ['project_id' => $project_id],
+                'column'
+            );
+
+            if ($live === false) {
+                throw new InvalidArgumentException('Project not found.');
+            }
+
+            $services = $this->project_services($project_id);
+
+            if (count($services) >= Project_service::MAX_PER_PROJECT) {
+                throw new InvalidArgumentException('A project can have at most ' . Project_service::MAX_PER_PROJECT . ' services.');
+            }
+
+            if (in_array($name, array_column($services, 'name'), true)) {
+                throw new InvalidArgumentException("This project already has a service called {$name}.");
+            }
+
+            return (int) $this->db->insert([
+                'project_id' => $project_id,
+                'name' => $name,
+                'image' => $image,
+                'port' => $port,
+                'memory_mb' => $memory_mb,
+            ], 'service');
+        });
+    }
+
+    /**
+     * Queue deploy_service, which applies the service's manifests (again)
+     *
+     * @return int The task id
+     */
+    function queue_service_deploy(int $project_id, int $service_id): int {
+        if ($this->find_project_service($project_id, $service_id) === false) {
+            throw new RuntimeException('Service not found');
+        }
+
+        return $this->_queue_task($project_id, null, null, 'deploy_service', [
+            'service_id' => $service_id,
+            'project_id' => $project_id,
+        ]);
+    }
+
+    /**
+     * Delete a service: hide the row, drop its environment variables and
+     * queue destroy_service. The apps keep its {NAME}_URL until their next deploy.
+     *
+     * @return int The destroy_service task id
+     */
+    function queue_service_delete(int $project_id, int $service_id): int {
+        return $this->db->transaction(function () use ($project_id, $service_id) {
+            $live = $this->db->query_bind(
+                'SELECT id FROM service WHERE id = :id AND project_id = :project_id AND deleted_at IS NULL FOR UPDATE',
+                ['id' => $service_id, 'project_id' => $project_id],
+                'column'
+            );
+
+            if ($live === false) {
+                throw new RuntimeException('Service not found');
+            }
+
+            $this->db->query_bind(
+                'UPDATE service SET deleted_at = NOW() WHERE id = :id AND project_id = :project_id',
+                ['id' => $service_id, 'project_id' => $project_id]
+            );
+
+            $this->db->query_bind(
+                'DELETE FROM secrets WHERE module = :module AND module_id = :id',
+                ['module' => Project_service::MODULE, 'id' => $service_id]
+            );
+
+            return $this->_queue_task($project_id, null, null, 'destroy_service', [
+                'service_id' => $service_id,
+                'project_id' => $project_id,
+            ]);
         });
     }
 

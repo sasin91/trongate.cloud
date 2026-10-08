@@ -61,12 +61,13 @@ Customer tools act as the signed-in customer. Write tools carry `destructiveHint
 | `list_apps` | both | `project_id?` |
 | `get_app` | both | Settings, custom domain status and its TXT record, live state, current deployment, database name, env var names (customer) |
 | `create_app` | customer | From a repository the GitHub App can read for the customer (needs their GitHub sign-in); deploys it unless `deploy: false` |
-| `update_app_settings` | customer | Only the fields passed change (`domain`, `persistent_paths`, `php_extensions`, `always_on`, `laya`, `auto_deploy`, `trongate_env`); same rules as the Settings page (`App_rules`) |
+| `update_app_settings` | customer | Only the fields passed change (`domain`, `persistent_paths`, `php_extensions`, `always_on`, `auto_deploy`, `trongate_env`); same rules as the Settings page (`App_rules`) |
 | `verify_domain` | customer | Checks the TXT record |
 | `list_deployments`, `get_deployment_logs` | both | Build and rollout logs, followable with `after_id` |
 | `deploy_app`, `rollback_app` | both | Recorded as `trigger_type = mcp`, with the customer |
 | `get_app_logs` | both | The running app's output (`App_logs`); never wakes an asleep app; `problems_only` |
 | `list_env_vars`, `set_env_var`, `delete_env_var` | customer | Values are write-only |
+| `list_services`, `add_service`, `redeploy_service`, `delete_service` | customer | A project's services (`Project_service`): an image that runs next to its apps, always on; the apps get `{NAME}_URL` on their next deploy. `add_service` with only a preset name (`laya`) fills in the image, port and memory |
 | `list_tables`, `describe_table`, `browse_table` | customer | The app's own database, as the app's own user |
 | `query_database` | customer | Statements run in one read-only transaction; one result per statement; same allowlist and limits as the Database tab |
 | `execute_sql` | customer | Writes allowed ("Allow changes"), all statements in one transaction; backs up the tables it names first unless `backup: false` |

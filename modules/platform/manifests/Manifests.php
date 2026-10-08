@@ -60,18 +60,6 @@ class Manifests {
         'limits' => ['cpu' => '200m', 'memory' => '128Mi', 'ephemeral-storage' => '256Mi'],
     ];
 
-    // The Laya decision model (docker/laya), when an app turns it on: a second
-    // container in the app's pod, so the app reaches it on localhost and
-    // nothing else does. The checkpoint is baked into the image; it loads in
-    // about 20 seconds, during which the app runs and gets connection errors
-    // from it. No readiness probe: the app's own probes decide whether the
-    // pod takes traffic, so a slow or broken Laya never holds the app back.
-    const LAYA_PORT = 8000;
-    const LAYA_RESOURCES = [
-        'requests' => ['cpu' => '100m', 'memory' => '1536Mi', 'ephemeral-storage' => '128Mi'],
-        'limits' => ['memory' => '3Gi', 'ephemeral-storage' => '1Gi'],
-    ];
-
     // Shared by every app in the project. No CPU or memory caps (see
     // APP_RESOURCES); the quota only bounds disk, pod count and exposure.
     const TENANT_QUOTA = [
@@ -273,20 +261,6 @@ class Manifests {
         }
 
         return substr(hash_hmac('sha256', 'database:' . self::database_name($app_id), $key), 0, 48);
-    }
-
-    /**
-     * The bearer key between an app and its Laya container (LAYA_API_KEY in
-     * both). Laya only listens on the pod's localhost; the key is for depth.
-     */
-    static function laya_api_key(int $app_id): string {
-        $key = defined('APP_KEY') ? (string) constant('APP_KEY') : (string) getenv('APP_KEY');
-
-        if ($key === '') {
-            throw new RuntimeException('APP_KEY is required to derive Laya keys');
-        }
-
-        return substr(hash_hmac('sha256', 'laya:' . self::app_name($app_id), $key), 0, 48);
     }
 
     /**
@@ -602,7 +576,7 @@ class Manifests {
     /**
      * Everything one app needs inside its tenant namespace, in apply order
      *
-     * @param array $app        app row (id, namespace, slug, label, type, verified_domain, domain_pointed_at, domain_secured_at, persistent_paths, always_on, laya, trongate_env)
+     * @param array $app        app row (id, namespace, slug, label, type, verified_domain, domain_pointed_at, domain_secured_at, persistent_paths, always_on, trongate_env)
      * @param array $deployment deployment row (id, image)
      * @param array $database   database_server row (host, port, operator_name, operator_namespace); optional 'password'
      */
@@ -739,7 +713,6 @@ class Manifests {
             'trongate_env' => Trongate_config::env($app),
             'sessions' => $sessions_ini !== '',
             'env_secret_name' => self::env_secret_name($app_id),
-            'laya' => !empty($app['laya']),
             // Changed variables roll the pods: envFrom is only read at container start
             'config_hash' => substr(hash('sha256', $database_php . $sessions_ini . $base_url . json_encode($paths) . json_encode($env) . Trongate_config::env($app)), 0, 16),
         ]);
@@ -1083,64 +1056,6 @@ class Manifests {
             ];
         }
 
-        $containers = [[
-            'name' => 'app',
-            'image' => $o['image'],
-            'ports' => [['name' => 'http', 'containerPort' => self::APP_PORT, 'protocol' => 'TCP']],
-            // The customer's variables; 'env' below wins on a name
-            // clash, so the platform's own stay put (App_env::RESERVED)
-            'envFrom' => [['secretRef' => ['name' => $o['env_secret_name']]]],
-            'env' => [
-                ['name' => 'PORT', 'value' => (string) self::APP_PORT],
-                // Caddy needs writable config/data dirs; the image's defaults are root-owned
-                ['name' => 'XDG_CONFIG_HOME', 'value' => '/tmp/caddy/config'],
-                ['name' => 'XDG_DATA_HOME', 'value' => '/tmp/caddy/data'],
-            ],
-            'volumeMounts' => $mounts,
-            // The gate: until the home page answers (any 2xx or
-            // 3xx), the pod is not ready, takes no traffic and the
-            // old pod is not removed. A startup probe runs only
-            // until it first passes, so the app is not polled for
-            // as long as it runs; the TCP readiness probe takes
-            // over after it.
-            'startupProbe' => [
-                'httpGet' => [
-                    'path' => '/',
-                    'port' => 'http',
-                    'httpHeaders' => [['name' => 'Host', 'value' => (string) parse_url($o['base_url'], PHP_URL_HOST)]],
-                ],
-                'periodSeconds' => self::STARTUP_PROBE_PERIOD,
-                'timeoutSeconds' => 10,
-                'failureThreshold' => self::STARTUP_PROBE_FAILURES,
-            ],
-            'readinessProbe' => [
-                'tcpSocket' => ['port' => 'http'],
-                'initialDelaySeconds' => 1,
-                'periodSeconds' => 3,
-            ],
-            'securityContext' => $app_security,
-            'resources' => self::APP_RESOURCES,
-        ]];
-
-        if ($o['laya']) {
-            $laya_key = self::laya_api_key((int) $app['id']);
-            $containers[0]['env'][] = ['name' => 'LAYA_URL', 'value' => 'http://127.0.0.1:' . self::LAYA_PORT];
-            $containers[0]['env'][] = ['name' => 'LAYA_API_KEY', 'value' => $laya_key];
-            $volumes[] = ['name' => 'laya-tmp', 'emptyDir' => ['sizeLimit' => '512Mi']];
-            $containers[] = [
-                'name' => 'laya',
-                'image' => PLATFORM_LAYA_IMAGE,
-                'env' => [
-                    ['name' => 'LAYA_HOST', 'value' => '127.0.0.1'],
-                    ['name' => 'LAYA_PORT', 'value' => (string) self::LAYA_PORT],
-                    ['name' => 'LAYA_API_KEY', 'value' => $laya_key],
-                ],
-                'volumeMounts' => [['name' => 'laya-tmp', 'mountPath' => '/tmp']],
-                'securityContext' => $container_security,
-                'resources' => self::LAYA_RESOURCES,
-            ];
-        }
-
         $labels = $o['labels'];
 
         if (!$o['always_on']) {
@@ -1180,7 +1095,44 @@ class Manifests {
                         'seccompProfile' => ['type' => 'RuntimeDefault'],
                     ],
                     'initContainers' => $init_containers,
-                    'containers' => $containers,
+                    'containers' => [[
+                        'name' => 'app',
+                        'image' => $o['image'],
+                        'ports' => [['name' => 'http', 'containerPort' => self::APP_PORT, 'protocol' => 'TCP']],
+                        // The customer's variables; 'env' below wins on a name
+                        // clash, so the platform's own stay put (App_env::RESERVED)
+                        'envFrom' => [['secretRef' => ['name' => $o['env_secret_name']]]],
+                        'env' => [
+                            ['name' => 'PORT', 'value' => (string) self::APP_PORT],
+                            // Caddy needs writable config/data dirs; the image's defaults are root-owned
+                            ['name' => 'XDG_CONFIG_HOME', 'value' => '/tmp/caddy/config'],
+                            ['name' => 'XDG_DATA_HOME', 'value' => '/tmp/caddy/data'],
+                        ],
+                        'volumeMounts' => $mounts,
+                        // The gate: until the home page answers (any 2xx or
+                        // 3xx), the pod is not ready, takes no traffic and the
+                        // old pod is not removed. A startup probe runs only
+                        // until it first passes, so the app is not polled for
+                        // as long as it runs; the TCP readiness probe takes
+                        // over after it.
+                        'startupProbe' => [
+                            'httpGet' => [
+                                'path' => '/',
+                                'port' => 'http',
+                                'httpHeaders' => [['name' => 'Host', 'value' => (string) parse_url($o['base_url'], PHP_URL_HOST)]],
+                            ],
+                            'periodSeconds' => self::STARTUP_PROBE_PERIOD,
+                            'timeoutSeconds' => 10,
+                            'failureThreshold' => self::STARTUP_PROBE_FAILURES,
+                        ],
+                        'readinessProbe' => [
+                            'tcpSocket' => ['port' => 'http'],
+                            'initialDelaySeconds' => 1,
+                            'periodSeconds' => 3,
+                        ],
+                        'securityContext' => $app_security,
+                        'resources' => self::APP_RESOURCES,
+                    ]],
                     'volumes' => $volumes,
                 ],
             ],

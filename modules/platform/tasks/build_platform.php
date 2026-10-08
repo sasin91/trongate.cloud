@@ -13,11 +13,12 @@
  *   :{short sha}                                         (what bin/push-images.sh tags)
  *
  * Before those it builds docker/app-base, the base of every customer app, and
- * pushes it as PLATFORM_APP_BASE_IMAGE (and :{short sha}), then docker/laya as
- * PLATFORM_LAYA_IMAGE (and :{short sha}), the model apps can run next to them. Deploys use it as
+ * pushes it as PLATFORM_APP_BASE_IMAGE (and :{short sha}). Deploys use it as
  * soon as it is pushed. It is built with SOURCE_DATE_EPOCH=0 and no revision
  * label, so a commit that leaves it unchanged pushes the same digest and the
- * apps' build caches stay valid.
+ * apps' build caches stay valid. Then docker/laya, the image of the laya
+ * service preset, as PLATFORM_LAYA_IMAGE (and :{short sha}); a failure there
+ * only warns.
  *
  * Nothing is rolled out here. Flux image automation in the infra repository
  * (ImagePolicy on the worker image, which is pushed last, so both exist) commits
@@ -118,7 +119,7 @@ return function (Task_log $log) use ($task, $runtime): int {
         $buildkit_host = $own_buildkitd ? Platform_task::start_buildkitd($runtime, $log, $task_id, 'p') : BUILDKIT_HOST;
 
         // The app base first (deploys and nothing else use it), then Laya
-        // (apps that turn it on), the web app, the worker last: Flux follows
+        // (the laya service preset), the web app, the worker last: Flux follows
         // the worker image, so once its tag exists the others do too
         $laya_repository = Platform_task::image_repository(PLATFORM_LAYA_IMAGE);
         $scripts = [
@@ -158,11 +159,11 @@ return function (Task_log $log) use ($task, $runtime): int {
             $script = 'set -eu' . "\n" . $build . "\n";
 
             if ($runtime->shell($script, $log) !== 0) {
-                // Laya is optional for apps and heavy to build (torch and a
+                // Laya is optional for projects and heavy to build (torch and a
                 // download from Hugging Face): a failure keeps the last pushed
                 // image and must not hold back a platform release
                 if ($image === 'laya') {
-                    $log->warn('Building laya failed; apps keep the last ' . PLATFORM_LAYA_IMAGE);
+                    $log->warn('Building laya failed; services keep the last ' . PLATFORM_LAYA_IMAGE);
                     continue;
                 }
 

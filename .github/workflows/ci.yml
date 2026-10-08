@@ -56,7 +56,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        dockerfile: [Dockerfile, Dockerfile.worker]
+        dockerfile: [Dockerfile, Dockerfile.worker, docker/laya/Dockerfile]
     steps:
       - uses: actions/checkout@v4
       - uses: hadolint/hadolint-action@v3.1.0

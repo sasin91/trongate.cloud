@@ -1,7 +1,7 @@
-# The Laya decision model (https://pypi.org/project/laya/), run as a second
-# container in the pod of an app that turns it on (Manifests::_deployment).
-# Built by the build_platform task (and bin/push-images.sh) as
-# PLATFORM_LAYA_IMAGE, from the repository root.
+# The Laya decision model (https://pypi.org/project/laya/), the image of the
+# "laya" service preset (Project_service::presets): a project adds it as a
+# service and its apps call it at LAYA_URL. Built by the build_platform task
+# (and bin/push-images.sh) as PLATFORM_LAYA_IMAGE, from the repository root.
 #
 # The English checkpoint is downloaded at build time at its reviewed commit
 # (LAYA_REVISION=reviewed) and the container runs offline: tenant pods need no
@@ -30,12 +30,12 @@ ENV HF_HUB_OFFLINE=1 \
     LAYA_DEVICE=cpu \
     LAYA_MAX_LOADED=1 \
     LAYA_THREADS=2 \
-    LAYA_HOST=127.0.0.1 \
-    LAYA_PORT=8000 \
+    LAYA_HOST=0.0.0.0 \
+    LAYA_PORT=8080 \
     HOME=/tmp
 
 USER 1000
 
-EXPOSE 8000
+EXPOSE 8080
 
 CMD ["python", "-m", "laya.serve"]
