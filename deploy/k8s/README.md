@@ -191,7 +191,9 @@ A push to `main` of this repository deploys it, built by the platform itself:
 
 Manifest changes under `deploy/k8s` apply within a minute of the push, before
 the new images exist, so keep them compatible with the running image. Schema
-changes (`db/schema.sql`) are not applied by any of this.
+changes reach the live database through `db/migrations`, which the new
+worker applies on startup before taking tasks (`Migrations`); the app pod may
+start a few seconds before that.
 
 Turning it off: suspend the ImageUpdateAutomation (`flux suspend image update
 trongate-cloud`) to stop rollouts, or empty `PLATFORM_SOURCE_REPOSITORY` to

@@ -78,5 +78,25 @@ jobs:
           --health-interval=5s --health-timeout=5s --health-retries=10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_mysql
+          coverage: none
       - name: Apply db/schema.sql
         run: mysql -h127.0.0.1 -uroot -proot < db/schema.sql
+      - name: Apply the base branch's db/schema.sql as tcloud_base
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          git show "${BASE}:db/schema.sql" \
+            | sed -E 's/^(CREATE DATABASE IF NOT EXISTS|USE) tcloud;/\1 tcloud_base;/' \
+            | mysql -h127.0.0.1 -uroot -proot
+      - name: db/migrations upgrade tcloud_base to db/schema.sql
+        env:
+          DB_HOST: 127.0.0.1
+          DB_USER: root
+          DB_PASSWORD: root
+        run: php bin/check-migrations.php tcloud tcloud_base

@@ -3,8 +3,10 @@
 -- The whole schema in one file, applied once to an empty database:
 --   bin/import-db.sh            (local dev; drops and recreates tcloud first)
 --   deploy/k8s/README.md        (cluster; the operator creates tcloud)
--- Change it in place while there are no customers to migrate; once there are,
--- add numbered migrations next to it.
+-- An existing database is upgraded by db/migrations/{NNNN}_{name}.sql, which
+-- the worker applies on startup (Migrations). Change a table here AND add a
+-- migration for it, then record the migration in schema_migrations at the end
+-- of this file; CI (bin/check-migrations.php) checks both agree.
 --
 -- Model: a customer belongs to projects (project_member). A project is one
 -- Kubernetes namespace and holds apps. An app is one repository, deployed as a
@@ -398,3 +400,13 @@ CREATE TABLE mcp_oauth_token (
   KEY idx_expires (expires_at),
   CONSTRAINT fk_mcp_token_grant FOREIGN KEY (grant_id) REFERENCES mcp_oauth_grant (id) ON DELETE CASCADE
 );
+
+-- Migrations (db/migrations) already contained in this file; the worker
+-- applies the rest on startup (Migrations::apply)
+CREATE TABLE schema_migrations (
+  name VARCHAR(190) PRIMARY KEY,
+  applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO schema_migrations (name) VALUES
+  ('0001_service');
