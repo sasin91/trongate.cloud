@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../platform/traits/Platform_actions.php';
+require_once __DIR__ . '/../platform/traits/App_upgrades.php';
 require_once __DIR__ . '/../apps/traits/App_records.php';
 require_once __DIR__ . '/../apps/database/traits/App_database_log.php';
 require_once __DIR__ . '/traits/Mcp_grants.php';
@@ -15,6 +16,7 @@ require_once __DIR__ . '/traits/Mcp_grants.php';
  */
 class Mcp_model extends Model {
     use Platform_actions;
+    use App_upgrades;
     use App_records;
     use App_database_log;
     use Mcp_grants;

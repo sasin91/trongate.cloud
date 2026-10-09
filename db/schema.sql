@@ -266,6 +266,28 @@ CREATE TABLE app_log_cursor (
   cursor_time VARCHAR(30) NOT NULL
 );
 
+-- Trongate upgrades (modules/platform/tasks/upgrade_app.php): each run finds
+-- the release an app is on and opens a pull request moving it to the newest.
+CREATE TABLE app_upgrade (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  app_id INT NOT NULL,
+  -- Who asked; NULL for admin (MCP)
+  customer_id INT NULL,
+  -- opened: a pull request is open; current: already on the newest release
+  status ENUM('pending', 'running', 'opened', 'current', 'failed') NOT NULL DEFAULT 'pending',
+  from_version VARCHAR(20) NULL,
+  to_version VARCHAR(20) NULL,
+  pr_url VARCHAR(500) NULL,
+  -- Upgrade_plan::counts() as JSON
+  summary TEXT NULL,
+  error TEXT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  completed_at TIMESTAMP NULL DEFAULT NULL,
+  KEY idx_app (app_id, id),
+  CONSTRAINT fk_app_upgrade_app FOREIGN KEY (app_id) REFERENCES app (id),
+  CONSTRAINT fk_app_upgrade_customer FOREIGN KEY (customer_id) REFERENCES customer (id)
+);
+
 -- customer_id is who pressed Deploy; NULL for webhook, reconcile and admin (MCP) deploys
 CREATE TABLE deployment (
   id INT PRIMARY KEY AUTO_INCREMENT,
@@ -414,4 +436,5 @@ CREATE TABLE schema_migrations (
 
 INSERT INTO schema_migrations (name) VALUES
   ('0001_service'),
-  ('0002_deployment_config_files');
+  ('0002_deployment_config_files'),
+  ('0003_app_upgrade');

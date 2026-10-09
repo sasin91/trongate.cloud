@@ -11,6 +11,11 @@ One GitHub App does everything trongate.cloud needs from GitHub:
   want to deploy. The worker reads them with an installation token scoped to
   one repository and read-only contents (`Github_app::repository_token`), so a
   build never depends on who added the app or whether they are still signed in.
+- **Trongate upgrades.** "Check for an upgrade" on an app's Settings page (or
+  the `upgrade_trongate` MCP tool) commits the upgrade to a new branch and
+  opens a pull request (`modules/platform/tasks/upgrade_app.php`). Only that
+  task asks for a token with contents and pull requests write; builds keep
+  read-only tokens.
 - **Push deploys.** The App's webhook (`POST /webhooks/github`) delivers every
   push on every installation. There is nothing for customers to set up per
   repository.
@@ -25,7 +30,7 @@ organization can own it later via a transfer).
 1. Generate a webhook secret: `openssl rand -hex 32`.
 2. Open this link, which fills in everything except the webhook secret:
 
-   <https://github.com/settings/apps/new?name=trongate.cloud&description=Deploys+your+Trongate+apps+on+trongate.cloud.+An+independent+service%2C+not+affiliated+with+or+endorsed+by+the+Trongate+project.&url=https%3A%2F%2Ftrongate.cloud%2F&callback_urls%5B%5D=https%3A%2F%2Ftrongate.cloud%2Fauth%2Fgithub%2Fcallback&request_oauth_on_install=false&setup_url=https%3A%2F%2Ftrongate.cloud%2Fauth%2Fgithub%2Finstalled&setup_on_update=true&webhook_active=true&webhook_url=https%3A%2F%2Ftrongate.cloud%2Fwebhooks%2Fgithub&events%5B%5D=push&contents=read&metadata=read&emails=read&public=true>
+   <https://github.com/settings/apps/new?name=trongate.cloud&description=Deploys+your+Trongate+apps+on+trongate.cloud.+An+independent+service%2C+not+affiliated+with+or+endorsed+by+the+Trongate+project.&url=https%3A%2F%2Ftrongate.cloud%2F&callback_urls%5B%5D=https%3A%2F%2Ftrongate.cloud%2Fauth%2Fgithub%2Fcallback&request_oauth_on_install=false&setup_url=https%3A%2F%2Ftrongate.cloud%2Fauth%2Fgithub%2Finstalled&setup_on_update=true&webhook_active=true&webhook_url=https%3A%2F%2Ftrongate.cloud%2Fwebhooks%2Fgithub&events%5B%5D=push&contents=write&pull_requests=write&metadata=read&emails=read&public=true>
 
 3. Paste the webhook secret, check the settings against the table below, and
    create the App.
@@ -44,7 +49,7 @@ organization can own it later via a transfer).
 | Setup URL | `https://trongate.cloud/auth/github/installed` |
 | Redirect on update | on |
 | Webhook | Active, URL `https://trongate.cloud/webhooks/github`, the secret from step 1 |
-| Repository permissions | Contents: **Read-only**, Metadata: Read-only (required) |
+| Repository permissions | Contents: **Read and write**, Pull requests: **Read and write** (Trongate upgrades), Metadata: Read-only (required) |
 | Account permissions | Email addresses: **Read-only** (sign-up needs a verified email) |
 | Subscribe to events | **Push** |
 | Where can this GitHub App be installed? | **Any account** |

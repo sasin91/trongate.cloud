@@ -42,6 +42,7 @@ $routes = [
     'apps/(:num)/settings/submit' => 'apps/submit_settings/$1',
     'apps/(:num)/env/submit' => 'apps/submit_env/$1',
     'apps/(:num)/env/delete' => 'apps/delete_env/$1',
+    'apps/(:num)/upgrade' => 'apps/upgrade/$1',
     'apps/(:num)/verify-domain' => 'apps/verify_domain/$1',
     'apps/(:num)/live-state' => 'apps/live_state/$1',
     'apps/(:num)/logs' => 'apps/logs/$1',
