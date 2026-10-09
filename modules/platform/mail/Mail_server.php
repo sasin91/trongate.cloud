@@ -11,8 +11,13 @@ require_once __DIR__ . '/Smtp_session.php';
  */
 final class Mail_server {
 
-    /** Open connections; more are told to come back later */
-    const MAX_CLIENTS = 100;
+    /**
+     * Open connections, and per app once signed in; more are told to come
+     * back later. Each may buffer a message of up to MAX_MESSAGE_BYTES, so
+     * this also bounds memory (30 x 2 MB, under the pod's 128 Mi).
+     */
+    const MAX_CLIENTS = 30;
+    const MAX_CLIENTS_PER_APP = 3;
 
     /** A connection silent this long is closed */
     const IDLE_SECONDS = 120;
@@ -109,6 +114,14 @@ final class Mail_server {
             $client['buffer'] = (string) substr($client['buffer'], $end + 1);
             $reply = $client['session']->line($line);
 
+            // Checked when AUTH succeeds, instead of its 235
+            if ($this->over_app_limit($id)) {
+                $this->send($socket, "421 4.7.0 Too many connections from this app, try again\r\n");
+                $this->close($socket);
+
+                return;
+            }
+
             if ($reply !== '') {
                 $this->send($socket, $reply);
             }
@@ -124,6 +137,19 @@ final class Mail_server {
             $this->send($socket, "500 5.5.2 Line too long, closing\r\n");
             $this->close($socket);
         }
+    }
+
+    /** Whether the client's app has more than MAX_CLIENTS_PER_APP connections */
+    private function over_app_limit(int $id): bool {
+        $app_id = $this->clients[$id]['session']->app_id();
+
+        if ($app_id === null) {
+            return false;
+        }
+
+        $same = array_filter($this->clients, fn(array $client) => $client['session']->app_id() === $app_id);
+
+        return count($same) > self::MAX_CLIENTS_PER_APP;
     }
 
     private function close_idle(): void {

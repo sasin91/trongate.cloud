@@ -49,8 +49,25 @@ if ($listener === false) {
     exit(1);
 }
 
+// Messages taken per app per minute; more get a temporary failure, so a
+// runaway loop in one app cannot flood the platform DB
+const MESSAGES_PER_MINUTE = 60;
+$sent = []; // app id => [minute, count]
+
 // One reconnect per message when the connection was dropped (MariaDB restart, idle timeout)
-$deliver = function (int $app_id, string $from, array $recipients, string $raw) use (&$store, $connect): bool {
+$deliver = function (int $app_id, string $from, array $recipients, string $raw) use (&$store, &$sent, $connect): bool {
+    $minute = intdiv(time(), 60);
+    [$at, $count] = $sent[$app_id] ?? [$minute, 0];
+    $count = $at === $minute ? $count + 1 : 1;
+    $sent = array_filter($sent, fn(array $entry) => $entry[0] === $minute);
+    $sent[$app_id] = [$minute, $count];
+
+    if ($count > MESSAGES_PER_MINUTE) {
+        error_log("App {$app_id} sent more than " . MESSAGES_PER_MINUTE . ' messages this minute, deferring');
+
+        return false;
+    }
+
     try {
         $store->store($app_id, $from, $recipients, $raw);
     } catch (PDOException $e) {

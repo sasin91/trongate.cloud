@@ -53,6 +53,11 @@ final class Smtp_session {
     ) {
     }
 
+    /** The app that signed in, or null before AUTH */
+    function app_id(): ?int {
+        return $this->app_id;
+    }
+
     function greeting(): string {
         return "220 {$this->hostname} ESMTP trongate.cloud mail capture\r\n";
     }

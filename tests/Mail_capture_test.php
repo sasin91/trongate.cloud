@@ -13,7 +13,7 @@ putenv('APP_KEY=test-key-for-mail-capture');
 
 require_once __DIR__ . '/../modules/platform/mail/Mail_capture.php';
 require_once __DIR__ . '/../modules/platform/mail/Mail_message.php';
-require_once __DIR__ . '/../modules/platform/mail/Smtp_session.php';
+require_once __DIR__ . '/../modules/platform/mail/Mail_server.php';
 
 $failures = 0;
 
@@ -193,6 +193,19 @@ $test("Trongate's email module sends through the inbox", function () use ($same)
         $captured = array_map(fn(string $line) => json_decode($line, true), file($out, FILE_IGNORE_NEW_LINES) ?: []);
         $same(1, count($captured));
         $same([7, 'hello@shop.test', ['buyer@example.test']], [$captured[0]['app_id'], $captured[0]['from'], $captured[0]['recipients']]);
+
+        // A fourth signed-in connection of the same app is turned away
+        $replies = [];
+
+        foreach (range(1, Mail_server::MAX_CLIENTS_PER_APP + 1) as $i) {
+            $conn = stream_socket_client("tcp://127.0.0.1:{$port}");
+            fgets($conn);
+            fwrite($conn, 'AUTH PLAIN ' . base64_encode("\0me\0" . Mail_capture::password(7)) . "\r\n");
+            $replies[] = substr((string) fgets($conn), 0, 3);
+            $open[] = $conn;
+        }
+
+        $same(['235', '235', '235', '421'], $replies);
 
         $message = Mail_message::parse($captured[0]['raw']);
         $same(['Shop <hello@shop.test>', 'buyer@example.test', 'Your order'], [$message['from'], $message['to'], $message['subject']]);

@@ -469,5 +469,30 @@ $test('with mail capture off trongate_email.php is left alone', function () use 
     $same(false, isset($out['trongate_email.php']));
 });
 
+$test('only apps with mail capture off may reach SMTP submission ports', function () use ($same) {
+    $files = ['config.php' => "<?php\n"];
+    $deployment = ['id' => 3, 'image' => 'registry/p7:abc', 'config_files' => json_encode($files)];
+    $pod_labels = function (array $app) use ($deployment): array {
+        $by_kind = array_column(Manifests::app($app + ['id' => 7, 'project_id' => 1, 'namespace' => 'project-1', 'slug' => 'shop', 'type' => 'trongate_v2'], $deployment, ['host' => 'db', 'operator_name' => 'shared-1', 'password' => 'pw']), null, 'kind');
+
+        return $by_kind['Deployment']['spec']['template']['metadata']['labels'];
+    };
+
+    $same(false, isset($pod_labels([])[Manifests::OWN_SMTP_LABEL]));
+    $same('true', $pod_labels(['mail_capture' => 0])[Manifests::OWN_SMTP_LABEL]);
+
+    $by_name = [];
+
+    foreach (Manifests::tenant('project-1') as $manifest) {
+        if ($manifest['kind'] === 'NetworkPolicy') {
+            $by_name[$manifest['metadata']['name']] = $manifest['spec'];
+        }
+    }
+
+    $same([80, 443], array_column($by_name['allow-internet']['egress'][0]['ports'], 'port'));
+    $same([465, 587], array_column($by_name['allow-smtp-submission']['egress'][0]['ports'], 'port'));
+    $same([Manifests::OWN_SMTP_LABEL => 'true'], $by_name['allow-smtp-submission']['podSelector']['matchLabels']);
+});
+
 echo $failures === 0 ? "\nAll tests passed\n" : "\n{$failures} failed\n";
 exit($failures === 0 ? 0 : 1);
