@@ -10,6 +10,7 @@ parameters:
         - modules/github_auth
         - modules/mcp
         - modules/metrics
+        - modules/news
         - modules/platform
         - modules/projects
         - modules/secrets

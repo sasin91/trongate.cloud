@@ -8,6 +8,8 @@ docs
 .env.*
 !.env.example
 *.md
+# News posts are served by modules/news
+!modules/news/posts/*.md
 Dockerfile*
 .dockerignore
 .php-cs-fixer.cache

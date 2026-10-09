@@ -27,7 +27,10 @@
         "analyse": "phpstan analyse --memory-limit=1G",
         "cs": "php-cs-fixer check --diff",
         "cs:fix": "php-cs-fixer fix",
-        "test": "php tests/Config_editor_test.php",
+        "test": [
+            "php tests/Config_editor_test.php",
+            "php tests/News_test.php"
+        ],
         "qa": [
             "@lint",
             "@cs",

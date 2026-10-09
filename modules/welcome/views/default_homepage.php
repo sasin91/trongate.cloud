@@ -42,34 +42,15 @@ $faq = [
 <html lang="en">
 
 <head>
-    <base href="<?= BASE_URL ?>">
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>trongate.cloud - push your Trongate app, it's live</title>
-    <meta name="description" content="Hosting for apps built with the Trongate PHP framework. You push, we deploy: simple, fast, convenient.">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@800;900&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
-    <link rel="stylesheet" href="<?= BASE_URL ?>css/landing.css">
+    <?php
+    $page_title = "trongate.cloud - push your Trongate app, it's live";
+    $page_description = 'Hosting for apps built with the Trongate PHP framework. You push, we deploy: simple, fast, convenient.';
+    require APPPATH . 'modules/templates/views/_site_head.php';
+    ?>
 </head>
 
 <body class="lp">
-    <header class="lp-top">
-        <a href="<?= BASE_URL ?>" class="lp-brand">
-            <?php require APPPATH . 'modules/templates/views/_mark.php'; ?>
-            <span>trongate<b>.cloud</b></span>
-        </a>
-        <nav class="lp-nav" aria-label="Main">
-            <a href="#how">How it works</a>
-            <a href="#stability">Stability</a>
-            <a href="#features">Features</a>
-            <a href="#faq">FAQ</a>
-        </nav>
-        <div class="lp-top-actions">
-            <a href="login" class="lp-login">Log in</a>
-            <a href="register" class="lp-btn">Start free</a>
-        </div>
-    </header>
+    <?php require APPPATH . 'modules/templates/views/_site_header.php'; ?>
 
     <main>
         <section class="lp-hero" id="top">
@@ -187,18 +168,7 @@ $faq = [
         </section>
     </main>
 
-    <footer class="lp-footer">
-        <div class="lp-wrap lp-foot">
-            <div class="lp-foot-brand">
-                <span class="lp-brand-text">trongate<b>.cloud</b></span>
-                <span>Hosting for apps built with the Trongate framework.</span>
-                <small>An independent service. Not affiliated with or endorsed by the Trongate project.</small>
-            </div>
-            <div class="lp-foot-col"><strong>Product</strong><a href="#how">How it works</a><a href="#stability">Stability</a><a href="#features">Features</a></div>
-            <div class="lp-foot-col"><strong>Resources</strong><a href="https://trongate.io" target="_blank" rel="noopener">Trongate framework</a><a href="https://trongate.io/documentation" target="_blank" rel="noopener">Trongate docs</a></div>
-            <div class="lp-foot-col"><strong>Account</strong><a href="login">Log in</a><a href="register">Start free</a></div>
-        </div>
-    </footer>
+    <?php require APPPATH . 'modules/templates/views/_site_footer.php'; ?>
 
     <script>
         // Scale the 1440px-wide dashboard shot to fit its frame

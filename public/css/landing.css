@@ -604,6 +604,229 @@ body.lp {
     font-size: 14px;
 }
 
+/* News (modules/news) */
+
+.lp-nav a[aria-current] {
+    color: var(--navy);
+    font-weight: 500;
+}
+
+.lp-news {
+    padding-top: 64px;
+    padding-bottom: 120px;
+}
+
+.lp-news-head {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    max-width: 720px;
+    margin-bottom: 56px;
+}
+
+.lp-news-head .lp-h2,
+.lp-post .lp-h2 {
+    margin: 0;
+}
+
+.lp-news-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 64px;
+    align-items: start;
+}
+
+.lp-news-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.lp .lp-news-tabs a {
+    padding: 7px 14px;
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    background: #fff;
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 500;
+    text-decoration: none;
+}
+
+.lp .lp-news-tabs a[aria-current] {
+    background: var(--navy);
+    border-color: var(--navy);
+    color: #fff;
+}
+
+.lp-news-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.lp-news-list li {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 32px 0;
+    border-bottom: 1px solid var(--line);
+}
+
+.lp-news-list h2 {
+    margin: 0;
+    font-size: 24px;
+    line-height: 1.25;
+    letter-spacing: -0.015em;
+}
+
+.lp .lp-news-list h2 a {
+    color: var(--ink);
+    text-decoration: none;
+}
+
+.lp .lp-news-list h2 a:hover {
+    color: var(--accent-ink);
+}
+
+.lp-news-list p,
+.lp-news-aside p,
+.lp-news-empty {
+    margin: 0;
+    color: var(--muted);
+}
+
+.lp-news-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--muted);
+}
+
+.lp-news-kind {
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+}
+
+.lp-news-kind-writing {
+    background: #e8f5ee;
+    color: #157a49;
+}
+
+.lp-news-empty {
+    padding: 32px 0;
+}
+
+.lp-news-aside {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    position: sticky;
+    top: 24px;
+}
+
+.lp-news-aside > div {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 24px;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+}
+
+.lp-news-aside strong {
+    color: var(--navy);
+}
+
+.lp-post {
+    max-width: 720px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.lp .lp-post-back {
+    color: var(--muted);
+    font-size: 14px;
+    text-decoration: none;
+}
+
+.lp-prose {
+    margin-top: 16px;
+    font-size: 17px;
+    line-height: 1.7;
+}
+
+.lp-prose h2 {
+    margin: 40px 0 12px;
+    font-size: 26px;
+    line-height: 1.25;
+    letter-spacing: -0.015em;
+}
+
+.lp-prose h3 {
+    margin: 32px 0 8px;
+    font-size: 19px;
+}
+
+.lp-prose p,
+.lp-prose ul,
+.lp-prose ol,
+.lp-prose blockquote,
+.lp-prose pre {
+    margin: 0 0 18px;
+}
+
+.lp-prose li + li {
+    margin-top: 6px;
+}
+
+.lp-prose code {
+    font-family: var(--mono);
+    font-size: 0.88em;
+    padding: 1px 5px;
+    border-radius: 5px;
+    background: var(--accent-soft);
+}
+
+.lp-prose pre {
+    padding: 18px 20px;
+    overflow-x: auto;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+}
+
+.lp-prose pre code {
+    padding: 0;
+    background: none;
+    font-size: 14px;
+}
+
+.lp-prose blockquote {
+    padding-left: 18px;
+    border-left: 3px solid var(--accent-soft);
+    color: var(--muted);
+}
+
+.lp-prose a {
+    color: var(--accent-ink);
+}
+
+.lp-post-foot {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    margin-top: 24px;
+    padding-top: 32px;
+    border-top: 1px solid var(--line);
+}
+
 @media (max-width: 960px) {
     .lp-nav {
         display: none;
@@ -624,7 +847,8 @@ body.lp {
     .lp-3,
     .lp-2,
     .lp-faq,
-    .lp-stable {
+    .lp-stable,
+    .lp-news-grid {
         grid-template-columns: minmax(0, 1fr);
     }
 
@@ -649,6 +873,10 @@ body.lp {
 
     .lp-frame-inner {
         height: 420px;
+    }
+
+    .lp-news-aside {
+        position: static;
     }
 
     .lp-faq {
