@@ -219,9 +219,9 @@ $test('verify catches a value that is not the one asked for', function () use ($
 // --- Array keys and file scope ------------------------------------------------
 
 $database_rules = fn(string $host = 'shared-1.databases') => [
-    new Config_rule("\$databases['default']['host']", $host, 'database.php'),
-    new Config_rule("\$databases['default']['port']", '3306', 'database.php'),
-    new Config_rule("\$databases['default']['password']", "p'w", 'database.php'),
+    new Config_rule('databases.default.host', $host, 'database.php'),
+    new Config_rule('databases.default.port', '3306', 'database.php'),
+    new Config_rule('databases.default.password', "p'w", 'database.php'),
 ];
 
 $test('array elements are set inside the assigned literal', function () use ($same, $database_rules) {
@@ -263,8 +263,8 @@ $test('array elements are set through partial and full assignments', function ()
         PHP;
 
     $out = Config_editor::apply(['trongate_email.php' => $source], [
-        new Config_rule("\$config['trongate_email']['smtp_host']", 'mail.example.com'),
-        new Config_rule("\$config['trongate_email']['smtp_port']", 2525),
+        new Config_rule('config.trongate_email.smtp_host', 'mail.example.com'),
+        new Config_rule('config.trongate_email.smtp_port', 2525),
     ])['trongate_email.php'];
 
     $same(true, str_contains($out, "'smtp_host' => 'mail.example.com',"));
@@ -275,7 +275,7 @@ $test('array elements are set through partial and full assignments', function ()
 $test('a missing array element is appended as an assignment', function () use ($same) {
     $out = Config_editor::apply(
         ['database.php' => "<?php\n\$databases = ['default' => ['host' => 'x']];\n"],
-        [new Config_rule("\$databases['default']['user']", 'p7', 'database.php')],
+        [new Config_rule('databases.default.user', 'p7', 'database.php')],
     );
     $same(['database.php' => "<?php\n\$databases = ['default' => ['host' => 'x']];\n\$databases['default']['user'] = 'p7';\n"], $out);
 });
@@ -306,7 +306,7 @@ $test('an unscoped rule edits whichever files define the key, and only those', f
 });
 
 $test('rule keys and files are validated', function () use ($same) {
-    foreach (['$x', "\$x[\"a\"]", 'A-B', "\$x['a'];"] as $key) {
+    foreach (['$x', 'x..a', 'A-B', 'x.', '.x', '1x.a'] as $key) {
         try {
             new Config_rule($key, 'v');
             throw new RuntimeException("Accepted {$key}");
@@ -320,7 +320,7 @@ $test('rule keys and files are validated', function () use ($same) {
     } catch (InvalidArgumentException) {
     }
 
-    $same(['databases', ['default', 'host']], (fn(Config_rule $r) => [$r->variable, $r->path])(new Config_rule("\$databases['default']['host']", 'x')));
+    $same(['databases', ['default', 'host']], (fn(Config_rule $r) => [$r->variable, $r->path])(new Config_rule('databases.default.host', 'x')));
 });
 
 // --- The platform's rules -------------------------------------------------------

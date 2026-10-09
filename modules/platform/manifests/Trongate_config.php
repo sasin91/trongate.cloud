@@ -30,7 +30,7 @@ class Trongate_config {
     /**
      * What the platform sets in an app's config/*.php: BASE_URL and ENV
      * wherever the app defines them, and the database connection in
-     * database.php (v2 apps read $databases['default'], v1 apps the
+     * database.php (v2 apps read databases.default.*, v1 apps the
      * HOST/PORT/USER/PASSWORD/DATABASE constants).
      *
      * @param array{host: string, port: string, user: string, password: string, database: string} $db
@@ -46,7 +46,7 @@ class Trongate_config {
         $v1 = ($app['type'] ?? 'trongate_v2') === 'trongate_v1';
 
         foreach (['host', 'port', 'user', 'password', 'database'] as $key) {
-            $rules[] = new Config_rule($v1 ? strtoupper($key) : "\$databases['default']['{$key}']", (string) $db[$key], 'database.php');
+            $rules[] = new Config_rule($v1 ? strtoupper($key) : "databases.default.{$key}", (string) $db[$key], 'database.php');
         }
 
         return $rules;

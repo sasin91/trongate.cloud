@@ -3,12 +3,13 @@
 /**
  * One value the platform sets in an app's config/*.php files (Config_editor).
  *
- * $key is either a constant name, matching define('NAME', ...) and
- * `const NAME = ...;`, or an array element written as PHP, matching it in
- * any assignment to that variable or a part of it:
+ * $key without a dot is a constant, matching define('NAME', ...) and
+ * `const NAME = ...;`. With dots it is a variable followed by array keys,
+ * matched in any assignment to the variable or a part of it:
  *
  *     new Config_rule('ENV', 'prod')
- *     new Config_rule("\$databases['default']['host']", 'db', 'database.php')
+ *     new Config_rule('databases.default.host', 'db', 'database.php')
+ *     new Config_rule('config.trongate_email.smtp_host', 'mail.example.com')
  *
  * $file limits the rule to one file in config/; without it the rule applies
  * to every file. A key found nowhere in scope is appended to $file
@@ -16,8 +17,8 @@
  */
 final readonly class Config_rule {
 
-    /** Constant name, or $variable with one or more ['key'] */
-    const KEY_PATTERN = '/^(?:[A-Za-z_][A-Za-z0-9_]*|\$[A-Za-z_][A-Za-z0-9_]*(?:\[\'[^\'\\\\]*\'\])+)$/';
+    /** NAME, or variable.key[.key...] (keys are anything but dots) */
+    const KEY_PATTERN = '/^[A-Za-z_][A-Za-z0-9_]*(\.[^.]+)*$/';
 
     const FILE_PATTERN = '/^[A-Za-z0-9_-]+\.php$/';
 
@@ -43,16 +44,10 @@ final readonly class Config_rule {
             throw new InvalidArgumentException("Invalid config file: {$file}");
         }
 
-        if ($key[0] === '$') {
-            preg_match_all("/\\['([^']*)'\\]/", $key, $keys);
-            $this->constant = null;
-            $this->variable = substr($key, 1, (int) strpos($key, '[') - 1);
-            $this->path = $keys[1];
-        } else {
-            $this->constant = $key;
-            $this->variable = null;
-            $this->path = [];
-        }
+        $segments = explode('.', $key);
+        $this->constant = count($segments) === 1 ? $key : null;
+        $this->variable = count($segments) > 1 ? array_shift($segments) : null;
+        $this->path = $this->variable !== null ? $segments : [];
     }
 
     function applies_to(string $file): bool {

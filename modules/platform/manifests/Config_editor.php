@@ -29,11 +29,11 @@ use PhpParser\PrettyPrinter\Standard;
  *
  * A constant key matches every define('NAME', ...) call (any quoting,
  * \define, DEFINE, named arguments, in if/else or a `defined() ||` guard) and
- * global `const NAME = ...;`, never a class constant. An array key such as
- * $databases['default']['host'] matches the element in any assignment to the
- * variable or a part of it: `$databases = [...]`, `$databases['default'] =
- * [...]` or `$databases['default']['host'] = ...`. A key found nowhere is
- * appended to its file.
+ * global `const NAME = ...;`, never a class constant. A dotted key such as
+ * databases.default.host matches $databases['default']['host'] in any
+ * assignment to the variable or a part of it: `$databases = [...]`,
+ * `$databases['default'] = [...]` or `$databases['default']['host'] = ...`.
+ * A key found nowhere is appended to its file.
  *
  * Each edited file is parsed again, checked to hold exactly the rules' values
  * and compiled with `php -l` before it is returned.
