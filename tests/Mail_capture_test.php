@@ -64,6 +64,14 @@ $test('passwords carry the app id and only check out with the key', function () 
     $same(null, Mail_capture::app_id(''));
 });
 
+$test('the inbox entrypoint loads its classes and stops without MAIL_KEY', function () use ($same) {
+    $process = proc_open([PHP_BINARY, __DIR__ . '/../modules/platform/mail/server.php'], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, null, ['MAIL_KEY' => '']);
+    $output = stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
+    $code = proc_close($process);
+
+    $same([1, true], [$code, str_contains($output, 'MAIL_KEY is required')]);
+});
+
 $test('capture is on unless the app turned it off', function () use ($same) {
     $same([true, true, false], [Mail_capture::enabled([]), Mail_capture::enabled(['mail_capture' => '1']), Mail_capture::enabled(['mail_capture' => 0])]);
 });

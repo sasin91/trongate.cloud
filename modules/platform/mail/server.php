@@ -13,10 +13,16 @@
 
 defined('APPPATH') || define('APPPATH', dirname(__DIR__, 3) . '/');
 
-require APPPATH . 'modules/platform/worker/Runtime.php';
-require __DIR__ . '/Mail_capture.php';
-require __DIR__ . '/Mail_server.php';
-require __DIR__ . '/Mail_store.php';
+require_once APPPATH . 'modules/platform/worker/Runtime.php';
+require_once __DIR__ . '/Mail_capture.php';
+require_once __DIR__ . '/Mail_server.php';
+require_once __DIR__ . '/Mail_store.php';
+
+// Signs the apps' passwords (Mail_capture::password)
+if (MAIL_KEY === '') {
+    error_log('MAIL_KEY is required');
+    exit(1);
+}
 
 // Retry the first connection like the worker: the platform MariaDB's
 // NetworkPolicy refuses a new pod's IP until k3s has synced it
@@ -33,12 +39,6 @@ $connect = function (): PDO {
 try {
     $store = new Mail_store($connect());
 } catch (PDOException) {
-    exit(1);
-}
-
-// Signs the apps' passwords (Mail_capture::password)
-if (MAIL_KEY === '') {
-    error_log('MAIL_KEY is required');
     exit(1);
 }
 
