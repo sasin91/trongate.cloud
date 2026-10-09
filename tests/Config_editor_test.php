@@ -7,6 +7,9 @@
  * Run: php tests/Config_editor_test.php (exits non-zero on a failure)
  */
 
+putenv('APP_KEY=test-key-for-config-rules');
+putenv('MAIL_KEY=test-mail-key');
+
 require_once __DIR__ . '/../modules/platform/manifests/Manifests.php';
 require_once __DIR__ . '/../modules/platform/manifests/Config_editor.php';
 
@@ -363,7 +366,7 @@ $test('a v2 app gets BASE_URL, ENV and $databases set', function () use ($same, 
     ];
     $out = Trongate_config::config_files($files, ['id' => 7, 'slug' => 'shop', 'trongate_env' => 'staging'], $db);
 
-    $same(['config.php', 'database.php'], array_keys($out));
+    $same(['config.php', 'database.php', 'trongate_email.php'], array_keys($out));
     $same("<?php\ndefine('BASE_URL', 'https://shop." . PLATFORM_APPS_DOMAIN . "/');\ndefine('ENV', 'staging');\n", $out['config.php']);
     $same("<?php\n\$databases = ['default' => ['host' => 'shared-1.databases', 'port' => '3306', 'user' => 'tc_p7', 'password' => 'pw', 'database' => 'tc_p7']];\n", $out['database.php']);
 });
@@ -396,6 +399,100 @@ $test('Manifests::app mounts the edited files from the app Secret', function () 
     $same(['name' => 'config-files', 'mountPath' => Manifests::APP_DIR . '/config/config.php', 'subPath' => 'config.php', 'readOnly' => true], $mounts[Manifests::APP_DIR . '/config/config.php']);
     $same(true, isset($mounts[Manifests::APP_DIR . '/config/database.php']));
     $same(false, isset($mounts[Manifests::APP_DIR . '/config/site_owner.php']));
+});
+
+/** Run an edited trongate_email.php in a fresh PHP and return $config['trongate_email'] */
+$run_email = function (string $source): array {
+    $file = tempnam(sys_get_temp_dir(), 'cfg');
+    file_put_contents($file, $source);
+    $code = 'putenv("SMTP_USER=env@shop.test"); require $argv[1]; echo json_encode($config["trongate_email"]);';
+    $out = shell_exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($code) . ' ' . escapeshellarg($file) . ' 2>&1');
+    unlink($file);
+
+    return json_decode(trim((string) $out), true) ?? throw new RuntimeException("Config did not run: {$out}");
+};
+
+$stock_email = <<<'PHP'
+    <?php
+    $config['trongate_email'] = [
+
+        // Your SMTP server hostname
+        'smtp_host' => '',
+
+        // SMTP port (465 for SSL, 587 for STARTTLS)
+        'smtp_port' => 465,
+
+        // SMTP username (also used as the 'From' email address)
+        'smtp_user' => '',
+
+        // SMTP password
+        'smtp_pass' => '',
+
+        // Security: 'ssl', 'tls', or '' for no encryption
+        'smtp_secure' => 'ssl',
+
+        // Optional: Display name shown as the sender
+        'smtp_from_name' => 'Trongate Support',
+    ];
+    PHP;
+
+$test('mail capture points the stock trongate_email.php at the inbox', function () use ($same, $db, $run_email, $stock_email) {
+    $out = Trongate_config::config_files(['trongate_email.php' => $stock_email], ['id' => 7, 'slug' => 'shop'], $db);
+
+    $same([
+        'smtp_host' => PLATFORM_MAIL_HOST,
+        'smtp_port' => PLATFORM_MAIL_PORT,
+        'smtp_user' => 'noreply@shop.' . PLATFORM_APPS_DOMAIN,
+        'smtp_pass' => Mail_capture::password(7),
+        'smtp_secure' => '',
+        'smtp_from_name' => 'Trongate Support',
+    ], $run_email($out['trongate_email.php']));
+    $same(true, str_contains($out['trongate_email.php'], '// Optional: Display name shown as the sender'));
+});
+
+$test("mail capture keeps the app's own From address", function () use ($same, $db, $run_email, $stock_email) {
+    $files = ['trongate_email.php' => str_replace("'smtp_user' => ''", "'smtp_user' => 'hello@shop.test'", $stock_email)];
+    $same('hello@shop.test', $run_email(Trongate_config::config_files($files, ['id' => 7, 'slug' => 'shop'], $db)['trongate_email.php'])['smtp_user']);
+
+    $files = ['trongate_email.php' => str_replace("'smtp_user' => ''", "'smtp_user' => getenv('SMTP_USER')", $stock_email)];
+    $same('env@shop.test', $run_email(Trongate_config::config_files($files, ['id' => 7, 'slug' => 'shop'], $db)['trongate_email.php'])['smtp_user']);
+});
+
+$test('mail capture creates trongate_email.php when the app has none', function () use ($same, $db, $run_email) {
+    $out = Trongate_config::config_files(['config.php' => "<?php\n"], ['id' => 7, 'slug' => 'shop'], $db);
+
+    $same(Mail_capture::password(7), $run_email($out['trongate_email.php'])['smtp_pass']);
+});
+
+$test('with mail capture off trongate_email.php is left alone', function () use ($same, $db, $stock_email) {
+    $out = Trongate_config::config_files(['trongate_email.php' => $stock_email], ['id' => 7, 'slug' => 'shop', 'mail_capture' => 0], $db);
+
+    $same(false, isset($out['trongate_email.php']));
+});
+
+$test('only apps with mail capture off may reach SMTP submission ports', function () use ($same) {
+    $files = ['config.php' => "<?php\n"];
+    $deployment = ['id' => 3, 'image' => 'registry/p7:abc', 'config_files' => json_encode($files)];
+    $pod_labels = function (array $app) use ($deployment): array {
+        $by_kind = array_column(Manifests::app($app + ['id' => 7, 'project_id' => 1, 'namespace' => 'project-1', 'slug' => 'shop', 'type' => 'trongate_v2'], $deployment, ['host' => 'db', 'operator_name' => 'shared-1', 'password' => 'pw']), null, 'kind');
+
+        return $by_kind['Deployment']['spec']['template']['metadata']['labels'];
+    };
+
+    $same(false, isset($pod_labels([])[Manifests::OWN_SMTP_LABEL]));
+    $same('true', $pod_labels(['mail_capture' => 0])[Manifests::OWN_SMTP_LABEL]);
+
+    $by_name = [];
+
+    foreach (Manifests::tenant('project-1') as $manifest) {
+        if ($manifest['kind'] === 'NetworkPolicy') {
+            $by_name[$manifest['metadata']['name']] = $manifest['spec'];
+        }
+    }
+
+    $same([80, 443], array_column($by_name['allow-internet']['egress'][0]['ports'], 'port'));
+    $same([465, 587], array_column($by_name['allow-smtp-submission']['egress'][0]['ports'], 'port'));
+    $same([Manifests::OWN_SMTP_LABEL => 'true'], $by_name['allow-smtp-submission']['podSelector']['matchLabels']);
 });
 
 echo $failures === 0 ? "\nAll tests passed\n" : "\n{$failures} failed\n";

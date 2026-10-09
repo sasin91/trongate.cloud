@@ -42,3 +42,6 @@ data:
   DEPLOY_RECONCILE_INTERVAL: "600"
   # Seconds between custom-domain DNS rechecks (worker schedule_domain_rechecks task); 0 = off
   DOMAIN_RECHECK_INTERVAL: "600"
+  # The mail inbox (mail.yaml) that apps with mail capture on send to
+  PLATFORM_MAIL_HOST: trongate-cloud-mail.trongate-cloud.svc.cluster.local
+  PLATFORM_MAIL_PORT: "2525"

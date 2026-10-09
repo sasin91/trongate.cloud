@@ -3,6 +3,7 @@
 require_once APPPATH . 'modules/platform/manifests/Manifests.php';
 require_once APPPATH . 'modules/platform/manifests/App_env.php';
 require_once APPPATH . 'modules/platform/manifests/Project_service.php';
+require_once APPPATH . 'modules/platform/mail/Mail_capture.php';
 require_once APPPATH . 'modules/platform/traits/Live_app_state.php';
 require_once APPPATH . 'modules/services/traits/Provider_clients.php';
 require_once APPPATH . 'modules/apps/traits/App_rules.php';
@@ -164,6 +165,7 @@ trait Mcp_tools {
                     'always_on' => ['type' => 'boolean', 'description' => 'Never sleep when idle (needed when other apps call it directly)'],
                     'auto_deploy' => ['type' => 'boolean', 'description' => 'Deploy on every push to the branch'],
                     'trongate_env' => ['type' => 'string', 'description' => "Trongate's ENV constant in config/config.php, e.g. " . implode(', ', Trongate_config::ENV_SUGGESTIONS) . ' (dev shows errors)'],
+                    'mail_capture' => ['type' => 'boolean', 'description' => "Catch mail sent with Trongate's email module on the app's Mail tab instead of delivering it (on by default); off sends with the app's own config/trongate_email.php"],
                 ], ['app_id']),
                 'annotations' => $this->_hints(false, true, true),
                 'scopes' => ['customer'],
@@ -379,6 +381,7 @@ trait Mcp_tools {
             'php_extensions' => $this->_parse_php_extensions((string) ($app->php_extensions ?? '')),
             'auto_deploy' => (bool) ($app->auto_deploy ?? false),
             'trongate_env' => Trongate_config::env((array) $app),
+            'mail_capture' => Mail_capture::enabled((array) $app),
             'database' => empty($app->database_server_id) ? null : Manifests::database_name((int) $app->id),
             'current_deployment' => $current,
             'trongate_upgrade' => $this->_upgrade_summary($this->model->latest_upgrade((int) $app->id)),
@@ -474,6 +477,7 @@ trait Mcp_tools {
             'always_on' => (bool) $app->always_on,
             'auto_deploy' => (bool) $app->auto_deploy,
             'trongate_env' => Trongate_config::env((array) $app),
+            'mail_capture' => Mail_capture::enabled((array) $app),
         ];
         $changed = [];
 
@@ -498,7 +502,7 @@ trait Mcp_tools {
             $changed[] = 'php_extensions';
         }
 
-        foreach (['always_on', 'auto_deploy'] as $flag) {
+        foreach (['always_on', 'auto_deploy', 'mail_capture'] as $flag) {
             if (array_key_exists($flag, $args)) {
                 $settings[$flag] = $this->_bool_arg($args, $flag);
                 $changed[] = $flag;
@@ -528,6 +532,7 @@ trait Mcp_tools {
                 'always_on' => (bool) $app->always_on,
                 'auto_deploy' => (bool) $app->auto_deploy,
                 'trongate_env' => Trongate_config::env((array) $app),
+                'mail_capture' => Mail_capture::enabled((array) $app),
             ],
             'next' => 'Settings take effect on the next deploy: deploy_app {"app_id": ' . $app->id . '}',
         ];

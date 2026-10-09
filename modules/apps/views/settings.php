@@ -61,6 +61,14 @@
             <p class="form-hint">Pushes to <code><?= htmlspecialchars((string) $app->source_branch) ?></code> deploy automatically through the trongate.cloud GitHub app. Turn this off to deploy only when you press Deploy.</p>
         </div>
 
+        <div class="form-group">
+            <label class="checkbox-label">
+                <input type="checkbox" name="mail_capture" value="1" <?= $mail_capture ? 'checked' : '' ?>>
+                Capture mail
+            </label>
+            <p class="form-hint">Mail your app sends with Trongate's email module goes to its <a href="apps/<?= $app->id ?>/mail">Mail</a> tab instead of being delivered; we set the SMTP settings in <code>config/trongate_email.php</code> for you. Turn this off to send real mail with your own SMTP settings in that file (port 587 or 465).</p>
+        </div>
+
         <div class="form-actions">
             <button type="submit" class="btn-primary">Save settings</button>
             <a href="apps/<?= $app->id ?>" class="btn-secondary">Cancel</a>

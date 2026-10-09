@@ -49,3 +49,42 @@ spec:
   username: tcloud
   host: "%"
   cleanupPolicy: Skip
+---
+# The mail inbox's own user (mail.yaml): only what Mail_store does to app_mail.
+# The inbox is reachable from tenant pods, so it never gets the tcloud user.
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: User
+metadata:
+  name: tcloud-mail
+  namespace: trongate-cloud
+spec:
+  mariaDbRef:
+    name: platform
+    namespace: trongate-cloud
+  name: tcloud_mail
+  host: "%"
+  passwordSecretKeyRef:
+    name: trongate-cloud-mail
+    key: MAIL_DB_PASSWORD
+  maxUserConnections: 5
+  cleanupPolicy: Delete
+---
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: Grant
+metadata:
+  name: tcloud-mail
+  namespace: trongate-cloud
+spec:
+  mariaDbRef:
+    name: platform
+    namespace: trongate-cloud
+  privileges:
+    - SELECT
+    - INSERT
+    - DELETE
+  database: tcloud
+  # Created by db/migrations/0004_app_mail.sql; the operator retries until it exists
+  table: app_mail
+  username: tcloud_mail
+  host: "%"
+  cleanupPolicy: Delete

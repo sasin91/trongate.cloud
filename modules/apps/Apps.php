@@ -8,6 +8,7 @@ require_once APPPATH . 'modules/platform/manifests/Manifests.php';
 require_once APPPATH . 'modules/platform/manifests/App_env.php';
 require_once APPPATH . 'modules/platform/manifests/Domain_dns.php';
 require_once APPPATH . 'modules/platform/live/App_log_rates.php';
+require_once APPPATH . 'modules/platform/mail/Mail_capture.php';
 
 /**
  * Apps inside a project: create, overview, deploy/rollback, logs, platform settings and delete.
@@ -241,6 +242,7 @@ class Apps extends Trongate {
             'always_on' => $is_resubmit ? (bool) post('always_on') : (bool) $app->always_on,
             'trongate_env' => $is_resubmit ? (string) post('trongate_env', true) : Trongate_config::env((array) $app),
             'auto_deploy' => $is_resubmit ? (bool) post('auto_deploy') : (bool) $app->auto_deploy,
+            'mail_capture' => $is_resubmit ? (bool) post('mail_capture') : Mail_capture::enabled((array) $app),
             'domain_record' => !empty($app->domain) ? $this->model->domain_verification_record((int) $app->id, (string) $app->domain) : null,
             'domain_routed' => Manifests::custom_domains((array) $app) !== [],
             'domain_secured' => Manifests::secured_domains((array) $app) !== [],
@@ -326,6 +328,7 @@ class Apps extends Trongate {
             'always_on' => (bool) post('always_on'),
             'auto_deploy' => (bool) post('auto_deploy'),
             'trongate_env' => trim((string) post('trongate_env', true)),
+            'mail_capture' => (bool) post('mail_capture'),
         ]);
 
         set_flashdata('Settings saved. They take effect on the next deployment.');

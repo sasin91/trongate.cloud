@@ -235,6 +235,8 @@ CREATE TABLE app (
   always_on TINYINT(1) NOT NULL DEFAULT 0,
   -- Trongate's ENV constant, patched into config/config.php (Trongate_config::env)
   trongate_env VARCHAR(20) NOT NULL DEFAULT 'dev',
+  -- Mail from config/trongate_email.php goes to the platform's inbox (Mail_capture)
+  mail_capture TINYINT(1) NOT NULL DEFAULT 1,
   database_server_id INT NULL,
   current_deployment_id INT NULL,
 
@@ -246,6 +248,23 @@ CREATE TABLE app (
   KEY idx_project_deleted (project_id, deleted_at),
   CONSTRAINT fk_app_project FOREIGN KEY (project_id) REFERENCES project (id),
   CONSTRAINT fk_app_database_server FOREIGN KEY (database_server_id) REFERENCES database_server (id)
+);
+
+-- Messages the inbox captured (Mail_store), kept per Mail_capture's limits
+CREATE TABLE app_mail (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  app_id INT NOT NULL,
+  -- The SMTP envelope
+  mail_from VARCHAR(320) NOT NULL,
+  recipients VARCHAR(2000) NOT NULL,
+  -- From and Subject headers, decoded, for the list
+  from_header VARCHAR(500) NOT NULL DEFAULT '',
+  subject VARCHAR(500) NOT NULL DEFAULT '',
+  bytes INT NOT NULL,
+  raw MEDIUMBLOB NOT NULL COMMENT 'the message as sent',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_app (app_id, id),
+  KEY idx_created (created_at)
 );
 
 -- Log lines per app per 5-minute window (UTC), by level: sampled from running apps'
@@ -437,4 +456,5 @@ CREATE TABLE schema_migrations (
 INSERT INTO schema_migrations (name) VALUES
   ('0001_service'),
   ('0002_deployment_config_files'),
-  ('0003_app_upgrade');
+  ('0003_app_upgrade'),
+  ('0004_app_mail');

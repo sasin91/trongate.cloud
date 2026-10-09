@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../../../config/platform.php';
 require_once __DIR__ . '/Trongate_config.php';
 require_once __DIR__ . '/App_env.php';
+require_once __DIR__ . '/../mail/Mail_capture.php';
 
 /**
  * Kubernetes manifests for tenants and their apps, as arrays ready for Kubernetes::apply_all().
@@ -101,6 +102,12 @@ class Manifests {
     // Egress to the internet excludes cluster, node and link-local (metadata) ranges
     const PRIVATE_V4 = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '100.64.0.0/10', '169.254.0.0/16'];
     const PRIVATE_V6 = ['fc00::/7', 'fe80::/10'];
+
+    // The mail inbox (deploy/k8s/platform/mail.yaml): its namespace and pod label
+    const MAIL_NAMESPACE = 'trongate-cloud';
+    const MAIL_APP_LABEL = 'trongate-cloud-mail';
+    // On the pods of apps with mail capture off: allow-smtp-submission admits them
+    const OWN_SMTP_LABEL = self::LABEL_PREFIX . '/own-smtp';
 
     // Custom domains (see domain_gateway()). Gateway listener ports are Traefik's
     // entrypoint ports (web :8000, websecure :8443), not the Service's 80/443.
@@ -474,16 +481,40 @@ class Manifests {
             ],
         ]);
 
-        $manifests[] = $network_policy('allow-internet', [
+        // The platform's mail inbox (Mail_capture), where apps with mail capture on send
+        $manifests[] = $network_policy('allow-platform-mail', [
             'policyTypes' => ['Egress'],
             'egress' => [[
-                'to' => [
-                    ['ipBlock' => ['cidr' => '0.0.0.0/0', 'except' => self::PRIVATE_V4]],
-                    ['ipBlock' => ['cidr' => '::/0', 'except' => self::PRIVATE_V6]],
-                ],
-                'ports' => [$tcp(80), $tcp(443)],
+                'to' => [[
+                    'namespaceSelector' => ['matchLabels' => ['kubernetes.io/metadata.name' => self::MAIL_NAMESPACE]],
+                    'podSelector' => ['matchLabels' => ['app.kubernetes.io/name' => self::MAIL_APP_LABEL]],
+                ]],
+                'ports' => [$tcp(PLATFORM_MAIL_PORT)],
             ]],
         ]);
+
+        $internet = [
+            ['ipBlock' => ['cidr' => '0.0.0.0/0', 'except' => self::PRIVATE_V4]],
+            ['ipBlock' => ['cidr' => '::/0', 'except' => self::PRIVATE_V6]],
+        ];
+
+        $manifests[] = $network_policy('allow-internet', [
+            'policyTypes' => ['Egress'],
+            'egress' => [['to' => $internet, 'ports' => [$tcp(80), $tcp(443)]]],
+        ]);
+
+        // SMTP submission (465, 587; never 25) only for the pods of apps that
+        // turned mail capture off and send through their own provider
+        $manifests[] = [
+            'apiVersion' => 'networking.k8s.io/v1',
+            'kind' => 'NetworkPolicy',
+            'metadata' => self::_metadata('allow-smtp-submission', $namespace, $labels),
+            'spec' => [
+                'podSelector' => ['matchLabels' => [self::OWN_SMTP_LABEL => 'true']],
+                'policyTypes' => ['Egress'],
+                'egress' => [['to' => $internet, 'ports' => [$tcp(465), $tcp(587)]]],
+            ],
+        ];
 
         $manifests[] = self::acme_gateway($namespace, $labels);
 
@@ -1076,7 +1107,7 @@ class Manifests {
             'selector' => ['matchLabels' => $o['selector']],
             'template' => [
                 'metadata' => [
-                    'labels' => $o['labels'],
+                    'labels' => $o['labels'] + (Mail_capture::enabled($app) ? [] : [self::OWN_SMTP_LABEL => 'true']),
                     'annotations' => [
                         self::LABEL_PREFIX . '/deployment-id' => (string) ($deployment['id'] ?? ''),
                         self::LABEL_PREFIX . '/config-hash' => $o['config_hash'],

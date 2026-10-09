@@ -30,7 +30,7 @@ trait App_records {
     /**
      * Update an app's platform settings (the app must be in the project).
      *
-     * @param array{domain: ?string, persistent_paths: list<string>, php_extensions: string, always_on: bool, auto_deploy: bool, trongate_env: string} $settings
+     * @param array{domain: ?string, persistent_paths: list<string>, php_extensions: string, always_on: bool, auto_deploy: bool, trongate_env: string, mail_capture: bool} $settings
      */
     function update_app_settings(int $project_id, int $app_id, array $settings): void {
         $old = $this->find_project_app($project_id, $app_id);
@@ -51,6 +51,7 @@ trait App_records {
                 php_extensions = :php_extensions,
                 always_on = :always_on,
                 trongate_env = :trongate_env,
+                mail_capture = :mail_capture,
                 auto_deploy = :auto_deploy
             WHERE id = :app_id AND project_id = :project_id
         SQL;
@@ -65,6 +66,7 @@ trait App_records {
             'php_extensions' => $settings['php_extensions'],
             'always_on' => $settings['always_on'] ? 1 : 0,
             'trongate_env' => $settings['trongate_env'],
+            'mail_capture' => $settings['mail_capture'] ? 1 : 0,
             'auto_deploy' => $settings['auto_deploy'] ? 1 : 0,
             'app_id' => $app_id,
             'project_id' => $project_id,

@@ -1,0 +1,112 @@
+# The mail inbox (modules/platform/mail/server.php): an SMTP server for
+# customer apps only. Apps with mail capture on send their mail here
+# (Mail_capture::rules sets config/trongate_email.php); it is stored in the
+# platform DB (app_mail) for the app's Mail tab and never delivered.
+# One small PHP process from the worker image.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trongate-cloud-mail
+  namespace: trongate-cloud
+  labels:
+    app.kubernetes.io/name: trongate-cloud-mail
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: trongate-cloud-mail
+  template:
+    metadata:
+      labels:
+        # Tenant NetworkPolicies (Manifests::MAIL_APP_LABEL) and mariadb.yaml's admit this label
+        app.kubernetes.io/name: trongate-cloud-mail
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mail
+          image: trongate-cloud-worker
+          command: ["php", "modules/platform/mail/server.php"]
+          ports:
+            - name: smtp
+              containerPort: 2525
+          # Tenant pods reach this pod, so it gets no APP_KEY and not the
+          # tcloud DB user: its own key and a MariaDB user limited to app_mail
+          # (database.yaml). env wins over the ConfigMap's DB_USER.
+          env:
+            - name: MAIL_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: trongate-cloud-mail
+                  key: MAIL_KEY
+            - name: DB_USER
+              value: tcloud_mail
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: trongate-cloud-mail
+                  key: MAIL_DB_PASSWORD
+          envFrom:
+            - configMapRef:
+                name: trongate-cloud
+          readinessProbe:
+            tcpSocket:
+              port: smtp
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: smtp
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: trongate-cloud-mail
+  namespace: trongate-cloud
+spec:
+  selector:
+    app.kubernetes.io/name: trongate-cloud-mail
+  ports:
+    - name: smtp
+      port: 2525
+      targetPort: smtp
+---
+# Only tenant namespaces (Manifests::tenant labels them) may connect
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: trongate-cloud-mail
+  namespace: trongate-cloud
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: trongate-cloud-mail
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              platform.example.com/managed: tenant
+      ports:
+        - protocol: TCP
+          port: 2525
