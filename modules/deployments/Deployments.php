@@ -29,6 +29,7 @@ class Deployments extends Trongate {
             'logs' => $logs,
             'last_log_id' => $this->_last_log_id($logs, 0),
             'is_finished' => in_array($deployment->status, self::FINISHED, true),
+            'failure' => $this->_failure($deployment),
             'additional_includes_top' => ['deployments_module/css/deployments.css'],
         ];
 
@@ -58,6 +59,7 @@ class Deployments extends Trongate {
             'logs' => $logs,
             'last_log_id' => $this->_last_log_id($logs, $last_log_id),
             'is_finished' => in_array($deployment->status, self::FINISHED, true),
+            'failure' => $this->_failure($deployment),
         ]);
     }
 
@@ -72,6 +74,30 @@ class Deployments extends Trongate {
         }
 
         return $deployment;
+    }
+
+    /**
+     * Why a failed deployment failed and how to recover (Config_error::to_array),
+     * with a link to the file and line on GitHub at the deployment's commit;
+     * null when it has none
+     *
+     * @return ?array{reason: string, action: string, hint: string, file: ?string, line: ?int, url: ?string}
+     */
+    function _failure(object $deployment): ?array {
+        $failure = $deployment->status === 'failed' ? json_decode((string) ($deployment->failure ?? ''), true) : null;
+
+        if (!is_array($failure) || !isset($failure['reason'], $failure['action'], $failure['hint'])) {
+            return null;
+        }
+
+        $failure += ['file' => null, 'line' => null];
+        $source = (string) preg_replace('/\.git$/', '', rtrim((string) $deployment->source_url, '/'));
+        $commit = (string) $deployment->commit_sha;
+        $failure['url'] = $failure['file'] !== null && str_starts_with($source, 'https://github.com/') && preg_match('/^[0-9a-f]{40}$/', $commit)
+            ? "{$source}/blob/{$commit}/config/" . rawurlencode((string) $failure['file']) . ($failure['line'] !== null ? '#L' . (int) $failure['line'] : '')
+            : null;
+
+        return $failure;
     }
 
     function _last_log_id(array $logs, int $default): int {

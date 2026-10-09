@@ -606,15 +606,20 @@ class Manifests {
         $selector = ['app.kubernetes.io/name' => $name];
 
         $password = (string) ($database['password'] ?? self::database_password($app_id));
-        $database_php = Trongate_config::database_php([
-            'host' => $database['host'],
+        $sessions_ini = $sessions !== null ? self::sessions_ini($app_id, $sessions) : '';
+
+        if (!isset($deployment['config_files'])) {
+            throw new InvalidArgumentException('Deployment has no config files');
+        }
+
+        // The app's own config/*.php with the platform's values set, mounted over the image's
+        $config_files = Trongate_config::config_files((array) json_decode((string) $deployment['config_files'], true), $app, [
+            'host' => (string) $database['host'],
             'port' => (string) ($database['port'] ?? 3306),
             'user' => $db_name,
             'password' => $password,
             'database' => $db_name,
-        ], (string) ($app['type'] ?? 'trongate_v2'));
-
-        $sessions_ini = $sessions !== null ? self::sessions_ini($app_id, $sessions) : '';
+        ]);
 
         $base_url = Trongate_config::base_url($app);
         $mariadb_ref = [
@@ -629,10 +634,9 @@ class Manifests {
             'kind' => 'Secret',
             'metadata' => self::_metadata($secret_name, $namespace, $labels),
             'type' => 'Opaque',
-            'stringData' => [
-                'database.php' => $database_php,
-                'password' => $password,
-            ] + ($sessions_ini !== '' ? ['sessions.ini' => $sessions_ini] : []),
+            'stringData' => $config_files
+                + ['password' => $password]
+                + ($sessions_ini !== '' ? ['sessions.ini' => $sessions_ini] : []),
         ];
 
         // Always written, so removing the last variable empties it on the next
@@ -710,11 +714,11 @@ class Manifests {
             'paths' => $paths,
             'always_on' => $always_on,
             'base_url' => $base_url,
-            'trongate_env' => Trongate_config::env($app),
+            'config_files' => array_keys($config_files),
             'sessions' => $sessions_ini !== '',
             'env_secret_name' => self::env_secret_name($app_id),
             // Changed variables roll the pods: envFrom is only read at container start
-            'config_hash' => substr(hash('sha256', $database_php . $sessions_ini . $base_url . json_encode($paths) . json_encode($env) . Trongate_config::env($app)), 0, 16),
+            'config_hash' => substr(hash('sha256', json_encode($config_files) . $sessions_ini . json_encode($paths) . json_encode($env)), 0, 16),
         ]);
 
         $manifests[] = [
@@ -983,53 +987,49 @@ class Manifests {
         $app_security['capabilities']['add'] = ['NET_BIND_SERVICE'];
 
         $app_dir = self::APP_DIR;
-        $config_script = "set -eu\ncp {$app_dir}/config/config.php /work/config.php\n"
-            . Trongate_config::patch_script(['BASE_URL' => $o['base_url'], 'ENV' => $o['trongate_env']], '/work/config.php');
 
         $volumes = [
-            ['name' => 'config', 'emptyDir' => ['sizeLimit' => '1Mi']],
             ['name' => 'tmp', 'emptyDir' => ['sizeLimit' => '256Mi']],
-            ['name' => 'database', 'secret' => [
+            // The config files the worker edited (Trongate_config::config_files)
+            ['name' => 'config-files', 'secret' => [
                 'secretName' => $o['secret_name'],
-                'items' => [['key' => 'database.php', 'path' => 'database.php']],
+                'items' => array_map(fn(string $file) => ['key' => $file, 'path' => $file], $o['config_files']),
             ]],
         ];
 
-        $config_mounts = [['name' => 'config', 'mountPath' => '/work']];
+        $init_containers = [];
+        $mounts = [['name' => 'tmp', 'mountPath' => '/tmp']];
+
+        foreach ($o['config_files'] as $file) {
+            $mounts[] = ['name' => 'config-files', 'mountPath' => "{$app_dir}/config/{$file}", 'subPath' => $file, 'readOnly' => true];
+        }
 
         if ($o['sessions']) {
             // Images built before the redis extension was added (a rollback)
             // cannot load the redis save handler; they get an empty ini and
             // keep file sessions instead of failing every session_start().
+            $volumes[] = ['name' => 'config', 'emptyDir' => ['sizeLimit' => '1Mi']];
             $volumes[] = ['name' => 'sessions', 'secret' => [
                 'secretName' => $o['secret_name'],
                 'items' => [['key' => 'sessions.ini', 'path' => 'sessions.ini']],
             ]];
-            $config_mounts[] = ['name' => 'sessions', 'mountPath' => '/sessions', 'readOnly' => true];
-            $config_script .= "if php -r 'exit(extension_loaded(\"redis\") ? 0 : 1);' 2>/dev/null; then\n"
-                . "  cp /sessions/sessions.ini /work/sessions.ini\n"
-                . "else\n"
-                . "  echo 'No redis extension in this image; PHP sessions stay in the pod' >&2\n"
-                . "  : > /work/sessions.ini\n"
-                . "fi\n";
-        }
-
-        $init_containers = [[
-            'name' => 'config',
-            'image' => $o['image'],
-            'command' => ['sh', '-c', $config_script],
-            'volumeMounts' => $config_mounts,
-            'securityContext' => $container_security,
-            'resources' => self::INIT_RESOURCES,
-        ]];
-
-        $mounts = [
-            ['name' => 'config', 'mountPath' => "{$app_dir}/config/config.php", 'subPath' => 'config.php', 'readOnly' => true],
-            ['name' => 'database', 'mountPath' => "{$app_dir}/config/database.php", 'subPath' => 'database.php', 'readOnly' => true],
-            ['name' => 'tmp', 'mountPath' => '/tmp'],
-        ];
-
-        if ($o['sessions']) {
+            $init_containers[] = [
+                'name' => 'config',
+                'image' => $o['image'],
+                'command' => ['sh', '-c', "set -eu\n"
+                    . "if php -r 'exit(extension_loaded(\"redis\") ? 0 : 1);' 2>/dev/null; then\n"
+                    . "  cp /sessions/sessions.ini /work/sessions.ini\n"
+                    . "else\n"
+                    . "  echo 'No redis extension in this image; PHP sessions stay in the pod' >&2\n"
+                    . "  : > /work/sessions.ini\n"
+                    . "fi\n"],
+                'volumeMounts' => [
+                    ['name' => 'config', 'mountPath' => '/work'],
+                    ['name' => 'sessions', 'mountPath' => '/sessions', 'readOnly' => true],
+                ],
+                'securityContext' => $container_security,
+                'resources' => self::INIT_RESOURCES,
+            ];
             $mounts[] = ['name' => 'config', 'mountPath' => self::SESSIONS_INI_PATH, 'subPath' => 'sessions.ini', 'readOnly' => true];
         }
 

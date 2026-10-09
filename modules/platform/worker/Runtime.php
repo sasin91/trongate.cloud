@@ -8,6 +8,7 @@ require_once APPPATH . 'modules/services/clients/Github_app.php';
 require_once APPPATH . 'modules/services/clients/Kubernetes.php';
 require_once APPPATH . 'modules/services/clients/Valkey.php';
 require_once APPPATH . 'modules/platform/manifests/Trongate_config.php';
+require_once APPPATH . 'modules/platform/manifests/Config_error.php';
 require_once APPPATH . 'modules/platform/manifests/Manifests.php';
 require_once APPPATH . 'modules/platform/manifests/Project_service.php';
 require_once APPPATH . 'modules/platform/manifests/Domain_dns.php';
@@ -329,7 +330,7 @@ class Runtime {
         $sets = ['status = ?'];
         $values = [$status];
 
-        foreach (['commit_sha', 'image', 'completed_at'] as $column) {
+        foreach (['commit_sha', 'image', 'config_files', 'failure', 'completed_at'] as $column) {
             if (array_key_exists($column, $extra)) {
                 $sets[] = "{$column} = ?";
                 $values[] = $extra[$column] === null ? null : (string) $extra[$column];
@@ -614,7 +615,7 @@ class Runtime {
         } catch (\Throwable $e) {
             $log->error($e->getMessage());
             $this->log(sprintf('Task #%d threw %s: %s', $task['id'], get_class($e), $e->getMessage()));
-            $this->fail($task, $e->getMessage());
+            $this->fail($task, $e->getMessage(), $e instanceof Config_error ? $e->to_array() : null);
             return;
         }
 
@@ -656,14 +657,17 @@ class Runtime {
         });
     }
 
-    private function fail(array $task, string $message): void {
-        $this->run_safely(function () use ($task, $message) {
+    /**
+     * @param ?array $failure what the deployment page shows about it (Config_error::to_array)
+     */
+    private function fail(array $task, string $message, ?array $failure = null): void {
+        $this->run_safely(function () use ($task, $message, $failure) {
             self::run($this->db, 'UPDATE tasks SET failed_at = NOW(), error_message = ? WHERE id = ?', [$message, $task['id']]);
 
             $this->record_periodic_run($task, 'last_failed_at');
 
             if ($task['deployment_id'] !== null && !$this->deployment_is_terminal($task['deployment_id'])) {
-                $this->set_deployment_status($task['deployment_id'], 'failed');
+                $this->set_deployment_status($task['deployment_id'], 'failed', $failure !== null ? ['failure' => json_encode($failure)] : []);
             }
         });
     }

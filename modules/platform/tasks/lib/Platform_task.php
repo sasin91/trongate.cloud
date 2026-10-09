@@ -216,6 +216,7 @@ class Platform_task {
 
         // The app's own variables win over a service URL of the same name
         $env = self::app_env($runtime, $log, (int) $app['id']) + self::service_urls($runtime, $log, (int) $app['project_id']);
+        $deployment['config_files'] = self::config_files($deployment);
         $manifests = Manifests::app($app, $deployment, $database, self::ensure_session_user($runtime, $log, (int) $app['id']), $env);
 
         foreach ($manifests as $manifest) {
@@ -225,6 +226,34 @@ class Platform_task {
         }
 
         self::prune_domain_gateways($runtime, $log, $app);
+    }
+
+    /**
+     * The deployment's own config/*.php (JSON: file name => source), stored by
+     * the deploy that built it; Manifests::app edits them and mounts the
+     * edited ones over the image's
+     */
+    static function config_files(array $deployment): string {
+        if (!isset($deployment['config_files'])) {
+            require_once __DIR__ . '/../../manifests/Config_error.php';
+
+            throw new Config_error("Deployment #{$deployment['id']} was built before trongate.cloud kept a copy of its config files, so it cannot be applied again.", Config_error::REDEPLOY);
+        }
+
+        return (string) $deployment['config_files'];
+    }
+
+    /**
+     * owner/name of the app's GitHub repository
+     */
+    static function github_repo(array $app): string {
+        $source_url = rtrim((string) ($app['source_url'] ?? ''), '/');
+
+        if (($app['source_provider'] ?? '') !== 'github' || !preg_match('#^https://github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(\.git)?$#', $source_url, $match)) {
+            throw new RuntimeException('App has no valid GitHub repository URL');
+        }
+
+        return $match[1];
     }
 
     /**

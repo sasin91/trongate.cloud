@@ -15,6 +15,7 @@
  */
 
 require_once __DIR__ . '/lib/Platform_task.php';
+require_once __DIR__ . '/../manifests/Config_editor.php';
 
 return function (Task_log $log) use ($payload, $runtime): int {
     $db = $runtime->db();
@@ -37,11 +38,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
         throw new RuntimeException("Unsupported source provider: {$provider}");
     }
 
-    if (!preg_match('#^https://github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(\.git)?$#', $source_url, $match)) {
-        throw new RuntimeException('App has no valid GitHub repository URL');
-    }
-
-    $repo = $match[1];
+    $repo = Platform_task::github_repo($app);
 
     try {
         $github = Platform_task::github_client($repo);
@@ -140,6 +137,28 @@ return function (Task_log $log) use ($payload, $runtime): int {
             throw new RuntimeException('config/config.php not found; the platform patches it at runtime');
         }
 
+        // Kept with the deployment: every apply (this one, a rollback, a new
+        // domain) edits them and mounts the edited ones over the image's
+        // (Manifests::app). A file that is not valid PHP fails the deploy
+        // here, before the build, with the reason.
+        $config_files = [];
+
+        foreach (glob("{$src}/config/*.php") ?: [] as $path) {
+            if (count($config_files) > Config_editor::MAX_FILES) {
+                break; // enough for check() to refuse
+            }
+
+            // Only names a Secret key can carry; check() refuses the rest anyway
+            if (is_file($path) && !is_link($path) && preg_match(Config_rule::FILE_PATTERN, basename($path))) {
+                // Read at most one byte over the limit; check() refuses the rest
+                $config_files[basename($path)] = (string) file_get_contents($path, false, null, 0, Config_editor::MAX_FILE_BYTES + 1);
+            }
+        }
+
+        Config_editor::check($config_files);
+
+        $config_json = json_encode($config_files, JSON_THROW_ON_ERROR);
+
         // --- Dockerfile ------------------------------------------------------
         // Every Trongate app has the same shape, so the platform writes the
         // Dockerfile: the prebuilt base (docker/app-base) plus the app's extra
@@ -224,8 +243,9 @@ return function (Task_log $log) use ($payload, $runtime): int {
         }
     }
 
-    $runtime->set_deployment_status($deployment_id, 'deploying', ['image' => $image]);
+    $runtime->set_deployment_status($deployment_id, 'deploying', ['image' => $image, 'config_files' => $config_json]);
     $deployment['image'] = $image;
+    $deployment['config_files'] = $config_json;
 
     // --- Roll out --------------------------------------------------------------
 

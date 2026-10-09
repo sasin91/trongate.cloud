@@ -43,6 +43,9 @@ jobs:
       - name: PHPStan
         run: vendor/bin/phpstan analyse --memory-limit=1G --error-format=github
 
+      - name: Tests
+        run: composer test
+
   shell:
     name: Shell scripts
     runs-on: ubuntu-latest

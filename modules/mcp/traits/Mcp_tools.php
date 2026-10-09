@@ -950,6 +950,8 @@ trait Mcp_tools {
             'is_current' => !empty($deployment->is_current),
             'created_at' => $deployment->created_at,
             'completed_at' => $deployment->completed_at ?? null,
+            // Why it failed and how to recover (Config_error::to_array)
+            'failure' => $deployment->status === 'failed' ? json_decode((string) ($deployment->failure ?? ''), true) : null,
         ];
     }
 }

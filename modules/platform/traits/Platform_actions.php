@@ -121,6 +121,10 @@ trait Platform_actions {
             throw new RuntimeException('Target deployment has no image');
         }
 
+        if (empty($target->config_files)) {
+            throw new RuntimeException("Deployment #{$target->id} was built before trongate.cloud kept a copy of its config files, so it cannot be rolled back to. Deploy the app instead.");
+        }
+
         return $this->db->transaction(function () use ($project_id, $app_id, $customer_id, $target) {
             $deployment_id = $this->db->insert([
                 'project_id' => $project_id,
@@ -130,6 +134,7 @@ trait Platform_actions {
                 'source_url' => $target->source_url,
                 'commit_sha' => $target->commit_sha,
                 'image' => $target->image,
+                'config_files' => $target->config_files,
                 'trigger_type' => 'rollback',
             ], 'deployment');
 
