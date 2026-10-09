@@ -756,22 +756,93 @@ body.lp {
     text-decoration: none;
 }
 
-.lp-prose {
+.lp-toc {
     margin-top: 16px;
+    padding: 22px 26px;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+}
+
+.lp .lp-toc-title {
+    margin: 0 0 10px;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.lp-toc ol {
+    margin: 0;
+    padding-left: 22px;
+    columns: 2;
+    column-gap: 32px;
+    font-size: 15px;
+    line-height: 1.5;
+}
+
+.lp-toc li {
+    margin-bottom: 6px;
+    break-inside: avoid;
+}
+
+.lp-toc a {
+    color: var(--ink);
+    text-decoration: none;
+}
+
+.lp-toc a:hover {
+    color: var(--accent-ink);
+    text-decoration: underline;
+}
+
+.lp-prose {
+    margin-top: 24px;
     font-size: 17px;
-    line-height: 1.7;
+    line-height: 1.8;
 }
 
 .lp-prose h2 {
-    margin: 40px 0 12px;
-    font-size: 26px;
+    margin: 64px 0 18px;
+    padding-top: 40px;
+    border-top: 1px solid var(--line);
+    font-size: 27px;
     line-height: 1.25;
     letter-spacing: -0.015em;
 }
 
+.lp-prose h2:first-child {
+    margin-top: 24px;
+}
+
 .lp-prose h3 {
-    margin: 32px 0 8px;
-    font-size: 19px;
+    margin: 40px 0 12px;
+    font-size: 20px;
+    line-height: 1.3;
+}
+
+.lp-prose h2,
+.lp-prose h3 {
+    scroll-margin-top: 24px;
+}
+
+.lp-prose .lp-anchor {
+    margin-left: 6px;
+    color: var(--accent);
+    text-decoration: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.lp-prose h2:hover .lp-anchor,
+.lp-prose h3:hover .lp-anchor,
+.lp-prose .lp-anchor:focus {
+    opacity: 1;
+}
+
+.lp-prose :target {
+    color: var(--accent-ink);
 }
 
 .lp-prose p,
@@ -779,11 +850,35 @@ body.lp {
 .lp-prose ol,
 .lp-prose blockquote,
 .lp-prose pre {
-    margin: 0 0 18px;
+    margin: 0 0 24px;
+}
+
+.lp-prose ul,
+.lp-prose ol {
+    padding-left: 24px;
+}
+
+.lp-figure {
+    margin: 32px 0;
+}
+
+.lp-figure img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: 0 12px 32px -18px rgba(29, 30, 110, 0.35);
+    background: #fff;
+}
+
+.lp-figure-tall img {
+    max-width: 320px;
+    margin: 0 auto;
 }
 
 .lp-prose li + li {
-    margin-top: 6px;
+    margin-top: 10px;
 }
 
 .lp-prose code {
@@ -896,5 +991,18 @@ body.lp {
 
     .lp-frame-inner {
         height: 260px;
+    }
+
+    .lp-toc ol {
+        columns: 1;
+    }
+
+    .lp-prose .lp-anchor {
+        display: none;
+    }
+
+    .lp-prose h2 {
+        margin-top: 48px;
+        padding-top: 32px;
     }
 }

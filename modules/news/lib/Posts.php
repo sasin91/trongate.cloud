@@ -57,7 +57,8 @@ class Posts {
     public static function find(string $slug): ?object {
         foreach (self::all() as $post) {
             if ($post->slug === $slug) {
-                $post->html = Markdown::render($post->body);
+                $post->html = Markdown::render($post->body, 'news/' . $post->slug);
+                $post->sections = Markdown::headings($post->body);
                 return $post;
             }
         }

@@ -23,6 +23,16 @@
             <?php if ($post->summary !== ''): ?>
                 <p class="lp-sub"><?= out($post->summary) ?></p>
             <?php endif; ?>
+            <?php if (count($post->sections) >= 3): ?>
+                <nav class="lp-toc" aria-label="In this post">
+                    <p class="lp-toc-title">In this post</p>
+                    <ol>
+                        <?php foreach ($post->sections as $id => $heading): ?>
+                            <li><a href="news/<?= $post->slug ?>#<?= $id ?>"><?= Markdown::inline($heading) ?></a></li>
+                        <?php endforeach; ?>
+                    </ol>
+                </nav>
+            <?php endif; ?>
             <div class="lp-prose">
                 <?= $post->html ?>
             </div>
