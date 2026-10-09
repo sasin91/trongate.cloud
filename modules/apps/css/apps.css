@@ -986,15 +986,49 @@ a.status-pill {
     }
 }
 
-/* Five tabs fit a 360px phone without scrolling */
-@media (max-width: 400px) {
-    .ov-tabs {
-        gap: 0;
+/* Phones: the section tabs become a dropdown instead of a row to pan sideways */
+.ov-tabs-select {
+    display: none;
+    position: relative;
+}
+
+.ov-tabs-select select {
+    width: 100%;
+    min-height: 44px;
+    padding: 0.5rem 2.5rem 0.5rem 0.875rem;
+    font: inherit;
+    font-size: 1rem;
+    color: var(--text-main);
+    background: var(--white);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    appearance: none;
+    -webkit-appearance: none;
+}
+
+.ov-tabs-select select:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: -1px;
+}
+
+.ov-tabs-select svg {
+    position: absolute;
+    top: 50%;
+    right: 0.75rem;
+    width: 1.25rem;
+    height: 1.25rem;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    pointer-events: none;
+}
+
+@media (max-width: 640px) {
+    .ov-tabs-select {
+        display: block;
     }
 
-    .ov-tabs a {
-        padding: 0.75rem 0.3rem;
-        font-size: 0.8125rem;
+    .ov-tabs {
+        display: none;
     }
 }
 

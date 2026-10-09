@@ -24,13 +24,16 @@ $new_app_href = 'projects/' . (int) $project->id . '/apps/new';
         </div>
     </div>
 
-    <nav class="ov-tabs" aria-label="Project sections">
-        <a href="projects/<?= (int) $project->id ?>"<?= $active_tab === 'apps' ? ' aria-current="page"' : '' ?>>Apps</a>
-        <a href="projects/<?= (int) $project->id ?>/traffic"<?= $active_tab === 'traffic' ? ' aria-current="page"' : '' ?>>Traffic</a>
-        <a href="projects/<?= (int) $project->id ?>#services">Services</a>
-        <a href="projects/<?= (int) $project->id ?>#members">Members</a>
-        <?php if ($is_owner): ?>
-            <a href="projects/<?= (int) $project->id ?>/settings">Settings</a>
-        <?php endif; ?>
-    </nav>
-
+<?php
+$project_href = 'projects/' . (int) $project->id;
+$tabs = [
+    [$project_href, 'Apps', $active_tab === 'apps'],
+    [$project_href . '/traffic', 'Traffic', $active_tab === 'traffic'],
+    [$project_href . '#services', 'Services', false],
+    [$project_href . '#members', 'Members', false],
+];
+if ($is_owner) {
+    $tabs[] = [$project_href . '/settings', 'Settings', false];
+}
+$tabs_label = 'Project sections';
+require __DIR__ . '/../../apps/views/_section_tabs.php';
