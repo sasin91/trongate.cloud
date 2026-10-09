@@ -80,3 +80,7 @@ defined('VALKEY_WORKER_PASSWORD') || define('VALKEY_WORKER_PASSWORD', getenv('VA
 // the app's Mail tab instead of being delivered (Mail_capture).
 defined('PLATFORM_MAIL_HOST') || define('PLATFORM_MAIL_HOST', getenv('PLATFORM_MAIL_HOST') ?: 'trongate-cloud-mail.trongate-cloud.svc.cluster.local');
 defined('PLATFORM_MAIL_PORT') || define('PLATFORM_MAIL_PORT', (int) (getenv('PLATFORM_MAIL_PORT') ?: 2525));
+// Signs the apps' inbox passwords (Mail_capture::password). Its own key, not
+// APP_KEY: the inbox is reachable from tenant pods, so it only gets this one.
+// The worker (which writes the passwords) and the inbox need it.
+defined('MAIL_KEY') || define('MAIL_KEY', getenv('MAIL_KEY') ?: '');

@@ -42,8 +42,8 @@ final class Mail_capture {
     }
 
     /**
-     * The app's SMTP password for the inbox, derived from APP_KEY like
-     * Manifests::database_password(). It carries the app id, so the inbox
+     * The app's SMTP password for the inbox, signed with MAIL_KEY (not
+     * APP_KEY: the inbox, which tenants can reach, holds only that). It carries the app id, so the inbox
      * finds the app without a lookup and whatever the username is.
      */
     static function password(int $app_id): string {
@@ -113,10 +113,10 @@ final class Mail_capture {
     }
 
     private static function signature(int $app_id): string {
-        $key = defined('APP_KEY') ? (string) constant('APP_KEY') : (string) getenv('APP_KEY');
+        $key = (string) MAIL_KEY;
 
         if ($key === '') {
-            throw new RuntimeException('APP_KEY is required to derive mail passwords');
+            throw new RuntimeException('MAIL_KEY is not set (Secret trongate-cloud-mail); mail capture needs it');
         }
 
         return substr(hash_hmac('sha256', "mail:{$app_id}", $key), 0, self::PASSWORD_HASH_LENGTH);

@@ -8,6 +8,7 @@
  */
 
 putenv('APP_KEY=test-key-for-config-rules');
+putenv('MAIL_KEY=test-mail-key');
 
 require_once __DIR__ . '/../modules/platform/manifests/Manifests.php';
 require_once __DIR__ . '/../modules/platform/manifests/Config_editor.php';

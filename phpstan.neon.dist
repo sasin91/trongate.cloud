@@ -35,6 +35,7 @@ parameters:
         - ENV
         - BASE_URL
         - APP_KEY
+        - MAIL_KEY
         - GITHUB_APP_SLUG
         - GITHUB_APP_CLIENT_ID
         - GITHUB_APP_CLIENT_SECRET

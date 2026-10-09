@@ -37,18 +37,22 @@ spec:
           ports:
             - name: smtp
               containerPort: 2525
-          # APP_KEY (mail passwords) and DB_PASSWORD; nothing else from the worker
+          # Tenant pods reach this pod, so it gets no APP_KEY and not the
+          # tcloud DB user: its own key and a MariaDB user limited to app_mail
+          # (database.yaml). env wins over the ConfigMap's DB_USER.
           env:
-            - name: APP_KEY
+            - name: MAIL_KEY
               valueFrom:
                 secretKeyRef:
-                  name: trongate-cloud-env
-                  key: APP_KEY
+                  name: trongate-cloud-mail
+                  key: MAIL_KEY
+            - name: DB_USER
+              value: tcloud_mail
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: trongate-cloud-env
-                  key: DB_PASSWORD
+                  name: trongate-cloud-mail
+                  key: MAIL_DB_PASSWORD
           envFrom:
             - configMapRef:
                 name: trongate-cloud

@@ -9,7 +9,7 @@
  * Run: php tests/Mail_capture_test.php (exits non-zero on a failure)
  */
 
-putenv('APP_KEY=test-key-for-mail-capture');
+putenv('MAIL_KEY=test-key-for-mail-capture');
 
 require_once __DIR__ . '/../modules/platform/mail/Mail_capture.php';
 require_once __DIR__ . '/../modules/platform/mail/Mail_message.php';
@@ -154,7 +154,7 @@ $test("Trongate's email module sends through the inbox", function () use ($same)
         [1 => ['pipe', 'w'], 2 => ['file', '/dev/null', 'w']],
         $pipes,
         null,
-        ['APP_KEY' => getenv('APP_KEY')],
+        ['MAIL_KEY' => getenv('MAIL_KEY')],
     );
     $port = (int) fgets($pipes[1]);
 

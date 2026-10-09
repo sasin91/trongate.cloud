@@ -50,6 +50,11 @@ spec:
             - secretRef:
                 name: trongate-cloud-valkey
                 optional: true
+            # MAIL_KEY for apps' inbox passwords (Mail_capture); without it,
+            # deploys of apps with mail capture on fail with a message saying so
+            - secretRef:
+                name: trongate-cloud-mail
+                optional: true
           resources:
             requests:
               cpu: 100m

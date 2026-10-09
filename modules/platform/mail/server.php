@@ -7,7 +7,8 @@
  * (deploy/k8s/platform/mail.yaml). Apps with mail capture on send here
  * (Mail_capture::rules); each message is stored in app_mail for the app
  * whose password signed in, and never delivered. Configuration comes from
- * the environment like the worker's (DB_*, APP_KEY, PLATFORM_MAIL_PORT).
+ * the environment: DB_* (its own MariaDB user, limited to app_mail),
+ * MAIL_KEY and PLATFORM_MAIL_PORT. It never gets APP_KEY: tenants reach it.
  */
 
 defined('APPPATH') || define('APPPATH', dirname(__DIR__, 3) . '/');
@@ -35,9 +36,9 @@ try {
     exit(1);
 }
 
-// Passwords are derived from APP_KEY (Mail_capture::password)
-if ((string) getenv('APP_KEY') === '') {
-    error_log('APP_KEY is required');
+// Signs the apps' passwords (Mail_capture::password)
+if (MAIL_KEY === '') {
+    error_log('MAIL_KEY is required');
     exit(1);
 }
 
