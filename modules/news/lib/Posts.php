@@ -10,6 +10,8 @@ require_once __DIR__ . '/Markdown.php';
  *   kind:    changelog or writing
  *   summary: one or two sentences for the list and the feed
  *   draft:   true to hide the post outside ENV=dev (optional)
+ *   replaces: old-slug=section-id, ... for posts merged into this one (optional);
+ *            their old addresses lead to that section of this post
  */
 class Posts {
 
@@ -55,8 +57,26 @@ class Posts {
     public static function find(string $slug): ?object {
         foreach (self::all() as $post) {
             if ($post->slug === $slug) {
-                $post->html = Markdown::render($post->body);
+                $post->html = Markdown::render($post->body, 'news/' . $post->slug);
+                $post->sections = Markdown::headings($post->body);
                 return $post;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Where a post that was merged into another one went, or null when no post replaces it.
+     *
+     * @param string $slug The old post's slug
+     * @return string|null A path like news/{slug}#{section}
+     */
+    public static function moved(string $slug): ?string {
+        foreach (self::all() as $post) {
+            if (isset($post->replaces[$slug])) {
+                $section = $post->replaces[$slug];
+                return 'news/' . $post->slug . ($section !== '' ? '#' . $section : '');
             }
         }
 
@@ -86,6 +106,14 @@ class Posts {
             }
         }
 
+        $replaces = [];
+        foreach (array_filter(array_map('trim', explode(',', $meta['replaces'] ?? ''))) as $pair) {
+            [$old, $section] = array_pad(explode('=', $pair, 2), 2, '');
+            if (preg_match('/^[a-z0-9-]+$/', $old) && preg_match('/^[a-z0-9-]*$/', $section)) {
+                $replaces[$old] = $section;
+            }
+        }
+
         $kind = $meta['kind'] ?? '';
         if (empty($meta['title']) || !isset(self::KINDS[$kind])) {
             return null;
@@ -100,6 +128,7 @@ class Posts {
             'summary' => $meta['summary'] ?? '',
             'draft' => ($meta['draft'] ?? '') === 'true',
             'body' => trim($parts[2]),
+            'replaces' => $replaces,
         ];
     }
 

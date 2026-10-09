@@ -51,6 +51,36 @@ $test('Markdown renders quotes', function () use ($same) {
     $same('<blockquote><p>Said once.</p></blockquote>', Markdown::render("> Said\n> once."));
 });
 
+$test('Markdown renders images on their own line, sized from the file', function () use ($same) {
+    $same(
+        '<figure class="lp-figure lp-figure-tall"><a href="/images/news/2026-10-09/tabs-phone.webp" target="_blank" rel="noopener"><img src="/images/news/2026-10-09/tabs-phone.webp" alt="Tabs &quot;on&quot; a phone" width="780" height="900" loading="lazy"></a></figure>',
+        Markdown::render('![Tabs "on" a phone](/images/news/2026-10-09/tabs-phone.webp)')
+    );
+    $same('<figure class="lp-figure"><a href="/missing.png" target="_blank" rel="noopener"><img src="/missing.png" alt="" loading="lazy"></a></figure>', Markdown::render('![](/missing.png)'));
+    // Only site-relative images are shown; anything else is at most a link
+    $same('<p>!<a href="https://evil.test/a.png" target="_blank" rel="noopener">x</a></p>', Markdown::render('![x](https://evil.test/a.png)'));
+    $same('<p>!x</p>', Markdown::render('![x](//evil.test/a.png)'));
+});
+
+$test('headings link to themselves and list as sections', function () use ($same) {
+    $same(
+        '<h2 id="mail-tab">Mail tab <a class="lp-anchor" href="news/today#mail-tab" aria-label="Link to this section">#</a></h2>',
+        Markdown::render('## Mail tab', 'news/today')
+    );
+    $same(['a-database-tab' => 'A *Database* tab', 'more' => 'More'], Markdown::headings("## A *Database* tab\n\n### Not this\n\n```\n## Not code\n```\n## More"));
+});
+
+$test('every image in a post is in public/', function () {
+    foreach (glob(__DIR__ . '/../modules/news/posts/*.md') as $path) {
+        preg_match_all('#^!\[[^\]]*\]\((/[^)\s]+)\)$#m', file_get_contents($path), $images);
+        foreach ($images[1] as $src) {
+            if (!is_file(__DIR__ . '/../public' . $src)) {
+                throw new RuntimeException(basename($path) . " shows {$src}, which is not in public/");
+            }
+        }
+    }
+});
+
 $test('every post file parses, with a known kind and a summary', function () use ($same) {
     $files = glob(Posts::DIRECTORY . '/*.md');
     $posts = Posts::all();
@@ -69,9 +99,29 @@ $test('posts are newest first and filter by kind', function () use ($same) {
     $same(['changelog'], array_values(array_unique(array_column(Posts::all('changelog'), 'kind'))));
 });
 
+$test('no slug is taken by a route of its own', function () use ($same) {
+    foreach (Posts::all() as $post) {
+        $same(false, in_array($post->slug, ['feed', ...array_keys(Posts::KINDS)], true));
+    }
+});
+
 $test('find() only matches published slugs', function () use ($same) {
     $same(null, Posts::find('../../config/config'));
     $same(null, Posts::find(''));
+});
+
+$test('merged posts lead to an existing section of the post that replaced them', function () use ($same) {
+    foreach (Posts::all() as $post) {
+        $html = Markdown::render($post->body);
+        foreach ($post->replaces as $old => $section) {
+            $same(null, Posts::find($old));
+            $same('news/' . $post->slug . ($section !== '' ? '#' . $section : ''), Posts::moved($old));
+            if ($section !== '') {
+                $same(true, str_contains($html, ' id="' . $section . '"'));
+            }
+        }
+    }
+    $same(null, Posts::moved('never-existed'));
 });
 
 echo $failures === 0 ? "\nAll tests passed\n" : "\n{$failures} failed\n";
