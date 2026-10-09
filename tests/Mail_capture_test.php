@@ -220,4 +220,12 @@ $test("Trongate's email module sends through the inbox", function () use ($same)
     }
 });
 
+// Runtime.php pulls in Mail_capture.php by way of the manifests, so a plain
+// require in the inbox's entry point redeclared the class and crash-looped it
+$test('server.php loads its files with require_once', function () use ($same) {
+    $source = file_get_contents(__DIR__ . '/../modules/platform/mail/server.php');
+
+    $same(0, preg_match('/^\s*require\s/m', $source));
+});
+
 exit($failures === 0 ? 0 : 1);
