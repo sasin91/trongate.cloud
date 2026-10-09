@@ -1,5 +1,12 @@
 # Task worker: polls the tasks table and runs modules/platform/tasks/*.php.
 # Builds customer apps and the platform with buildctl against a per-build BuildKit daemon.
+
+# Composer packages the worker uses (nikic/php-parser for Config_editor)
+FROM composer:2.8 AS vendor
+WORKDIR /app
+COPY composer.json composer.lock ./
+RUN composer install --no-dev --no-interaction --no-progress --no-scripts --ignore-platform-reqs --optimize-autoloader
+
 FROM php:8.4-cli-bookworm
 
 ARG BUILDKIT_VERSION=0.33.1
@@ -31,6 +38,7 @@ WORKDIR /app
 
 # Only the code the worker loads (see modules/platform/worker/Runtime.php); the
 # framework's Db class (and its Trongate base) is used without the router
+COPY --from=vendor /app/vendor vendor
 COPY config/platform.php config/platform.php
 COPY engine/Trongate.php engine/Trongate.php
 COPY modules/db modules/db

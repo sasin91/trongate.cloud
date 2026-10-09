@@ -1,13 +1,13 @@
 <?php
 
 /**
- * Tests for Config_editor and Trongate_config::patch_script, the code that
- * sets BASE_URL and ENV in a customer's config/config.php at deploy.
+ * Tests for Config_editor, which sets BASE_URL and ENV in a customer's
+ * config/config.php at every apply (Trongate_config::config_php).
  *
  * Run: php tests/Config_editor_test.php (exits non-zero on a failure)
  */
 
-require_once __DIR__ . '/../modules/platform/manifests/Trongate_config.php';
+require_once __DIR__ . '/../modules/platform/manifests/Manifests.php';
 require_once __DIR__ . '/../modules/platform/manifests/Config_editor.php';
 
 $failures = 0;
@@ -190,66 +190,53 @@ $test('methods, functions and other calls named define are not touched', functio
 
 $test('quotes and backslashes in values are escaped', function () use ($same) {
     $out = Config_editor::set_constants("<?php\ndefine('ENV', 'dev');\n", ['ENV' => "it's \\ odd"]);
-    $same("<?php\ndefine('ENV', 'it\\'s \\\\ odd');\n", $out);
+    $same("<?php\ndefine('ENV', 'it\\'s \\ odd');\n", $out);
+    $same("it's \\ odd", eval('return ' . substr($out, strlen("<?php\ndefine('ENV', "), -3) . ';'));
 });
 
 $test('a config that is not valid PHP is refused with its line', function () use ($edit, $throws) {
-    $throws(fn() => $edit("<?php\ndefine('ENV', 'dev')\ndefine('BASE_URL', 'x');\n"), 'The file is not valid PHP (line 3');
+    $throws(fn() => $edit("<?php\ndefine('ENV', 'dev')\ndefine('BASE_URL', 'x');\n"), 'The file is not valid PHP (Syntax error, unexpected T_STRING on line 3)');
 });
 
 $test('a define without a value is refused', function () use ($edit, $throws) {
     $throws(fn() => $edit("<?php\nif (false) { define('ENV'); }\n"), "define('ENV') on line 2 has no value");
 });
 
-$test('patch_php names the file in its errors', function () use ($throws, $values) {
-    $throws(fn() => Trongate_config::patch_php('<?php define(', $values), 'trongate.cloud could not update config/config.php: The file is not valid PHP');
+$test('config_php sets the app\'s values and names the file in its errors', function () use ($same, $throws) {
+    $app = ['id' => 7, 'slug' => 'shop', 'trongate_env' => 'staging'];
+    $same("<?php\ndefine('BASE_URL', 'https://shop." . PLATFORM_APPS_DOMAIN . "/');\ndefine('ENV', 'staging');\n", Trongate_config::config_php("<?php\ndefine('BASE_URL', 'x');\ndefine('ENV', 'dev');\n", $app));
+    $throws(fn() => Trongate_config::config_php('<?php define(', $app), 'trongate.cloud could not update config/config.php: The file is not valid PHP');
+});
+
+$test('lint reports code that parses but does not compile', function () use ($throws) {
+    $throws(fn() => Config_editor::lint("<?php\nfunction f() {}\nfunction f() {}\n"), 'The regenerated file does not compile (');
+    $throws(fn() => Config_editor::lint("<?php\nfunction f() {}\nfunction f() {}\n"), 'Cannot redeclare');
 });
 
 $test('verify catches a value that is not the one asked for', function () use ($throws) {
-    $throws(fn() => Config_editor::verify("<?php\ndefine('ENV', 'dev');\n", ['ENV' => 'prod']), "sets ENV to 'dev'");
+    $throws(fn() => Config_editor::verify("<?php\ndefine('ENV', 'dev');\n", ['ENV' => 'prod']), 'does not set ENV to the expected value');
     $throws(fn() => Config_editor::verify("<?php\n", ['ENV' => 'prod']), 'does not define ENV');
 });
 
-// --- The init container script, run with this PHP ----------------------------
+$test('Manifests::app mounts the edited config from the app Secret', function () use ($same) {
+    $app = ['id' => 7, 'project_id' => 1, 'namespace' => 'project-1', 'slug' => 'shop', 'type' => 'trongate_v2', 'trongate_env' => 'prod'];
+    $deployment = ['id' => 3, 'image' => 'registry/p7:abc', 'config_php' => "<?php\ndefine('ENV', 'dev');\n"];
+    $manifests = Manifests::app($app, $deployment, ['host' => 'db', 'operator_name' => 'shared-1', 'password' => 'pw']);
+    $by_kind = array_column($manifests, null, 'kind');
 
-$sh = function (string $source) use ($values): array {
-    $dir = sys_get_temp_dir() . '/tgc-' . bin2hex(random_bytes(4));
-    mkdir($dir);
-    file_put_contents("{$dir}/config.php", $source);
-    $script = Trongate_config::patch_script($values, "{$dir}/config.php");
-    $pipes = [];
-    $process = proc_open(['sh', '-c', $script], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
-    $stdout = stream_get_contents($pipes[1]);
-    $stderr = stream_get_contents($pipes[2]);
-    $code = proc_close($process);
-    $result = [$code, (string) file_get_contents("{$dir}/config.php"), $stdout . $stderr, is_file("{$dir}/config.php.new")];
-    array_map('unlink', glob("{$dir}/*") ?: []);
-    rmdir($dir);
-
-    return $result;
-};
-
-$test('patch_script edits the file in place', function () use ($sh, $same, $edit) {
-    $source = "<?php\ndefine('BASE_URL', 'http://localhost/');\ndefine('ENV', getenv('X')\n    ?: 'dev');\n";
-    [$code, $out, $output] = $sh($source);
-    $same(0, $code);
-    $same('', $output);
-    $same($edit($source), $out);
-});
-
-$test('patch_script fails with the reason and leaves the file alone', function () use ($sh, $same) {
-    $source = "<?php\ndefine('ENV', 'dev')\n";
-    [$code, $out, $output, $leftover] = $sh($source);
-    $same(1, $code);
-    $same($source, $out);
-    $same(false, $leftover);
-    $same(true, str_contains($output, 'trongate.cloud could not update config/config.php: The file is not valid PHP (line 3'));
+    $same(
+        "<?php\ndefine('ENV', 'prod');\ndefine('BASE_URL', 'https://shop." . PLATFORM_APPS_DOMAIN . "/');\n",
+        $manifests[0]['stringData']['config.php']
+    );
+    $mounts = array_column($by_kind['Deployment']['spec']['template']['spec']['containers'][0]['volumeMounts'], null, 'mountPath');
+    $same(['name' => 'database', 'mountPath' => Manifests::APP_DIR . '/config/config.php', 'subPath' => 'config.php', 'readOnly' => true], $mounts[Manifests::APP_DIR . '/config/config.php']);
 });
 
 $test('the generated database.php is valid PHP', function () use ($same) {
     foreach (['trongate_v1', 'trongate_v2'] as $type) {
         $php = Trongate_config::database_php(['host' => "h'o\\st", 'password' => "p'w"], $type);
-        $same(true, count(Config_editor::parse($php, 'invalid')) > 0);
+        Config_editor::lint($php);
+        $same(true, str_contains($php, "'h\\'o\\\\st'"));
     }
 });
 

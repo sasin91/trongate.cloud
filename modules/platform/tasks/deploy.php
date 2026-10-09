@@ -37,11 +37,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
         throw new RuntimeException("Unsupported source provider: {$provider}");
     }
 
-    if (!preg_match('#^https://github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(\.git)?$#', $source_url, $match)) {
-        throw new RuntimeException('App has no valid GitHub repository URL');
-    }
-
-    $repo = $match[1];
+    $repo = Platform_task::github_repo($app);
 
     try {
         $github = Platform_task::github_client($repo);
@@ -140,10 +136,12 @@ return function (Task_log $log) use ($payload, $runtime): int {
             throw new RuntimeException('config/config.php not found; the platform patches it at runtime');
         }
 
-        // The pod sets these constants in its config/config.php when it starts.
-        // Doing it here first fails the deploy with the reason, before a build,
-        // instead of a pod that never starts.
-        Trongate_config::patch_php((string) file_get_contents("{$src}/config/config.php"), Trongate_config::config_defines($app));
+        // Kept with the deployment: every apply (this one, a rollback, a new
+        // domain) edits it and mounts it over the image's (Manifests::app).
+        // Editing it once now fails a config the editor cannot handle before
+        // the build, with the reason.
+        $config_php = (string) file_get_contents("{$src}/config/config.php");
+        Trongate_config::config_php($config_php, $app);
 
         // --- Dockerfile ------------------------------------------------------
         // Every Trongate app has the same shape, so the platform writes the
@@ -229,8 +227,9 @@ return function (Task_log $log) use ($payload, $runtime): int {
         }
     }
 
-    $runtime->set_deployment_status($deployment_id, 'deploying', ['image' => $image]);
+    $runtime->set_deployment_status($deployment_id, 'deploying', ['image' => $image, 'config_php' => $config_php]);
     $deployment['image'] = $image;
+    $deployment['config_php'] = $config_php;
 
     // --- Roll out --------------------------------------------------------------
 
