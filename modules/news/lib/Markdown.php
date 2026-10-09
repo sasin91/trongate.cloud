@@ -39,7 +39,7 @@ class Markdown {
 
             if (preg_match('/^(#{2,3}) (.+)$/', $line, $match)) {
                 $tag = 'h' . strlen($match[1]);
-                $html[] = "<{$tag} id=\"" . self::anchor($match[2]) . "\">" . self::inline($match[2]) . "</{$tag}>";
+                $html[] = "<{$tag} id=\"" . self::anchor($match[2]) . '">' . self::inline($match[2]) . "</{$tag}>";
                 continue;
             }
 
