@@ -109,13 +109,16 @@ class Github_app extends Client {
     // --- App (installation tokens) -------------------------------------------
 
     /**
-     * An installation token that can read one repository's contents (about an
-     * hour). Fails with 404 when the App is not installed on the repository.
+     * An installation token for one repository (about an hour), by default
+     * able to read its contents only. Fails with 404 when the App is not
+     * installed on the repository, and 422 when the installation has not
+     * granted the permissions asked for.
      *
      * @param string $repo owner/name
+     * @param array<string, string> $permissions e.g. ['contents' => 'write', 'pull_requests' => 'write']
      * @throws Client_Error
      */
-    function repository_token(string $repo): string {
+    function repository_token(string $repo, array $permissions = ['contents' => 'read']): string {
         $installation = $this->request('GET', "/repos/{$repo}/installation");
         $installation_id = (int) ($installation['id'] ?? 0);
 
@@ -125,7 +128,7 @@ class Github_app extends Client {
 
         $response = $this->request('POST', "/app/installations/{$installation_id}/access_tokens", [
             'repositories' => [explode('/', $repo, 2)[1]],
-            'permissions' => ['contents' => 'read'],
+            'permissions' => $permissions,
         ]);
 
         $token = (string) ($response['token'] ?? '');

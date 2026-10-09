@@ -188,6 +188,89 @@ final class Config_editor {
     }
 
     /**
+     * Every key a config file sets (Config_rule keys: constants, and
+     * variable.key paths down to each non-array value), with its value when
+     * that is a constant scalar expression. Used to find the settings a newer
+     * Trongate adds to a config file.
+     *
+     * @return array<string, array{literal: bool, value: string|int|float|bool|null}>
+     * @throws Config_error when the file is not valid PHP
+     */
+    static function settings(string $file, string $source): array {
+        self::check_limits([$file => $source]);
+        $stmts = self::parse(self::parser(), $source, $file);
+        $finder = new NodeFinder();
+        $settings = [];
+
+        foreach (self::constants($finder, $stmts, $file) as [$name, , $value]) {
+            $settings[$name] = self::setting($value);
+        }
+
+        foreach ($finder->findInstanceOf($stmts, Expr\Assign::class) as $assign) {
+            $target = $assign->var;
+            $keys = [];
+
+            while ($target instanceof Expr\ArrayDimFetch && $target->dim instanceof String_) {
+                array_unshift($keys, $target->dim->value);
+                $target = $target->var;
+            }
+
+            if ($target instanceof Expr\Variable && is_string($target->name)) {
+                self::leaves([$target->name, ...$keys], $assign->expr, $settings);
+            }
+        }
+
+        return $settings;
+    }
+
+    /**
+     * Add the leaves of a value set at $path to $settings: one entry per
+     * non-array value, nested string-keyed array literals followed down
+     *
+     * @param list<string> $path variable, then keys
+     * @param array<string, array{literal: bool, value: string|int|float|bool|null}> $settings
+     */
+    private static function leaves(array $path, Expr $value, array &$settings): void {
+        if ($value instanceof Expr\Array_ && $value->items !== []) {
+            $keyed = [];
+
+            foreach ($value->items as $item) {
+                if ($item->key instanceof String_ && !$item->unpack) {
+                    $keyed[$item->key->value] = $item->value;
+                }
+            }
+
+            if (count($keyed) === count($value->items)) {
+                foreach ($keyed as $key => $item_value) {
+                    self::leaves([...$path, (string) $key], $item_value, $settings);
+                }
+
+                return;
+            }
+        }
+
+        // A variable alone, or a key with a dot, is no Config_rule key
+        if (count($path) > 1 && preg_match(Config_rule::KEY_PATTERN, implode('.', $path)) && !in_array('', $path, true)) {
+            $settings[implode('.', $path)] = self::setting($value);
+        }
+    }
+
+    /**
+     * @return array{literal: bool, value: string|int|float|bool|null}
+     */
+    private static function setting(Expr $value): array {
+        try {
+            $evaluated = (new ConstExprEvaluator())->evaluateDirectly($value);
+        } catch (Throwable) {
+            return ['literal' => false, 'value' => null];
+        }
+
+        return is_scalar($evaluated) || $evaluated === null
+            ? ['literal' => true, 'value' => $evaluated]
+            : ['literal' => false, 'value' => null];
+    }
+
+    /**
      * Set the rules' values in one file; null when no rule matches in it
      *
      * @param array<int, Config_rule> $rules

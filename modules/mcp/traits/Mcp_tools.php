@@ -221,6 +221,14 @@ trait Mcp_tools {
                 'scopes' => $both,
             ],
             [
+                'name' => 'upgrade_trongate',
+                'title' => 'Upgrade Trongate',
+                'description' => "Open a pull request on the app's repository that moves it to the newest Trongate v2 release. Framework files the app changed are merged, config values are kept, and new settings are added. Nothing deploys until the pull request is merged. The result shows in get_app as trongate_upgrade.",
+                'inputSchema' => $this->_schema(['app_id' => $app_id], ['app_id']),
+                'annotations' => $this->_hints(false, false, true),
+                'scopes' => $both,
+            ],
+            [
                 'name' => 'get_app_logs',
                 'title' => 'Get app logs',
                 'description' => "The running app's own output (PHP errors, web server lines), oldest first, with a level per line. An asleep app has no logs; reading never wakes it. Pass next_since from the previous call as since to get only newer lines.",
@@ -373,6 +381,7 @@ trait Mcp_tools {
             'trongate_env' => Trongate_config::env((array) $app),
             'database' => empty($app->database_server_id) ? null : Manifests::database_name((int) $app->id),
             'current_deployment' => $current,
+            'trongate_upgrade' => $this->_upgrade_summary($this->model->latest_upgrade((int) $app->id)),
         ];
 
         if (!$this->_is_admin()) {
@@ -620,6 +629,37 @@ trait Mcp_tools {
             'status' => 'pending',
             'app' => ['id' => (int) $app->id, 'label' => $app->label],
             'next' => 'Follow progress with get_deployment_logs {"deployment_id": ' . $deployment_id . '}',
+        ];
+    }
+
+    function _tool_upgrade_trongate(array $args): array {
+        [$project_id, $app] = $this->_app_or_fail($this->_int_arg($args, 'app_id'));
+        $upgrade_id = $this->model->queue_upgrade($project_id, (int) $app->id, $this->_customer_id());
+
+        return [
+            'upgrade_id' => $upgrade_id,
+            'status' => 'pending',
+            'app' => ['id' => (int) $app->id, 'label' => $app->label],
+            'next' => 'The pull request link shows in get_app {"app_id": ' . (int) $app->id . '} as trongate_upgrade once it is open',
+        ];
+    }
+
+    /**
+     * The latest Trongate upgrade (App_upgrades::latest_upgrade) for get_app
+     */
+    function _upgrade_summary(object|false $upgrade): ?array {
+        if ($upgrade === false) {
+            return null;
+        }
+
+        return [
+            'status' => $upgrade->status,
+            'from_version' => $upgrade->from_version,
+            'to_version' => $upgrade->to_version,
+            'pull_request' => $upgrade->pr_url,
+            'files' => $upgrade->summary,
+            'error' => $upgrade->error,
+            'checked_at' => $upgrade->completed_at ?? $upgrade->created_at,
         ];
     }
 
