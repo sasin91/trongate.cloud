@@ -65,6 +65,7 @@ Customer tools act as the signed-in customer. Write tools carry `destructiveHint
 | `verify_domain` | customer | Checks the TXT record |
 | `list_deployments`, `get_deployment_logs` | both | Build and rollout logs, followable with `after_id` |
 | `deploy_app`, `rollback_app` | both | Recorded as `trigger_type = mcp`, with the customer |
+| `upgrade_trongate` | both | Opens a pull request moving a v2 app to the newest Trongate release (`upgrade_app` task); `get_app` shows the result as `trongate_upgrade` |
 | `get_app_logs` | both | The running app's output (`App_logs`); never wakes an asleep app; `problems_only` |
 | `list_env_vars`, `set_env_var`, `delete_env_var` | customer | Values are write-only |
 | `list_services`, `add_service`, `redeploy_service`, `delete_service` | customer | A project's services (`Project_service`): an image that runs next to its apps, always on; the apps get `{NAME}_URL` on their next deploy |
