@@ -3,6 +3,7 @@
 require_once APPPATH . 'modules/customer/traits/Customer_guard.php';
 require_once APPPATH . 'modules/platform/traits/Live_app_state.php';
 require_once APPPATH . 'modules/platform/manifests/Project_service.php';
+require_once APPPATH . 'modules/platform/live/App_traffic.php';
 
 /**
  * Projects: a group of apps sharing one namespace, and the people who work on them.
@@ -86,6 +87,8 @@ class Projects extends Trongate {
             'apps' => $apps,
             'members' => $this->model->project_members((int) $project->id),
             'services' => $this->model->project_services((int) $project->id),
+            'traffic' => $this->_traffic($project, $apps),
+            'traffic_apps' => array_column($apps, null, 'id'),
             'service_form' => $this->_service_form(),
             'is_owner' => $this->_is_owner($project),
             'customer_id' => (int) $customer->id,
@@ -99,6 +102,28 @@ class Projects extends Trongate {
         ];
         $this->module('templates');
         $this->templates->customer($data);
+    }
+
+    /**
+     * The last 24 hours of requests to the project's apps (App_traffic): null
+     * before any app is live or without VictoriaMetrics (local dev), false
+     * when it cannot be read
+     *
+     * @param list<object> $apps
+     */
+    function _traffic(object $project, array $apps): array|false|null {
+        $vm = Victoria_metrics::from_env();
+        $live = array_filter($apps, fn(object $app) => !empty($app->current_deployment_id));
+
+        if ($vm === null || $live === []) {
+            return null;
+        }
+
+        try {
+            return App_traffic::project($vm, $project, time());
+        } catch (Throwable $e) {
+            return false;
+        }
     }
 
     /**

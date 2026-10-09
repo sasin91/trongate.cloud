@@ -22,6 +22,8 @@ defined('PLATFORM_INGRESS_IPV4') || define('PLATFORM_INGRESS_IPV4', getenv('PLAT
 defined('PLATFORM_INGRESS_IPV6') || define('PLATFORM_INGRESS_IPV6', getenv('PLATFORM_INGRESS_IPV6') ?: '');
 // Sablier API, reachable from Traefik (scale-to-zero middleware)
 defined('SABLIER_URL') || define('SABLIER_URL', getenv('SABLIER_URL') ?: 'http://sablier.sablier.svc.cluster.local:10000');
+// VictoriaMetrics query API with Traefik's request metrics (App_traffic). Empty (local dev): no Traffic cards.
+defined('VICTORIA_METRICS_URL') || define('VICTORIA_METRICS_URL', getenv('VICTORIA_METRICS_URL') ?: '');
 // BuildKit daemon for app and platform builds. Empty (the cluster default): the worker starts
 // a throwaway daemon per build (Manifests::buildkitd). Set it only for local dev.
 defined('BUILDKIT_HOST') || define('BUILDKIT_HOST', getenv('BUILDKIT_HOST') ?: '');

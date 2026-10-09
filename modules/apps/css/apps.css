@@ -685,6 +685,39 @@ a.status-pill {
     font-size: 0.75rem;
 }
 
+/* Traffic card (views/_traffic.php): the same bars, answered requests at the bottom */
+.ov-swatch-ok,
+.ov-rate-ok {
+    background: var(--accent, #6966d6);
+}
+
+.ov-traffic-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr));
+    gap: 0.75rem 1rem;
+    margin: 0 0 1rem;
+}
+
+.ov-traffic-stats dt {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+}
+
+.ov-traffic-stats dd {
+    margin: 0.125rem 0 0;
+    font-size: 1.125rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.ov-traffic-bad {
+    color: #c4321f;
+}
+
+.ov-traffic-apps td {
+    font-variant-numeric: tabular-nums;
+}
+
 @media (max-width: 1000px) {
     .ov-main {
         grid-template-columns: minmax(0, 1fr);

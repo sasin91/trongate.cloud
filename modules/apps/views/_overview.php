@@ -4,7 +4,7 @@
  * Shared by apps/show and the landing page's product shot.
  *
  * Expects: $app, $urls, $current (deployment|false), $deployments, $can_rollback,
- * $live_state (array|null), $database_name, and optionally $services (the
+ * $live_state (array|null), $database_name, and optionally $log_rates, $traffic, $services (the
  * project's services, Platform_actions::project_services) and $preview (true:
  * no forms, no polling).
  */
@@ -167,6 +167,10 @@ $platform_host = $app->slug . '.' . PLATFORM_APPS_DOMAIN;
                     </p>
                 <?php endif; ?>
             </section>
+
+            <?php if (($traffic ?? null) !== null): ?>
+                <?php require __DIR__ . '/_traffic.php'; ?>
+            <?php endif; ?>
 
             <?php if (($log_rates ?? null) !== null): ?>
                 <?php require __DIR__ . '/_log_rates.php'; ?>

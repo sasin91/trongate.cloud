@@ -8,6 +8,7 @@ require_once APPPATH . 'modules/platform/manifests/Manifests.php';
 require_once APPPATH . 'modules/platform/manifests/App_env.php';
 require_once APPPATH . 'modules/platform/manifests/Domain_dns.php';
 require_once APPPATH . 'modules/platform/live/App_log_rates.php';
+require_once APPPATH . 'modules/platform/live/App_traffic.php';
 
 /**
  * Apps inside a project: create, overview, deploy/rollback, logs, platform settings and delete.
@@ -98,6 +99,7 @@ class Apps extends Trongate {
             'can_rollback' => $this->model->rollback_target($app) !== false,
             'live_state' => $this->_live_app_state($app),
             'log_rates' => $this->_log_rates($app),
+            'traffic' => $this->_traffic($app),
             'database_name' => Manifests::database_name((int) $app->id),
             'services' => $this->model->project_services($project_id),
             'crumbs' => $this->_app_crumbs($app),
@@ -439,6 +441,24 @@ class Apps extends Trongate {
             return App_log_rates::hourly($this->model->log_rate_rows((int) $app->id), time());
         } catch (Throwable $e) {
             return null;
+        }
+    }
+
+    /**
+     * The last 24 hours of requests (App_traffic): null before the first
+     * deployment or without VictoriaMetrics (local dev), false when it cannot be read
+     */
+    function _traffic(object $app): array|false|null {
+        $vm = Victoria_metrics::from_env();
+
+        if ($vm === null || empty($app->current_deployment_id)) {
+            return null;
+        }
+
+        try {
+            return App_traffic::app($vm, $app, time());
+        } catch (Throwable $e) {
+            return false;
         }
     }
 

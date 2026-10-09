@@ -35,6 +35,10 @@ $new_app_href = 'projects/' . (int) $project->id . '/apps/new';
     <div class="ov-main">
         <div class="ov-col">
             <?php require __DIR__ . '/_app_cards.php'; ?>
+
+            <?php if ($traffic !== null): ?>
+                <?php require APPPATH . 'modules/apps/views/_traffic.php'; ?>
+            <?php endif; ?>
         </div>
 
         <div class="ov-col">

@@ -30,7 +30,8 @@
         "test": [
             "php tests/Config_editor_test.php",
             "php tests/Trongate_upgrade_test.php",
-            "php tests/News_test.php"
+            "php tests/News_test.php",
+            "php tests/App_traffic_test.php"
         ],
         "qa": [
             "@lint",
