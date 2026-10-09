@@ -986,15 +986,35 @@ a.status-pill {
     }
 }
 
-/* Five tabs fit a 360px phone without scrolling */
-@media (max-width: 400px) {
+/* Phones: every tab visible as a grid of buttons instead of a row to pan sideways */
+@media (max-width: 760px) {
     .ov-tabs {
-        gap: 0;
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 2px;
+        padding: 3px;
+        background: var(--white);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        overflow: visible;
     }
 
     .ov-tabs a {
-        padding: 0.75rem 0.3rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 36px;
+        padding: 0.25rem 0.125rem;
+        margin-bottom: 0;
+        border-bottom: 0;
+        border-radius: 8px;
         font-size: 0.8125rem;
+        text-align: center;
+    }
+
+    .ov-tabs a[aria-current="page"] {
+        background: var(--accent-soft);
+        color: var(--text-main);
     }
 }
 
