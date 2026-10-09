@@ -22,8 +22,6 @@ defined('PLATFORM_INGRESS_IPV4') || define('PLATFORM_INGRESS_IPV4', getenv('PLAT
 defined('PLATFORM_INGRESS_IPV6') || define('PLATFORM_INGRESS_IPV6', getenv('PLATFORM_INGRESS_IPV6') ?: '');
 // Sablier API, reachable from Traefik (scale-to-zero middleware)
 defined('SABLIER_URL') || define('SABLIER_URL', getenv('SABLIER_URL') ?: 'http://sablier.sablier.svc.cluster.local:10000');
-// VictoriaMetrics query API with Traefik's request metrics (App_traffic). Empty (local dev): no Traffic cards.
-defined('VICTORIA_METRICS_URL') || define('VICTORIA_METRICS_URL', getenv('VICTORIA_METRICS_URL') ?: '');
 // BuildKit daemon for app and platform builds. Empty (the cluster default): the worker starts
 // a throwaway daemon per build (Manifests::buildkitd). Set it only for local dev.
 defined('BUILDKIT_HOST') || define('BUILDKIT_HOST', getenv('BUILDKIT_HOST') ?: '');
@@ -54,6 +52,10 @@ defined('DOMAIN_RECHECK_INTERVAL') || define('DOMAIN_RECHECK_INTERVAL', getenv('
 // Seconds between sample_app_logs runs: the worker counts new error and warning
 // lines in each running app's log (App_log_rates, the app page's Errors card). 0 turns it off.
 defined('APP_LOG_SAMPLE_INTERVAL') || define('APP_LOG_SAMPLE_INTERVAL', getenv('APP_LOG_SAMPLE_INTERVAL') !== false ? (int) getenv('APP_LOG_SAMPLE_INTERVAL') : 60);
+
+// Seconds between sample_traffic runs: the worker reads Traefik's request counters
+// and adds each app's requests to its windows (App_traffic, the Traffic cards). 0 turns it off.
+defined('TRAFFIC_SAMPLE_INTERVAL') || define('TRAFFIC_SAMPLE_INTERVAL', getenv('TRAFFIC_SAMPLE_INTERVAL') !== false ? (int) getenv('TRAFFIC_SAMPLE_INTERVAL') : 60);
 
 // The trongate.cloud GitHub App (docs/github-app.md). One App does both jobs:
 // its OAuth client signs customers in and lists the repositories they may

@@ -445,18 +445,16 @@ class Apps extends Trongate {
     }
 
     /**
-     * The last 24 hours of requests (App_traffic): null before the first
-     * deployment or without VictoriaMetrics (local dev), false when it cannot be read
+     * The last 24 hours of requests (App_traffic), null before the first
+     * deployment, false when they cannot be read
      */
     function _traffic(object $app): array|false|null {
-        $vm = Victoria_metrics::from_env();
-
-        if ($vm === null || empty($app->current_deployment_id)) {
+        if (empty($app->current_deployment_id)) {
             return null;
         }
 
         try {
-            return App_traffic::app($vm, $app, time());
+            return App_traffic::report($this->model->traffic_rows((int) $app->id), time(), false);
         } catch (Throwable $e) {
             return false;
         }

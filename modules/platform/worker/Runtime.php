@@ -75,6 +75,7 @@ class Runtime {
         'reconcile_deploys' => DEPLOY_RECONCILE_INTERVAL,
         'schedule_domain_rechecks' => DOMAIN_RECHECK_INTERVAL,
         'sample_app_logs' => APP_LOG_SAMPLE_INTERVAL,
+        'sample_traffic' => TRAFFIC_SAMPLE_INTERVAL,
     ];
 
     /** How often the poll loop looks for due periodic tasks */

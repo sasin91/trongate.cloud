@@ -105,22 +105,18 @@ class Projects extends Trongate {
     }
 
     /**
-     * The last 24 hours of requests to the project's apps (App_traffic): null
-     * before any app is live or without VictoriaMetrics (local dev), false
-     * when it cannot be read
+     * The last 24 hours of requests to the project's apps (App_traffic), with
+     * each app's share: null before any app is live, false when they cannot be read
      *
      * @param list<object> $apps
      */
     function _traffic(object $project, array $apps): array|false|null {
-        $vm = Victoria_metrics::from_env();
-        $live = array_filter($apps, fn(object $app) => !empty($app->current_deployment_id));
-
-        if ($vm === null || $live === []) {
+        if (array_filter($apps, fn(object $app) => !empty($app->current_deployment_id)) === []) {
             return null;
         }
 
         try {
-            return App_traffic::project($vm, $project, time());
+            return App_traffic::report($this->model->traffic_rows((int) $project->id), time(), true);
         } catch (Throwable $e) {
             return false;
         }

@@ -33,9 +33,6 @@ data:
   PLATFORM_INGRESS_IPV4: 142.132.241.236
   PLATFORM_INGRESS_IPV6: 2a01:4f8:c01e:2396::1
   SABLIER_URL: http://sablier.sablier.svc.cluster.local:10000
-  # Traefik's request metrics for the Traffic cards (infra repo:
-  # platform/observability, VMPodScrape traefik). Read-only queries.
-  VICTORIA_METRICS_URL: http://vmsingle-victoria-metrics-k8s-stack.observability.svc.cluster.local:8428
   FILES_STORAGE_CLASS: tenant-files
   # Shared Valkey for customer app sessions; the worker's password is in trongate-cloud-valkey
   VALKEY_HOST: valkey.cache.svc.cluster.local
