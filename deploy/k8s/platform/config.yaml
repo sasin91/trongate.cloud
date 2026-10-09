@@ -40,6 +40,8 @@ data:
   VALKEY_WORKER_USER: trongate-cloud
   # Seconds between missed-webhook checks (worker reconcile_deploys task); 0 = off
   DEPLOY_RECONCILE_INTERVAL: "600"
+  # Seconds between redeploys of apps applied with an older platform config (worker redeploy_outdated_apps task); 0 = off
+  APP_CONFIG_REDEPLOY_INTERVAL: "600"
   # Seconds between custom-domain DNS rechecks (worker schedule_domain_rechecks task); 0 = off
   DOMAIN_RECHECK_INTERVAL: "600"
   # The mail inbox (mail.yaml) that apps with mail capture on send to

@@ -19,6 +19,15 @@ class Trongate_config {
     const ENV_PATTERN = '/^[A-Za-z0-9_-]{1,20}$/';
 
     /**
+     * Bump whenever what the platform writes into an app's config changes
+     * (rules(), Mail_capture::rules): every apply records it on the
+     * deployment, and redeploy_outdated_apps redeploys the apps whose
+     * current deployment is behind, so they pick it up without a push.
+     * 2: mail capture (trongate_email.php).
+     */
+    const CONFIG_VERSION = 2;
+
+    /**
      * The app's Trongate ENV constant (app.trongate_env), DEFAULT_ENV when unset or invalid
      */
     static function env(array $app): string {

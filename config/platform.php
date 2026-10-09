@@ -45,6 +45,9 @@ defined('PLATFORM_APP_BASE_IMAGE') || define('PLATFORM_APP_BASE_IMAGE', getenv('
 // Seconds between reconcile_deploys runs: the worker queues a deploy for a branch
 // head that a missed GitHub push webhook never built. 0 turns it off.
 defined('DEPLOY_RECONCILE_INTERVAL') || define('DEPLOY_RECONCILE_INTERVAL', getenv('DEPLOY_RECONCILE_INTERVAL') !== false ? (int) getenv('DEPLOY_RECONCILE_INTERVAL') : 600);
+// Seconds between redeploy_outdated_apps runs: the worker redeploys apps whose
+// current deployment was applied with an older Trongate_config::CONFIG_VERSION. 0 turns it off.
+defined('APP_CONFIG_REDEPLOY_INTERVAL') || define('APP_CONFIG_REDEPLOY_INTERVAL', getenv('APP_CONFIG_REDEPLOY_INTERVAL') !== false ? (int) getenv('APP_CONFIG_REDEPLOY_INTERVAL') : 600);
 // Seconds between schedule_domain_rechecks runs: the worker queues recheck_domains
 // for every project with a verified custom domain (the DNS gate and promotion). 0 turns it off.
 defined('DOMAIN_RECHECK_INTERVAL') || define('DOMAIN_RECHECK_INTERVAL', getenv('DOMAIN_RECHECK_INTERVAL') !== false ? (int) getenv('DOMAIN_RECHECK_INTERVAL') : 600);

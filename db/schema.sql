@@ -321,7 +321,10 @@ CREATE TABLE deployment (
   config_files MEDIUMTEXT NULL,
   -- Why it failed and how to recover (JSON, Config_error::to_array); shown on the deployment page
   failure TEXT NULL,
-  trigger_type ENUM('manual', 'webhook', 'mcp', 'rollback', 'reconcile') NOT NULL DEFAULT 'manual',
+  -- Trongate_config::CONFIG_VERSION it was last applied with; NULL before that was recorded
+  config_version INT NULL,
+  -- platform: redeploy_outdated_apps, the same commit again after the platform's app config changed
+  trigger_type ENUM('manual', 'webhook', 'mcp', 'rollback', 'reconcile', 'platform') NOT NULL DEFAULT 'manual',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   completed_at TIMESTAMP NULL DEFAULT NULL,
   KEY idx_app_status (app_id, status),
@@ -457,4 +460,5 @@ INSERT INTO schema_migrations (name) VALUES
   ('0001_service'),
   ('0002_deployment_config_files'),
   ('0003_app_upgrade'),
-  ('0004_app_mail');
+  ('0004_app_mail'),
+  ('0005_deployment_config_version');
