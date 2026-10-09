@@ -23,20 +23,34 @@ class Upgrade extends Trongate {
     function index(): void {
         $this->_make_sure_allowed();
         $app = $this->_member_app_or_redirect(segment(3, 'int'));
-        $upgrade = $this->model->latest_upgrade((int) $app->id);
 
         $data = [
             'view_module' => 'apps/upgrade',
             'view_file' => 'index',
             'app' => $app,
             ...$this->_app_header_data($app),
-            'upgrade' => $upgrade,
-            'checking' => $upgrade !== false && in_array($upgrade->status, ['pending', 'running'], true),
+            ...$this->_upgrade_status($app),
             'crumbs' => [...$this->_app_crumbs($app), ['apps/' . $app->id . '/upgrade', 'Upgrade']],
             'additional_includes_top' => ['apps_module/css/apps.css'],
         ];
         $this->module('templates');
         $this->templates->customer($data);
+    }
+
+    /**
+     * apps/{id}/upgrade/status: _status.php, polled by the page while a check runs
+     */
+    function status(): void {
+        $this->_make_sure_allowed();
+        $customer = $this->_customer_or_redirect();
+        $app = $this->model->find_member_app((int) $customer->id, segment(3, 'int'));
+
+        if ($app === false) {
+            http_response_code(404);
+            return;
+        }
+
+        $this->view('_status', ['app' => $app, ...$this->_upgrade_status($app)]);
     }
 
     /**
@@ -56,5 +70,19 @@ class Upgrade extends Trongate {
         }
 
         redirect('apps/' . $app->id . '/upgrade');
+    }
+
+    /**
+     * $upgrade and $checking for _status.php
+     *
+     * @return array{upgrade: object|false, checking: bool}
+     */
+    function _upgrade_status(object $app): array {
+        $upgrade = $this->model->latest_upgrade((int) $app->id);
+
+        return [
+            'upgrade' => $upgrade,
+            'checking' => $upgrade !== false && in_array($upgrade->status, ['pending', 'running'], true),
+        ];
     }
 }
