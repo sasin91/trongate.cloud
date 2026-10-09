@@ -47,13 +47,17 @@ $auto_deploy ??= !isset($app->auto_deploy) || !empty($app->auto_deploy);
         </div>
     </div>
 
-    <nav class="ov-tabs" aria-label="App sections">
-        <a href="apps/<?= (int) $app->id ?>"<?= $active_tab === 'overview' ? ' aria-current="page"' : '' ?>>Overview</a>
-        <a href="apps/<?= (int) $app->id ?>#deployments">Deployments</a>
-        <a href="apps/<?= (int) $app->id ?>/logs"<?= $active_tab === 'logs' ? ' aria-current="page"' : '' ?>>Logs</a>
-        <a href="apps/<?= (int) $app->id ?>/traffic"<?= $active_tab === 'traffic' ? ' aria-current="page"' : '' ?>>Traffic</a>
-        <a href="apps/<?= (int) $app->id ?>/database"<?= $active_tab === 'database' ? ' aria-current="page"' : '' ?>>Database</a>
-        <a href="apps/<?= (int) $app->id ?>/mail"<?= $active_tab === 'mail' ? ' aria-current="page"' : '' ?>>Mail</a>
-        <a href="apps/<?= (int) $app->id ?>/upgrade"<?= $active_tab === 'upgrade' ? ' aria-current="page"' : '' ?>>Upgrade</a>
-        <a href="apps/<?= (int) $app->id ?>/settings">Settings</a>
-    </nav>
+<?php
+$app_href = 'apps/' . (int) $app->id;
+$tabs = [
+    [$app_href, 'Overview', $active_tab === 'overview'],
+    [$app_href . '#deployments', 'Deployments', false],
+    [$app_href . '/logs', 'Logs', $active_tab === 'logs'],
+    [$app_href . '/traffic', 'Traffic', $active_tab === 'traffic'],
+    [$app_href . '/database', 'Database', $active_tab === 'database'],
+    [$app_href . '/mail', 'Mail', $active_tab === 'mail'],
+    [$app_href . '/upgrade', 'Upgrade', $active_tab === 'upgrade'],
+    [$app_href . '/settings', 'Settings', false],
+];
+$tabs_label = 'App sections';
+require __DIR__ . '/_section_tabs.php';
