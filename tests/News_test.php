@@ -69,9 +69,29 @@ $test('posts are newest first and filter by kind', function () use ($same) {
     $same(['changelog'], array_values(array_unique(array_column(Posts::all('changelog'), 'kind'))));
 });
 
+$test('no slug is taken by a route of its own', function () use ($same) {
+    foreach (Posts::all() as $post) {
+        $same(false, in_array($post->slug, ['feed', ...array_keys(Posts::KINDS)], true));
+    }
+});
+
 $test('find() only matches published slugs', function () use ($same) {
     $same(null, Posts::find('../../config/config'));
     $same(null, Posts::find(''));
+});
+
+$test('merged posts lead to an existing section of the post that replaced them', function () use ($same) {
+    foreach (Posts::all() as $post) {
+        $html = Markdown::render($post->body);
+        foreach ($post->replaces as $old => $section) {
+            $same(null, Posts::find($old));
+            $same('news/' . $post->slug . ($section !== '' ? '#' . $section : ''), Posts::moved($old));
+            if ($section !== '') {
+                $same(true, str_contains($html, ' id="' . $section . '"'));
+            }
+        }
+    }
+    $same(null, Posts::moved('never-existed'));
 });
 
 echo $failures === 0 ? "\nAll tests passed\n" : "\n{$failures} failed\n";

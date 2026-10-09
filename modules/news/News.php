@@ -28,11 +28,17 @@ class News extends Trongate {
     }
 
     /**
-     * news/{slug}: one post.
+     * news/{slug}: one post. A post merged into another one leads to its section there.
      */
     public function show(): void {
-        $post = Posts::find((string) segment(3));
+        $slug = (string) segment(3);
+        $post = Posts::find($slug);
         if ($post === null) {
+            $moved = Posts::moved($slug);
+            if ($moved !== null) {
+                header('Location: ' . BASE_URL . $moved, true, 301);
+                return;
+            }
             $this->not_found();
             return;
         }
