@@ -99,6 +99,7 @@ Never commit a filled-in file before it is encrypted.
 | `trongate-cloud-env` | `trongate-cloud` | `APP_KEY`, `DB_PASSWORD` | shared by app and worker, see below |
 | `trongate-cloud-mcp` | `trongate-cloud` | `MCP_SECRET` | app only (optional; without it MCP is disabled) |
 | `trongate-cloud-github` | `trongate-cloud` | `GITHUB_APP_SLUG`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_WEBHOOK_SECRET`, `GITHUB_APP_PRIVATE_KEY` | the GitHub App, app and worker; see `docs/github-app.md` |
+| `trongate-cloud-mail` | `trongate-cloud` | `MAIL_KEY`, `MAIL_DB_PASSWORD` | mail inbox (`platform/mail.yaml`) and worker; `MAIL_KEY` signs the apps' inbox passwords, `MAIL_DB_PASSWORD` is the MariaDB user `tcloud_mail`. Both `openssl rand -hex 32`; must exist before mail capture is deployed |
 | `trongate-cloud-valkey` | `trongate-cloud` | `VALKEY_WORKER_PASSWORD` | worker only; the `trongate-cloud` user's password in `valkey-acl`. Without it customer apps keep file sessions in the pod |
 | `registry-push` | `trongate-cloud` | `.dockerconfigjson` | push credentials for `PLATFORM_REGISTRY`, mounted into the worker |
 
