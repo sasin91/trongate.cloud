@@ -216,7 +216,7 @@ class Platform_task {
 
         // The app's own variables win over a service URL of the same name
         $env = self::app_env($runtime, $log, (int) $app['id']) + self::service_urls($runtime, $log, (int) $app['project_id']);
-        $deployment['config_php'] = self::config_source($runtime, $log, $app, $deployment);
+        $deployment['config_php'] = self::config_source($deployment);
         $manifests = Manifests::app($app, $deployment, $database, self::ensure_session_user($runtime, $log, (int) $app['id']), $env);
 
         foreach ($manifests as $manifest) {
@@ -229,34 +229,15 @@ class Platform_task {
     }
 
     /**
-     * The deployment's own config/config.php, which Manifests::app edits and
-     * mounts over the one in the image. Deploys store it when they build; for
-     * a deployment built before that (a rollback to it) it is read from GitHub
-     * at the deployment's commit once and stored.
+     * The deployment's own config/config.php, stored by the deploy that built
+     * it; Manifests::app edits it and mounts it over the one in the image
      */
-    static function config_source(Runtime $runtime, Task_log $log, array $app, array $deployment): string {
-        if (isset($deployment['config_php'])) {
-            return (string) $deployment['config_php'];
+    static function config_source(array $deployment): string {
+        if (!isset($deployment['config_php'])) {
+            throw new RuntimeException("Deployment #{$deployment['id']} was built before trongate.cloud kept its config/config.php; deploy the app again");
         }
 
-        $commit_sha = (string) ($deployment['commit_sha'] ?? '');
-
-        if (!preg_match('/^[0-9a-f]{40}$/', $commit_sha)) {
-            throw new RuntimeException("Deployment #{$deployment['id']} has no commit to read config/config.php from");
-        }
-
-        $repo = self::github_repo($app);
-        $log->info("Reading config/config.php of deployment #{$deployment['id']} from {$repo}@" . substr($commit_sha, 0, 7));
-        $file = self::github_client($repo)->request('GET', "/repos/{$repo}/contents/config/config.php?ref={$commit_sha}");
-        $source = base64_decode((string) ($file['content'] ?? ''), true);
-
-        if ($source === false || $source === '') {
-            throw new RuntimeException("config/config.php not found in {$repo}@{$commit_sha}");
-        }
-
-        self::execute($runtime->db(), 'UPDATE deployment SET config_php = ? WHERE id = ?', [$source, (int) $deployment['id']]);
-
-        return $source;
+        return (string) $deployment['config_php'];
     }
 
     /**
