@@ -93,6 +93,7 @@ $row_key = fn(array $row) => array_combine($primary_key, array_map(fn($c) => (st
                     <h2 id="db-sql-h">SQL</h2>
                     <span class="muted ov-mono"><?= $e($database_name) ?></span>
                 </div>
+                <p class="db-note"><strong>Tip:</strong> deploys never change your tables. Run your modules' <code>.sql</code> files and later schema changes here, with changes allowed and Back up first ticked.</p>
                 <?= form_open($base . '/query' . ($table !== null ? '?' . http_build_query(['table' => $table['name']]) : ''), [
                     'class' => 'ov-pad db-sql',
                     'onsubmit' => "return !this.allow_changes.checked || confirm(this.backup.checked"

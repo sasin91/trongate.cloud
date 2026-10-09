@@ -691,3 +691,7 @@
 .wz-embedded .wz-brand {
     display: none;
 }
+
+.wz-tip {
+    margin-top: 18px;
+}
