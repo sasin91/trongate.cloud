@@ -11,6 +11,12 @@ $routes = [
     'auth/github/callback' => 'github_auth/callback',
     'auth/github/installed' => 'github_auth/installed',
 
+    // News: the changelog and writing (modules/news/posts)
+    'news/feed' => 'news/feed',
+    'news/changelog' => 'news/index/changelog',
+    'news/writing' => 'news/index/writing',
+    'news/(:any)' => 'news/show/$1',
+
     // Dashboard: the customer's projects
     'dashboard' => 'customer',
 
