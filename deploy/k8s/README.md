@@ -15,7 +15,7 @@ for the decisions behind this layout.
 | `files/` | JuiceFS metadata DB CRs + the `tenant-files` RWX StorageClass | `files` |
 | `buildkit/` | Namespace, quota, NetworkPolicy and worker Role for the per-build BuildKit daemons | `buildkit` |
 | `sablier/` | Sablier (scale-to-zero API for the Traefik plugin) | `sablier` |
-| `platform/` | Web app, task worker, config, RBAC, admission policies, the platform's own MariaDB `platform` + `tcloud` DB | `trongate-cloud` |
+| `platform/` | Web app, task worker, mail inbox (`mail.yaml`), config, RBAC, admission policies, the platform's own MariaDB `platform` + `tcloud` DB | `trongate-cloud` |
 
 `kustomization.yaml` in this directory includes everything except `operators/`,
 which is a separate Flux Kustomization so its CRDs exist first.

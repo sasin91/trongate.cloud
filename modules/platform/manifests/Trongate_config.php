@@ -31,13 +31,16 @@ class Trongate_config {
      * What the platform sets in an app's config/*.php: BASE_URL and ENV
      * wherever the app defines them, and the database connection in
      * database.php (v2 apps read databases.default.*, v1 apps the
-     * HOST/PORT/USER/PASSWORD/DATABASE constants).
+     * HOST/PORT/USER/PASSWORD/DATABASE constants), plus the mail inbox in
+     * trongate_email.php while mail capture is on (Mail_capture::rules).
      *
      * @param array{host: string, port: string, user: string, password: string, database: string} $db
+     * @param array<string, string> $files the app's config/*.php: file name => source
      * @return list<Config_rule>
      */
-    static function rules(array $app, array $db): array {
+    static function rules(array $app, array $db, array $files = []): array {
         require_once __DIR__ . '/Config_rule.php';
+        require_once __DIR__ . '/../mail/Mail_capture.php';
 
         $rules = [
             new Config_rule('BASE_URL', self::base_url($app)),
@@ -49,7 +52,7 @@ class Trongate_config {
             $rules[] = new Config_rule($v1 ? strtoupper($key) : "databases.default.{$key}", (string) $db[$key], 'database.php');
         }
 
-        return $rules;
+        return [...$rules, ...Mail_capture::rules($app, $files)];
     }
 
     /**
@@ -63,7 +66,7 @@ class Trongate_config {
     static function config_files(array $files, array $app, array $db): array {
         require_once __DIR__ . '/Config_editor.php';
 
-        return Config_editor::apply($files, self::rules($app, $db));
+        return Config_editor::apply($files, self::rules($app, $db, $files));
     }
 
     /**

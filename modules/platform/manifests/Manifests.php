@@ -102,6 +102,10 @@ class Manifests {
     const PRIVATE_V4 = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '100.64.0.0/10', '169.254.0.0/16'];
     const PRIVATE_V6 = ['fc00::/7', 'fe80::/10'];
 
+    // The mail inbox (deploy/k8s/platform/mail.yaml): its namespace and pod label
+    const MAIL_NAMESPACE = 'trongate-cloud';
+    const MAIL_APP_LABEL = 'trongate-cloud-mail';
+
     // Custom domains (see domain_gateway()). Gateway listener ports are Traefik's
     // entrypoint ports (web :8000, websecure :8443), not the Service's 80/443.
     const GATEWAY_HTTP_PORT = 8000;
@@ -474,6 +478,20 @@ class Manifests {
             ],
         ]);
 
+        // The platform's mail inbox (Mail_capture), where apps with mail capture on send
+        $manifests[] = $network_policy('allow-platform-mail', [
+            'policyTypes' => ['Egress'],
+            'egress' => [[
+                'to' => [[
+                    'namespaceSelector' => ['matchLabels' => ['kubernetes.io/metadata.name' => self::MAIL_NAMESPACE]],
+                    'podSelector' => ['matchLabels' => ['app.kubernetes.io/name' => self::MAIL_APP_LABEL]],
+                ]],
+                'ports' => [$tcp(PLATFORM_MAIL_PORT)],
+            ]],
+        ]);
+
+        // HTTP(S), and SMTP submission (465, 587) for apps that turned mail
+        // capture off and send through their own provider. Never port 25.
         $manifests[] = $network_policy('allow-internet', [
             'policyTypes' => ['Egress'],
             'egress' => [[
@@ -481,7 +499,7 @@ class Manifests {
                     ['ipBlock' => ['cidr' => '0.0.0.0/0', 'except' => self::PRIVATE_V4]],
                     ['ipBlock' => ['cidr' => '::/0', 'except' => self::PRIVATE_V6]],
                 ],
-                'ports' => [$tcp(80), $tcp(443)],
+                'ports' => [$tcp(80), $tcp(443), $tcp(465), $tcp(587)],
             ]],
         ]);
 

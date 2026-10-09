@@ -74,3 +74,9 @@ defined('VALKEY_HOST') || define('VALKEY_HOST', getenv('VALKEY_HOST') ?: 'valkey
 defined('VALKEY_PORT') || define('VALKEY_PORT', (int) (getenv('VALKEY_PORT') ?: 6379));
 defined('VALKEY_WORKER_USER') || define('VALKEY_WORKER_USER', getenv('VALKEY_WORKER_USER') ?: 'trongate-cloud');
 defined('VALKEY_WORKER_PASSWORD') || define('VALKEY_WORKER_PASSWORD', getenv('VALKEY_WORKER_PASSWORD') ?: '');
+
+// The platform's SMTP inbox (deploy/k8s/platform/mail.yaml, modules/platform/mail):
+// apps with mail capture on (the default) send here, and their mail shows on
+// the app's Mail tab instead of being delivered (Mail_capture).
+defined('PLATFORM_MAIL_HOST') || define('PLATFORM_MAIL_HOST', getenv('PLATFORM_MAIL_HOST') ?: 'trongate-cloud-mail.trongate-cloud.svc.cluster.local');
+defined('PLATFORM_MAIL_PORT') || define('PLATFORM_MAIL_PORT', (int) (getenv('PLATFORM_MAIL_PORT') ?: 2525));

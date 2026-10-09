@@ -10,6 +10,7 @@ resources:
   - app.yaml
   - worker-rbac.yaml
   - worker.yaml
+  - mail.yaml
   - worker-admission-policy.yaml
 # Not listed on purpose: secrets.example.yaml (create a SOPS-encrypted copy, see ../README.md)
 

@@ -1,6 +1,7 @@
 # Task worker: polls the tasks table and runs modules/platform/tasks/*.php.
 # Builds customer apps and the platform with buildctl against a per-build BuildKit daemon.
 # diff3 (diffutils) merges framework files for Trongate upgrades (Trongate_upgrade::merge3).
+# The same image runs the mail inbox (modules/platform/mail/server.php, deploy/k8s/platform/mail.yaml).
 
 # Composer packages the worker uses (nikic/php-parser for Config_editor)
 FROM composer:2.8 AS vendor

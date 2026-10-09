@@ -73,6 +73,9 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: trongate-cloud-worker
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: trongate-cloud-mail
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: mariadb-operator
