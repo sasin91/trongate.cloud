@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../../../vendor/autoload.php';
 require_once __DIR__ . '/Config_rule.php';
+require_once __DIR__ . '/Config_error.php';
 
 use PhpParser\BuilderHelpers;
 use PhpParser\ConstExprEvaluator;
@@ -35,20 +36,28 @@ use PhpParser\PrettyPrinter\Standard;
  * `$databases['default'] = [...]` or `$databases['default']['host'] = ...`.
  * A key found nowhere is appended to its file.
  *
- * Each edited file is parsed again, checked to hold exactly the rules' values
- * and compiled with `php -l` before it is returned.
+ * Each edited file is parsed again and checked to hold exactly the rules'
+ * values before it is returned. Nothing is written to disk or run: the
+ * customer's code is only ever parsed, within check_limits().
  *
  * Runs in the worker only: customer images carry no copy of the parser.
  */
 final class Config_editor {
 
+    /** Limits on the customer's config/*.php (check_limits) */
+    const MAX_FILES = 50;
+    const MAX_FILE_BYTES = 256 * 1024;
+    const MAX_TOTAL_BYTES = 512 * 1024;
+    const MAX_DEPTH = 64;
+
     /**
      * @param array<string, string> $files the app's config/*.php: file name => source
      * @param list<Config_rule> $rules
      * @return array<string, string> the files the rules edited or created: file name => source
-     * @throws RuntimeException when a file is not valid PHP or the result is not what was asked for
+     * @throws Config_error when a file is not valid PHP or the result is not what was asked for
      */
     static function apply(array $files, array $rules): array {
+        self::check_limits($files);
         $edited = [];
         $found = [];
 
@@ -74,10 +83,6 @@ final class Config_editor {
 
         self::verify($edited + $files, $rules);
 
-        foreach ($edited as $file => $source) {
-            self::lint($file, $source);
-        }
-
         return $edited;
     }
 
@@ -100,11 +105,11 @@ final class Config_editor {
                     continue;
                 }
 
-                $stmts ??= self::parse(self::parser(), $source, "{$file} is not valid PHP after editing");
+                $stmts ??= self::parse(self::parser(), $source, $file, Config_error::PLATFORM);
 
-                foreach (self::matches($stmts, $rule) as [, $value]) {
+                foreach (self::matches($stmts, $rule, $file) as [, $value]) {
                     if ($evaluator->evaluateSilently($value) !== $rule->value) {
-                        throw new RuntimeException("{$file} does not set {$rule->key} to the expected value after editing");
+                        throw new Config_error("{$rule->key} does not hold the expected value after editing.", Config_error::PLATFORM, $file);
                     }
 
                     $set[$i] = true;
@@ -114,7 +119,7 @@ final class Config_editor {
 
         foreach ($rules as $i => $rule) {
             if (!isset($set[$i])) {
-                throw new RuntimeException("{$rule->target_file()} does not set {$rule->key} after editing");
+                throw new Config_error("{$rule->key} is not set after editing.", Config_error::PLATFORM, $rule->target_file());
             }
         }
     }
@@ -126,32 +131,59 @@ final class Config_editor {
      * @param array<string, string> $files file name => source
      */
     static function check(array $files): void {
+        self::check_limits($files);
+
         foreach ($files as $file => $source) {
-            self::parse(self::parser(), $source, "{$file} is not valid PHP");
+            self::parse(self::parser(), $source, $file);
         }
     }
 
     /**
-     * Compile a file with `php -l`, which also catches code that parses but
-     * cannot compile (a function declared twice, say)
+     * The files are the customer's, parsed in the worker that runs every
+     * app's builds: refuse what could exhaust its memory or stack before
+     * parsing (config files are small and flat; these limits are far above
+     * any real one)
+     *
+     * @param array<string, string> $files file name => source
      */
-    static function lint(string $file, string $source): void {
-        $path = (string) tempnam(sys_get_temp_dir(), 'tgc-config');
-        $output = [];
-        $code = 1;
-
-        try {
-            file_put_contents($path, $source);
-            exec(escapeshellarg(PHP_BINARY) . ' -n -l ' . escapeshellarg($path) . ' 2>&1', $output, $code);
-        } finally {
-            unlink($path);
+    static function check_limits(array $files): void {
+        if (count($files) > self::MAX_FILES) {
+            throw new Config_error('More than ' . self::MAX_FILES . ' PHP files in config/.', Config_error::FIX_FILE);
         }
 
-        if ($code !== 0) {
-            $lines = array_filter($output, fn(string $line) => trim($line) !== '' && !str_starts_with($line, 'Errors parsing'));
-            $message = trim((string) preg_replace('/\s+/', ' ', str_replace($path, $file, implode(' ', $lines))));
+        if (array_sum(array_map('strlen', $files)) > self::MAX_TOTAL_BYTES) {
+            throw new Config_error('The PHP files in config/ are larger than ' . (self::MAX_TOTAL_BYTES >> 10) . ' KiB together.', Config_error::FIX_FILE);
+        }
 
-            throw new RuntimeException("{$file} does not compile after editing ({$message})");
+        foreach ($files as $file => $source) {
+            if (!preg_match(Config_rule::FILE_PATTERN, (string) $file)) {
+                throw new Config_error('File names in config/ may only use letters, digits, - and _.', Config_error::FIX_FILE, (string) $file);
+            }
+
+            if (strlen($source) > self::MAX_FILE_BYTES) {
+                throw new Config_error('Larger than ' . (self::MAX_FILE_BYTES >> 10) . ' KiB.', Config_error::FIX_FILE, (string) $file);
+            }
+
+            if (!mb_check_encoding($source, 'UTF-8')) {
+                throw new Config_error('Not saved as UTF-8.', Config_error::FIX_FILE, (string) $file);
+            }
+
+            // Bracket depth from the lexer alone, before anything recurses over a tree
+            $depth = 0;
+            $deepest = ['depth' => 0, 'line' => 0];
+
+            foreach (PhpToken::tokenize($source) as $token) {
+                $opens = in_array($token->text, ['(', '[', '{', '${'], true) || $token->is(T_CURLY_OPEN);
+                $depth += $opens ? 1 : (in_array($token->text, [')', ']', '}'], true) ? -1 : 0);
+
+                if ($depth > $deepest['depth']) {
+                    $deepest = ['depth' => $depth, 'line' => $token->line];
+                }
+            }
+
+            if ($deepest['depth'] > self::MAX_DEPTH) {
+                throw new Config_error('Nested more than ' . self::MAX_DEPTH . ' levels deep.', Config_error::FIX_FILE, (string) $file, $deepest['line']);
+            }
         }
     }
 
@@ -163,7 +195,7 @@ final class Config_editor {
      */
     private static function edit(string $file, string $source, array $rules, array &$found): ?string {
         $parser = self::parser();
-        $old = self::parse($parser, $source, "{$file} is not valid PHP");
+        $old = self::parse($parser, $source, $file);
         $tokens = $parser->getTokens();
 
         // The format-preserving printer diffs the edited tree against the original
@@ -171,13 +203,7 @@ final class Config_editor {
         $matched = false;
 
         foreach ($rules as $i => $rule) {
-            try {
-                $matches = self::matches($new, $rule);
-            } catch (RuntimeException $e) {
-                throw new RuntimeException("{$file}: {$e->getMessage()}", 0, $e);
-            }
-
-            foreach ($matches as [$set]) {
+            foreach (self::matches($new, $rule, $file) as [$set]) {
                 $set(BuilderHelpers::normalizeValue($rule->value));
                 $found[$i] = true;
                 $matched = true;
@@ -194,7 +220,7 @@ final class Config_editor {
      */
     private static function append(string $file, string $source, array $rules): string {
         $parser = self::parser();
-        self::parse($parser, $source, "{$file} is not valid PHP");
+        self::parse($parser, $source, $file);
         $stmts = [];
 
         foreach ($rules as $rule) {
@@ -228,13 +254,13 @@ final class Config_editor {
      * @param Node[] $stmts
      * @return list<array{0: Closure(Expr): void, 1: Expr}> [replace the value, current value]
      */
-    private static function matches(array $stmts, Config_rule $rule): array {
+    private static function matches(array $stmts, Config_rule $rule, string $file): array {
         $finder = new NodeFinder();
 
         if ($rule->constant !== null) {
             return array_values(array_map(
                 fn(array $definition) => [$definition[1], $definition[2]],
-                array_filter(self::constants($finder, $stmts), fn(array $definition) => $definition[0] === $rule->constant),
+                array_filter(self::constants($finder, $stmts, $file), fn(array $definition) => $definition[0] === $rule->constant),
             ));
         }
 
@@ -273,7 +299,7 @@ final class Config_editor {
      * @param Node[] $stmts
      * @return list<array{0: string, 1: Closure(Expr): void, 2: Expr}> [name, replace the value, current value]
      */
-    private static function constants(NodeFinder $finder, array $stmts): array {
+    private static function constants(NodeFinder $finder, array $stmts, string $file): array {
         $definitions = [];
 
         foreach ($finder->find($stmts, fn(Node $node) => $node instanceof FuncCall || $node instanceof Stmt\Const_) as $node) {
@@ -298,7 +324,7 @@ final class Config_editor {
             }
 
             if ($value === null) {
-                throw new RuntimeException("define('{$name}') on line {$node->getStartLine()} has no value");
+                throw new Config_error("define('{$name}') has no value.", Config_error::FIX_FILE, $file, $node->getStartLine());
             }
 
             $definitions[] = [$name, function (Expr $expr) use ($value) {
@@ -393,13 +419,18 @@ final class Config_editor {
     }
 
     /**
+     * The file's statements; a syntax error is the app's to fix, unless the
+     * file is one we just edited
+     *
      * @return Stmt[]
      */
-    private static function parse(Parser $parser, string $source, string $error): array {
+    private static function parse(Parser $parser, string $source, string $file, string $action = Config_error::FIX_FILE): array {
         try {
             return $parser->parse($source) ?? [];
         } catch (Error $e) {
-            throw new RuntimeException("{$error} ({$e->getMessage()})", 0, $e);
+            $line = $e->getStartLine();
+
+            throw new Config_error("Not valid PHP: {$e->getRawMessage()}.", $action, $file, $line > 0 ? $line : null, $e);
         }
     }
 }

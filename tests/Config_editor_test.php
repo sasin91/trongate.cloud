@@ -196,24 +196,52 @@ $test('quotes and backslashes in values are escaped', function () use ($same) {
     $same("it's \\ odd", eval('return ' . substr($out, strlen("<?php\ndefine('ENV', "), -3) . ';'));
 });
 
-$test('a config that is not valid PHP is refused with its line', function () use ($edit, $throws) {
-    $throws(fn() => $edit("<?php\ndefine('ENV', 'dev')\ndefine('BASE_URL', 'x');\n"), 'config.php is not valid PHP (Syntax error, unexpected T_STRING on line 3)');
-    $throws(fn() => Config_editor::check(['login.php' => '<?php $x =']), 'login.php is not valid PHP');
+/** The Config_error $body throws, as to_array() */
+$config_error = function (callable $body): array {
+    try {
+        $body();
+    } catch (Config_error $e) {
+        return $e->to_array();
+    }
+
+    throw new RuntimeException('Expected a Config_error');
+};
+
+$test('a config that is not valid PHP names the file and line, for the customer to fix', function () use ($edit, $same, $config_error) {
+    $error = $config_error(fn() => $edit("<?php\ndefine('ENV', 'dev')\ndefine('BASE_URL', 'x');\n"));
+    $same(['reason' => 'Not valid PHP: Syntax error, unexpected T_STRING.', 'action' => Config_error::FIX_FILE, 'file' => 'config.php', 'line' => 3], array_diff_key($error, ['hint' => 0]));
+    $same(Config_error::FIX_FILE, $config_error(fn() => Config_editor::check(['login.php' => '<?php $x =']))['action']);
 });
 
-$test('a define without a value is refused', function () use ($edit, $throws) {
-    $throws(fn() => $edit("<?php\nif (false) { define('ENV'); }\n"), "config.php: define('ENV') on line 2 has no value");
+$test('a define without a value is the customer\'s to fix', function () use ($edit, $same, $config_error) {
+    $error = $config_error(fn() => $edit("<?php\nif (false) { define('ENV'); }\n"));
+    $same(["define('ENV') has no value.", 'config.php', 2, Config_error::FIX_FILE], [$error['reason'], $error['file'], $error['line'], $error['action']]);
 });
 
-$test('lint reports code that parses but does not compile', function () use ($throws) {
-    $throws(fn() => Config_editor::lint('config.php', "<?php\nfunction f() {}\nfunction f() {}\n"), 'config.php does not compile after editing (');
-    $throws(fn() => Config_editor::lint('config.php', "<?php\nfunction f() {}\nfunction f() {}\n"), 'Cannot redeclare');
-});
-
-$test('verify catches a value that is not the one asked for', function () use ($throws) {
+$test('a value our edit did not set is a platform error', function () use ($same, $config_error) {
     $rule = [new Config_rule('ENV', 'prod')];
-    $throws(fn() => Config_editor::verify(['config.php' => "<?php\ndefine('ENV', 'dev');\n"], $rule), 'config.php does not set ENV to the expected value');
-    $throws(fn() => Config_editor::verify(['config.php' => "<?php\n"], $rule), 'config.php does not set ENV after editing');
+    $same(['ENV does not hold the expected value after editing.', Config_error::PLATFORM], array_values(array_intersect_key($config_error(fn() => Config_editor::verify(['config.php' => "<?php\ndefine('ENV', 'dev');\n"], $rule)), ['reason' => 0, 'action' => 0])));
+    $same(['ENV is not set after editing.', Config_error::PLATFORM], array_values(array_intersect_key($config_error(fn() => Config_editor::verify(['config.php' => "<?php\n"], $rule)), ['reason' => 0, 'action' => 0])));
+});
+
+$test('the message carries where, why and what to do', function () use ($same) {
+    $same(
+        'config/database.php line 4: Not valid PHP. Fix the file in your repository and push; your app keeps running its previous deployment until then.',
+        (new Config_error('Not valid PHP.', Config_error::FIX_FILE, 'database.php', 4))->getMessage(),
+    );
+    $same('Deploy the app again; your app keeps running its current deployment until then.', (new Config_error('Old.', Config_error::REDEPLOY))->hint());
+});
+
+$test('files that could exhaust the worker are refused before parsing', function () use ($same, $config_error) {
+    $limits = fn(array $files) => $config_error(fn() => Config_editor::check($files));
+
+    $same('Larger than 256 KiB.', $limits(['config.php' => '<?php // ' . str_repeat('x', 256 * 1024)])['reason']);
+    $same('The PHP files in config/ are larger than 512 KiB together.', $limits(array_fill_keys(['a.php', 'b.php', 'c.php'], '<?php // ' . str_repeat('x', 200 * 1024)))['reason']);
+    $same('More than 50 PHP files in config/.', $limits(array_fill_keys(array_map(fn($i) => "f{$i}.php", range(1, 51)), "<?php\n"))['reason']);
+    $same(['Nested more than 64 levels deep.', 2], array_values(array_intersect_key($limits(['config.php' => "<?php\n\$x = " . str_repeat('[', 65) . str_repeat(']', 65) . ';']), ['reason' => 0, 'line' => 0])));
+    $same('Not saved as UTF-8.', $limits(['config.php' => "<?php // \xff"])['reason']);
+    $same('File names in config/ may only use letters, digits, - and _.', $limits(['my file.php' => "<?php\n"])['reason']);
+    Config_editor::check(['config.php' => "<?php\n\$x = " . str_repeat('[', 64) . str_repeat(']', 64) . ';']);
 });
 
 // --- Array keys and file scope ------------------------------------------------
@@ -349,8 +377,9 @@ $test('a v1 app gets the database constants', function () use ($same, $db) {
     $same("<?php\ndefine('HOST', 'shared-1.databases');\ndefine('PORT', '3306');\ndefine('USER', 'tc_p7');\ndefine('PASSWORD', 'pw');\ndefine('DATABASE', 'tc_p7');\n", $out['database.php']);
 });
 
-$test('config_files names the file in its errors', function () use ($throws, $db) {
-    $throws(fn() => Trongate_config::config_files(['database.php' => '<?php $databases = ['], ['id' => 7, 'slug' => 'shop'], $db), 'trongate.cloud could not set its values in config/: database.php is not valid PHP');
+$test('config_files passes on the Config_error', function () use ($same, $config_error, $db) {
+    $error = $config_error(fn() => Trongate_config::config_files(['database.php' => '<?php $databases = ['], ['id' => 7, 'slug' => 'shop'], $db));
+    $same(['database.php', Config_error::FIX_FILE], [$error['file'], $error['action']]);
 });
 
 $test('Manifests::app mounts the edited files from the app Secret', function () use ($same) {

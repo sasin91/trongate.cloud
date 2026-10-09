@@ -144,16 +144,18 @@ return function (Task_log $log) use ($payload, $runtime): int {
         $config_files = [];
 
         foreach (glob("{$src}/config/*.php") ?: [] as $path) {
-            if (is_file($path)) {
-                $config_files[basename($path)] = (string) file_get_contents($path);
+            if (count($config_files) > Config_editor::MAX_FILES) {
+                break; // enough for check() to refuse
+            }
+
+            // Only names a Secret key can carry; check() refuses the rest anyway
+            if (is_file($path) && !is_link($path) && preg_match(Config_rule::FILE_PATTERN, basename($path))) {
+                // Read at most one byte over the limit; check() refuses the rest
+                $config_files[basename($path)] = (string) file_get_contents($path, false, null, 0, Config_editor::MAX_FILE_BYTES + 1);
             }
         }
 
-        try {
-            Config_editor::check($config_files);
-        } catch (RuntimeException $e) {
-            throw new RuntimeException("Cannot deploy: config/{$e->getMessage()}", 0, $e);
-        }
+        Config_editor::check($config_files);
 
         $config_json = json_encode($config_files, JSON_THROW_ON_ERROR);
 

@@ -235,7 +235,9 @@ class Platform_task {
      */
     static function config_files(array $deployment): string {
         if (!isset($deployment['config_files'])) {
-            throw new RuntimeException("Deployment #{$deployment['id']} was built before trongate.cloud kept its config files; deploy the app again");
+            require_once __DIR__ . '/../../manifests/Config_error.php';
+
+            throw new Config_error("Deployment #{$deployment['id']} was built before trongate.cloud kept a copy of its config files, so it cannot be applied again.", Config_error::REDEPLOY);
         }
 
         return (string) $deployment['config_files'];

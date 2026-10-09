@@ -278,6 +278,8 @@ CREATE TABLE deployment (
   image VARCHAR(255) NULL,
   -- The repository's config/*.php at commit_sha (JSON: file name => source); the worker edits them at every apply
   config_files MEDIUMTEXT NULL,
+  -- Why it failed and how to recover (JSON, Config_error::to_array); shown on the deployment page
+  failure TEXT NULL,
   trigger_type ENUM('manual', 'webhook', 'mcp', 'rollback', 'reconcile') NOT NULL DEFAULT 'manual',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   completed_at TIMESTAMP NULL DEFAULT NULL,

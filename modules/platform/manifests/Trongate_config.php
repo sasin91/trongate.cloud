@@ -58,16 +58,12 @@ class Trongate_config {
      * and mounted over the image's.
      *
      * @return array<string, string>
-     * @throws RuntimeException when a file is not valid PHP or cannot be edited
+     * @throws Config_error when a file is not valid PHP or cannot be edited
      */
     static function config_files(array $files, array $app, array $db): array {
         require_once __DIR__ . '/Config_editor.php';
 
-        try {
-            return Config_editor::apply($files, self::rules($app, $db));
-        } catch (RuntimeException $e) {
-            throw new RuntimeException("trongate.cloud could not set its values in config/: {$e->getMessage()}", 0, $e);
-        }
+        return Config_editor::apply($files, self::rules($app, $db));
     }
 
     /**

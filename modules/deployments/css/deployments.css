@@ -113,3 +113,17 @@
         grid-template-columns: 1fr;
     }
 }
+
+.deploy-failure {
+    margin-bottom: 1.5rem;
+    border-left: 4px solid var(--danger);
+}
+
+.deploy-failure h3 {
+    margin-top: 0;
+    color: var(--danger);
+}
+
+.deploy-failure-reason code {
+    word-break: break-all;
+}

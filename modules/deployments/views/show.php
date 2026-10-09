@@ -30,6 +30,8 @@
         </dl>
     </div>
 
+    <?php require __DIR__ . '/_failure.php'; ?>
+
     <h3>Logs</h3>
     <div id="log-container" class="card log-container">
         <div id="logs-content"><?php require __DIR__ . '/_log_lines.php'; ?></div>
@@ -45,6 +47,7 @@
                    {"select": "#new-logs", "target": "#logs-content", "swap": "beforeend"},
                    {"select": "#log-cursor", "target": "#log-poller", "swap": "value"},
                    {"select": "#deployment-status", "target": "#deployment-status", "swap": "outerHTML"},
+                   {"select": "#deploy-failure", "target": "#deploy-failure", "swap": "outerHTML"},
                    {"select": "#log-poller-stop", "target": ".log-poller-keepalive, #log-poller", "swap": "delete"}
                ]'>
     <?php endif; ?>
