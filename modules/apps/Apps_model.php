@@ -2,7 +2,6 @@
 
 require_once APPPATH . 'modules/customer/traits/Current_customer.php';
 require_once APPPATH . 'modules/platform/traits/Platform_actions.php';
-require_once APPPATH . 'modules/platform/live/App_traffic.php';
 require_once APPPATH . 'modules/platform/traits/App_upgrades.php';
 require_once __DIR__ . '/traits/App_records.php';
 
@@ -29,19 +28,6 @@ class Apps_model extends Model {
      */
     function log_rate_rows(int $app_id, int $hours = 24): array {
         $sql = 'SELECT bucket, total, warnings, errors FROM app_log_rate
-                WHERE app_id = :app_id AND bucket >= UTC_TIMESTAMP() - INTERVAL :hours HOUR
-                ORDER BY bucket';
-
-        return $this->db->query_bind($sql, ['app_id' => $app_id, 'hours' => $hours], 'array');
-    }
-
-    /**
-     * The app's traffic windows (App_traffic) of the last $hours hours
-     *
-     * @return list<array<string, int|string>>
-     */
-    function traffic_rows(int $app_id, int $hours = App_traffic::HOURS): array {
-        $sql = 'SELECT * FROM app_traffic
                 WHERE app_id = :app_id AND bucket >= UTC_TIMESTAMP() - INTERVAL :hours HOUR
                 ORDER BY bucket';
 

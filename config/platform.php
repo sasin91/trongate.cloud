@@ -53,10 +53,6 @@ defined('DOMAIN_RECHECK_INTERVAL') || define('DOMAIN_RECHECK_INTERVAL', getenv('
 // lines in each running app's log (App_log_rates, the app page's Errors card). 0 turns it off.
 defined('APP_LOG_SAMPLE_INTERVAL') || define('APP_LOG_SAMPLE_INTERVAL', getenv('APP_LOG_SAMPLE_INTERVAL') !== false ? (int) getenv('APP_LOG_SAMPLE_INTERVAL') : 60);
 
-// Seconds between sample_traffic runs: the worker reads Traefik's request counters
-// and adds each app's requests to its windows (App_traffic, the Traffic cards). 0 turns it off.
-defined('TRAFFIC_SAMPLE_INTERVAL') || define('TRAFFIC_SAMPLE_INTERVAL', getenv('TRAFFIC_SAMPLE_INTERVAL') !== false ? (int) getenv('TRAFFIC_SAMPLE_INTERVAL') : 60);
-
 // The trongate.cloud GitHub App (docs/github-app.md). One App does both jobs:
 // its OAuth client signs customers in and lists the repositories they may
 // pick; its installation tokens let the worker read those repositories, and

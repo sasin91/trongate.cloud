@@ -1,14 +1,15 @@
 <?php
 
 /**
- * Tests for App_traffic: reading Traefik's metrics page, turning counter
- * changes into per-app amounts, and the hourly report with response times.
+ * Tests for App_traffic: picking one app's or one project's requests out of
+ * Traefik's access log (as the pod log API returns it) and the polling cursor.
  *
  * Run: php tests/App_traffic_test.php (exits non-zero on a failure)
  */
 
 define('APPPATH', dirname(__DIR__) . '/');
 
+require_once APPPATH . 'modules/services/clients/Kubernetes.php';
 require_once APPPATH . 'modules/platform/live/App_traffic.php';
 
 $failures = 0;
@@ -29,95 +30,98 @@ $same = function ($expected, $actual): void {
     }
 };
 
-$router = fn(string $namespace, string $route, string $gateway = 'traefik-platform') => "httproute-{$namespace}-{$route}-gw-{$gateway}-ep-websecure-0-1a2b3c4d5e@kubernetesgateway";
+/** An access log line as Traefik v3.7 writes it (headers dropped), with the API's timestamp prefix */
+$line = function (string $at, string $route, int $status, string $path = '/', string $gateway = 'traefik-platform') {
+    return $at . ' ' . json_encode([
+        'ClientHost' => '10.0.0.5', 'DownstreamContentSize' => 335, 'DownstreamStatus' => $status, 'Duration' => 1745724,
+        'RequestHost' => 'shop.trongate.dev', 'RequestMethod' => 'GET', 'RequestPath' => $path, 'RequestProtocol' => 'HTTP/1.1',
+        'RouterName' => "httproute-{$route}-gw-{$gateway}-ep-websecure-0-1a2b3c4d5e@kubernetesgateway",
+        'StartUTC' => substr($at, 0, 19) . '.958200276Z', 'entryPointName' => 'websecure', 'level' => 'info', 'msg' => '', 'time' => substr($at, 0, 19) . 'Z',
+    ]);
+};
 
-$page = <<<TXT
-# HELP traefik_router_requests_total How many HTTP requests are processed on a router, partitioned by service, status code, protocol, and method.
-# TYPE traefik_router_requests_total counter
-traefik_router_requests_total{code="200",method="GET",protocol="http",router="{$router('project-3', 'p7-app')}",service="x"} 10
-traefik_router_requests_total{code="404",method="GET",protocol="http",router="{$router('project-3', 'p7-app', 'project-3-p7-d-example-com')}",service="x"} 2
-traefik_router_requests_total{code="502",method="POST",protocol="http",router="{$router('project-3', 'p71-app')}",service="x"} 1
-traefik_router_requests_total{code="200",method="GET",protocol="http",router="{$router('traefik', 'http-to-https')}",service="x"} 99
-traefik_router_request_duration_seconds_bucket{code="200",method="GET",protocol="http",router="{$router('project-3', 'p7-app')}",service="x",le="0.025"} 4
-traefik_router_request_duration_seconds_bucket{code="200",method="GET",protocol="http",router="{$router('project-3', 'p7-app')}",service="x",le="0.1"} 9
-traefik_router_request_duration_seconds_bucket{code="200",method="GET",protocol="http",router="{$router('project-3', 'p7-app')}",service="x",le="+Inf"} 10
-traefik_router_responses_bytes_total{code="200",method="GET",protocol="http",router="{$router('project-3', 'p7-app')}",service="x"} 2.5e+06
-traefik_service_requests_total{code="200",method="GET",protocol="http",service="x"} 10
-TXT;
+$log = implode("\n", [
+    '2026-10-09T08:00:00.100000000Z 2026-10-09T08:00:00Z INF Starting provider',
+    $line('2026-10-09T08:00:01.000000001Z', 'project-3-p7-app', 200, '/shop?page=2'),
+    $line('2026-10-09T08:00:02.000000000Z', 'project-3-p71-app', 502),
+    $line('2026-10-09T08:00:03.000000000Z', 'project-3-p7-app', 404, '/missing', 'project-3-p7-d-example-com'),
+    $line('2026-10-09T08:00:04.000000000Z', 'project-4-p9-app', 200),
+    '2026-10-09T08:00:05.000000000Z {"level":"error","msg":"not an access log line"}',
+    '',
+]);
 
-$test('The metrics page yields app routers only, on every gateway, without mixing up p7 and p71', function () use ($same, $page) {
-    $lines = App_traffic::parse($page);
+$test('Patterns match an app\'s routers on every gateway, never a longer id or another namespace', function () use ($same) {
+    $app = App_traffic::app_pattern(['id' => 7, 'namespace' => 'project-3']);
+    $same(1, preg_match($app, 'httproute-project-3-p7-app-gw-traefik-platform-ep-websecure-0-1a@kubernetesgateway'));
+    $same(1, preg_match($app, 'httproute-project-3-p7-app-gw-project-3-p7-d-example-com-ep-websecure-0-1a@kubernetesgateway'));
+    $same(0, preg_match($app, 'httproute-project-3-p71-app-gw-traefik-platform-ep-websecure-0-1a@kubernetesgateway'));
+    $same(0, preg_match($app, 'httproute-project-31-p7-app-gw-traefik-platform-ep-websecure-0-1a@kubernetesgateway'));
 
-    $same(7, count($lines));
-    $same([7, 7, 71, 7, 7, 7, 7], array_column($lines, 'app_id'));
-    $same('project-3', $lines[0]['namespace']);
-    $same('404', $lines[1]['labels']['code']);
-    $same(2500000.0, $lines[6]['value']);
-    $same(7, count(array_unique(array_column($lines, 'series'))));
+    preg_match(App_traffic::project_pattern(['namespace' => 'project-3']), 'httproute-project-3-p71-app-gw-x', $match);
+    $same('71', $match[1] ?? null);
 });
 
-$test('Counter changes become amounts per app; restarts count in full', function () use ($same, $page) {
-    $lines = App_traffic::parse($page);
-    $previous = [
-        $lines[0]['series'] => 4.0,   // 200s: 4 -> 10
-        $lines[2]['series'] => 5.0,   // 502s: 5 -> 1, Traefik restarted
-        $lines[6]['series'] => 2.0e6, // bytes
-    ];
+$test('Patterns refuse a row without a tenant namespace', function () {
+    try {
+        App_traffic::app_pattern(['id' => 7, 'namespace' => 'traefik']);
+    } catch (InvalidArgumentException $e) {
+        return;
+    }
 
+    throw new RuntimeException('Expected InvalidArgumentException');
+});
+
+$test('Parsing keeps only the app\'s requests but every line\'s timestamp', function () use ($same, $log) {
+    $lines = App_traffic::parse($log, App_traffic::app_pattern(['id' => 7, 'namespace' => 'project-3']));
+
+    $same(6, count($lines));
+    $same(['/shop?page=2', '/missing'], array_column(array_filter(array_column($lines, 1)), 'path'));
     $same([
-        7 => ['ok' => 6, 'client_errors' => 2, 'le_0_025' => 4, 'le_0_1' => 9, 'bytes_out' => 500000],
-        71 => ['server_errors' => 1],
-    ], App_traffic::deltas($lines, $previous, true));
+        'time' => '2026-10-09T08:00:01.958200276Z', 'app_id' => 0, 'method' => 'GET', 'host' => 'shop.trongate.dev',
+        'path' => '/shop?page=2', 'status' => 200, 'ms' => 1.7, 'bytes' => 335,
+    ], $lines[1][1]);
 });
 
-$test('Counters seen for the first time on a pod read before are only a starting point when told so', function () use ($same, $page) {
-    $lines = App_traffic::parse($page);
-    $previous = array_combine(array_column($lines, 'series'), array_column($lines, 'value'));
+/** Answers the pod list and each pod's log; records the log options asked for */
+class Stub_kube extends Kubernetes {
+    public array $asked = [];
 
-    $same([], App_traffic::deltas($lines, [], false));
-    $same([], App_traffic::deltas($lines, $previous, true));
+    function __construct(private array $logs) {
+        parent::__construct('https://stub', 'token');
+    }
+
+    function with_timeout(int $seconds): self {
+        return $this;
+    }
+
+    function list(string $api_version, string $kind, ?string $namespace, string $label_selector = ''): array {
+        return array_map(fn(string $name) => ['metadata' => ['name' => $name], 'status' => ['phase' => 'Running']], array_keys($this->logs));
+    }
+
+    function pod_log(string $namespace, string $name, int $tail_lines = 100, array $options = []): string {
+        $this->asked[] = [$namespace, $name, $options];
+
+        return $this->logs[$name];
+    }
+}
+
+$test('A project read merges both Traefik pods, names each app and moves the cursor past every line', function () use ($same, $log, $line) {
+    $kube = new Stub_kube(['traefik-a' => $log, 'traefik-b' => $line('2026-10-09T08:00:02.500000000Z', 'project-3-p7-app', 201)]);
+    $read = App_traffic::read($kube, App_traffic::project_pattern(['namespace' => 'project-3']));
+
+    $same([[7, 200], [71, 502], [7, 201], [7, 404]], array_map(fn(array $r) => [$r['app_id'], $r['status']], $read['requests']));
+    $same('2026-10-09T08:00:05.000000000Z', $read['cursor']);
+    $same(['traefik', 'traefik-a', ['container' => 'traefik', 'timestamps' => true, 'limitBytes' => App_traffic::LIMIT_BYTES, 'sinceSeconds' => App_traffic::FIRST_READ_SECONDS]], $kube->asked[0]);
 });
 
-$test('Quantiles interpolate inside their bucket like histogram_quantile', function () use ($same) {
-    $buckets = ['le_0_025' => 50, 'le_0_05' => 80, 'le_0_1' => 90, 'le_0_25' => 95, 'le_0_5' => 100, 'le_1' => 100, 'le_2_5' => 100, 'le_5' => 100, 'le_10' => 100];
+$test('A later read asks from the cursor\'s second and drops what it already sent', function () use ($same, $log) {
+    $kube = new Stub_kube(['traefik-a' => $log]);
+    $read = App_traffic::read($kube, App_traffic::app_pattern(['id' => 7, 'namespace' => 'project-3']), '2026-10-09T08:00:01.000000001Z');
 
-    $same(0.025, App_traffic::quantile(0.5, $buckets, 100));
-    $same(0.25, App_traffic::quantile(0.95, $buckets, 100));
-    $same(INF, App_traffic::quantile(0.95, ['le_10' => 50], 100));
-    $same(null, App_traffic::quantile(0.5, $buckets, 0));
-    $same(null, App_traffic::quantile(0.5, [], 10));
-});
+    $same('2026-10-09T08:00:01Z', $kube->asked[0][2]['sinceTime']);
+    $same([404], array_column($read['requests'], 'status'));
 
-$test('The report has 24 clock hours, the current one last, and a share per app', function () use ($same) {
-    $now = 1_791_540_000 + 1800;
-    $current_hour = $now - 1800;
-    $row = fn(int $app_id, int $time, int $ok, int $client, int $server) => [
-        'app_id' => (string) $app_id, 'bucket' => gmdate('Y-m-d H:i:s', $time),
-        'ok' => (string) $ok, 'client_errors' => (string) $client, 'server_errors' => (string) $server, 'bytes_out' => '1000',
-        'le_0_025' => (string) ($ok + $client), 'le_0_05' => (string) ($ok + $client), 'le_0_1' => (string) ($ok + $client),
-        'le_0_25' => (string) ($ok + $client), 'le_0_5' => (string) ($ok + $client), 'le_1' => (string) ($ok + $client + $server),
-        'le_2_5' => (string) ($ok + $client + $server), 'le_5' => (string) ($ok + $client + $server), 'le_10' => (string) ($ok + $client + $server),
-    ];
-
-    $rows = [
-        $row(7, $current_hour - 24 * 3600, 500, 0, 0), // older than the 24 hours shown
-        $row(7, $current_hour - 23 * 3600 + 600, 10, 1, 0),
-        $row(71, $current_hour - 3600 + 300, 2, 0, 3),
-        $row(71, $current_hour + 300, 20, 0, 0),
-        $row(71, $current_hour + 900, 5, 0, 0),
-    ];
-
-    $report = App_traffic::report($rows, $now, true);
-
-    $same(24, count($report['hours']));
-    $same(['start' => $current_hour - 23 * 3600, 'ok' => 10, 'client_errors' => 1, 'server_errors' => 0], $report['hours'][0]);
-    $same(['start' => $current_hour - 3600, 'ok' => 2, 'client_errors' => 0, 'server_errors' => 3], $report['hours'][22]);
-    $same(['start' => $current_hour, 'ok' => 25, 'client_errors' => 0, 'server_errors' => 0], $report['hours'][23]);
-    $same([41, 1, 3, 4000], [$report['requests'], $report['client_errors'], $report['server_errors'], $report['bytes_out']]);
-    $same([71, 7], array_keys($report['apps']));
-    $same(30, $report['apps'][71]['requests']);
-    $same(0.0125, $report['apps'][7]['median']);
-    $same(false, array_key_exists('apps', App_traffic::report($rows, $now, false)));
+    $same('', App_traffic::read(new Stub_kube([]), App_traffic::app_pattern(['id' => 7, 'namespace' => 'project-3']), 'not a cursor')['cursor']);
 });
 
 exit($failures === 0 ? 0 : 1);

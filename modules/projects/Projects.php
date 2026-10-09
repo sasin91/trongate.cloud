@@ -87,8 +87,6 @@ class Projects extends Trongate {
             'apps' => $apps,
             'members' => $this->model->project_members((int) $project->id),
             'services' => $this->model->project_services((int) $project->id),
-            'traffic' => $this->_traffic($project, $apps),
-            'traffic_apps' => array_column($apps, null, 'id'),
             'service_form' => $this->_service_form(),
             'is_owner' => $this->_is_owner($project),
             'customer_id' => (int) $customer->id,
@@ -105,21 +103,48 @@ class Projects extends Trongate {
     }
 
     /**
-     * The last 24 hours of requests to the project's apps (App_traffic), with
-     * each app's share: null before any app is live, false when they cannot be read
-     *
-     * @param list<object> $apps
+     * projects/{id}/traffic: requests to every app of the project as they
+     * happen (App_traffic), polled from traffic_poll() by app_traffic.js
      */
-    function _traffic(object $project, array $apps): array|false|null {
-        if (array_filter($apps, fn(object $app) => !empty($app->current_deployment_id)) === []) {
-            return null;
+    function traffic(): void {
+        $this->_make_sure_allowed();
+        $project = $this->_member_project_or_redirect(segment(3, 'int'));
+        $apps = $this->model->project_apps((int) $project->id);
+
+        $data = [
+            'view_module' => 'projects',
+            'view_file' => 'traffic',
+            'project' => $project,
+            'app_count' => count($apps),
+            'member_count' => count($this->model->project_members((int) $project->id)),
+            'is_owner' => $this->_is_owner($project),
+            'traffic_apps' => array_column(array_map(fn(object $app) => ['id' => (int) $app->id, 'label' => (string) $app->label], $apps), 'label', 'id'),
+            'crumbs' => [['projects/' . $project->id, $project->name], ['projects/' . $project->id . '/traffic', 'Traffic']],
+            'additional_includes_top' => [
+                'deployments_module/css/deployments.css',
+                'apps_module/css/apps.css',
+                'projects_module/css/projects.css',
+            ],
+            'additional_includes_btm' => ['apps_module/js/app_traffic.js'],
+        ];
+        $this->module('templates');
+        $this->templates->customer($data);
+    }
+
+    /**
+     * JSON polled by the traffic page: the project's requests newer than ?since=
+     */
+    function traffic_poll(): void {
+        $this->_make_sure_allowed();
+        $customer = $this->_customer_or_redirect();
+        $project = $this->model->find_member_project((int) $customer->id, segment(3, 'int'));
+
+        if ($project === false) {
+            http_response_code(404);
+            return;
         }
 
-        try {
-            return App_traffic::report($this->model->traffic_rows((int) $project->id), time(), true);
-        } catch (Throwable $e) {
-            return false;
-        }
+        $this->_send_traffic(App_traffic::project_pattern($project));
     }
 
     /**

@@ -685,15 +685,14 @@ a.status-pill {
     font-size: 0.75rem;
 }
 
-/* Traffic card (views/_traffic.php): the same bars, answered requests at the bottom */
-.ov-swatch-ok,
-.ov-rate-ok {
+/* Live traffic (views/_traffic_live.php, js/app_traffic.js) */
+.ov-swatch-ok {
     background: var(--accent, #6966d6);
 }
 
 .ov-traffic-stats {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(6rem, 1fr));
     gap: 0.75rem 1rem;
     margin: 0 0 1rem;
 }
@@ -714,8 +713,131 @@ a.status-pill {
     color: #c4321f;
 }
 
-.ov-traffic-apps td {
+.traffic-head {
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.traffic-head h2 {
+    margin-right: auto;
+}
+
+.traffic-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.traffic-actions .btn-secondary {
+    margin: 0;
+}
+
+/* A filter checkbox in a card head reads as a control, not a form label (trongate.css uppercases labels) */
+.ov-card-head .checkbox-label {
+    margin: 0;
+    text-transform: none;
+    letter-spacing: normal;
+    color: var(--text-main);
+}
+
+.ov-card-head .checkbox-label input {
+    margin: 0;
+    top: 0;
+}
+
+.traffic-recording {
     font-variant-numeric: tabular-nums;
+}
+
+.traffic-recording::before {
+    content: "";
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin-right: 0.375rem;
+    border-radius: 50%;
+    background: #c4321f;
+    animation: traffic-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes traffic-pulse {
+    50% { opacity: 0.3; }
+}
+
+.traffic-chart {
+    display: block;
+    width: 100%;
+    height: 140px;
+    border-bottom: 1px solid var(--border-strong);
+}
+
+.traffic-chart .traffic-grid {
+    stroke: var(--border);
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+}
+
+.traffic-chart .traffic-hit {
+    fill: transparent;
+}
+
+.traffic-chart g:hover .traffic-hit {
+    fill: var(--accent-soft, #ecebfa);
+}
+
+.traffic-chart .traffic-ok {
+    fill: var(--accent, #6966d6);
+}
+
+.traffic-chart .traffic-warn {
+    fill: #d0912a;
+}
+
+.traffic-chart .traffic-error {
+    fill: #c4321f;
+}
+
+.traffic-chart .traffic-p95 {
+    fill: none;
+    stroke: var(--navy, #1d1e6e);
+    stroke-width: 1.5;
+    stroke-dasharray: 4 3;
+    vector-effect: non-scaling-stroke;
+}
+
+.traffic-chart-legend {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+}
+
+.traffic-p95-key {
+    display: inline-block;
+    width: 16px;
+    border-top: 2px dashed var(--navy, #1d1e6e);
+}
+
+.traffic-list {
+    max-height: 32rem;
+    overflow-y: auto;
+}
+
+.traffic-table td {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.traffic-table .traffic-path {
+    max-width: 28rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.traffic-note {
+    margin: 0;
+    padding: 0.75rem 1.25rem 1rem;
+    font-size: 0.8125rem;
+    border-top: 1px solid var(--border);
 }
 
 @media (max-width: 1000px) {

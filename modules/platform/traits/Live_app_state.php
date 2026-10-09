@@ -2,9 +2,10 @@
 
 require_once APPPATH . 'modules/platform/live/App_state.php';
 require_once APPPATH . 'modules/platform/live/App_logs.php';
+require_once APPPATH . 'modules/platform/live/App_traffic.php';
 
 /**
- * Live app state and logs for controllers (see App_state, App_logs). Pages render without it when
+ * Live app state, logs and traffic for controllers (see App_state, App_logs, App_traffic). Pages render without it when
  * the cluster cannot be reached, e.g. in local development.
  */
 trait Live_app_state {
@@ -57,6 +58,31 @@ trait Live_app_state {
         } catch (Throwable $e) {
             return null;
         }
+    }
+
+    /**
+     * Requests whose router matches $pattern (App_traffic::app_pattern or
+     * project_pattern) newer than $cursor, or null when they cannot be read
+     *
+     * @return array{requests: list<array{time: string, app_id: int, method: string, host: string, path: string, status: int, ms: float, bytes: int}>, cursor: string}|null
+     */
+    function _live_traffic(string $pattern, string $cursor = ''): ?array {
+        try {
+            return App_traffic::read(Kubernetes::from_env(), $pattern, $cursor);
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Send a _live_traffic() read as the JSON the Traffic pages poll (app_traffic.js)
+     */
+    function _send_traffic(string $pattern): void {
+        $traffic = $this->_live_traffic($pattern, (string) ($_GET['since'] ?? ''));
+
+        header('Content-Type: application/json');
+        header('Cache-Control: no-store');
+        echo json_encode($traffic === null ? ['ok' => false] : ['ok' => true] + $traffic, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
     }
 
     /**
