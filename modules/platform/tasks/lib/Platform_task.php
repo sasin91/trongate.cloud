@@ -216,7 +216,7 @@ class Platform_task {
 
         // The app's own variables win over a service URL of the same name
         $env = self::app_env($runtime, $log, (int) $app['id']) + self::service_urls($runtime, $log, (int) $app['project_id']);
-        $deployment['config_php'] = self::config_source($deployment);
+        $deployment['config_files'] = self::config_files($deployment);
         $manifests = Manifests::app($app, $deployment, $database, self::ensure_session_user($runtime, $log, (int) $app['id']), $env);
 
         foreach ($manifests as $manifest) {
@@ -229,15 +229,16 @@ class Platform_task {
     }
 
     /**
-     * The deployment's own config/config.php, stored by the deploy that built
-     * it; Manifests::app edits it and mounts it over the one in the image
+     * The deployment's own config/*.php (JSON: file name => source), stored by
+     * the deploy that built it; Manifests::app edits them and mounts the
+     * edited ones over the image's
      */
-    static function config_source(array $deployment): string {
-        if (!isset($deployment['config_php'])) {
-            throw new RuntimeException("Deployment #{$deployment['id']} was built before trongate.cloud kept its config/config.php; deploy the app again");
+    static function config_files(array $deployment): string {
+        if (!isset($deployment['config_files'])) {
+            throw new RuntimeException("Deployment #{$deployment['id']} was built before trongate.cloud kept its config files; deploy the app again");
         }
 
-        return (string) $deployment['config_php'];
+        return (string) $deployment['config_files'];
     }
 
     /**

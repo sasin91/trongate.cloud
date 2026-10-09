@@ -606,21 +606,20 @@ class Manifests {
         $selector = ['app.kubernetes.io/name' => $name];
 
         $password = (string) ($database['password'] ?? self::database_password($app_id));
-        $database_php = Trongate_config::database_php([
-            'host' => $database['host'],
+        $sessions_ini = $sessions !== null ? self::sessions_ini($app_id, $sessions) : '';
+
+        if (!isset($deployment['config_files'])) {
+            throw new InvalidArgumentException('Deployment has no config files');
+        }
+
+        // The app's own config/*.php with the platform's values set, mounted over the image's
+        $config_files = Trongate_config::config_files((array) json_decode((string) $deployment['config_files'], true), $app, [
+            'host' => (string) $database['host'],
             'port' => (string) ($database['port'] ?? 3306),
             'user' => $db_name,
             'password' => $password,
             'database' => $db_name,
-        ], (string) ($app['type'] ?? 'trongate_v2'));
-
-        $sessions_ini = $sessions !== null ? self::sessions_ini($app_id, $sessions) : '';
-
-        if (!isset($deployment['config_php'])) {
-            throw new InvalidArgumentException('Deployment has no config/config.php source');
-        }
-
-        $config_php = Trongate_config::config_php((string) $deployment['config_php'], $app);
+        ]);
 
         $base_url = Trongate_config::base_url($app);
         $mariadb_ref = [
@@ -635,11 +634,9 @@ class Manifests {
             'kind' => 'Secret',
             'metadata' => self::_metadata($secret_name, $namespace, $labels),
             'type' => 'Opaque',
-            'stringData' => [
-                'database.php' => $database_php,
-                'config.php' => $config_php,
-                'password' => $password,
-            ] + ($sessions_ini !== '' ? ['sessions.ini' => $sessions_ini] : []),
+            'stringData' => $config_files
+                + ['password' => $password]
+                + ($sessions_ini !== '' ? ['sessions.ini' => $sessions_ini] : []),
         ];
 
         // Always written, so removing the last variable empties it on the next
@@ -717,10 +714,11 @@ class Manifests {
             'paths' => $paths,
             'always_on' => $always_on,
             'base_url' => $base_url,
+            'config_files' => array_keys($config_files),
             'sessions' => $sessions_ini !== '',
             'env_secret_name' => self::env_secret_name($app_id),
             // Changed variables roll the pods: envFrom is only read at container start
-            'config_hash' => substr(hash('sha256', $database_php . $config_php . $sessions_ini . json_encode($paths) . json_encode($env)), 0, 16),
+            'config_hash' => substr(hash('sha256', json_encode($config_files) . $sessions_ini . json_encode($paths) . json_encode($env)), 0, 16),
         ]);
 
         $manifests[] = [
@@ -992,23 +990,19 @@ class Manifests {
 
         $volumes = [
             ['name' => 'tmp', 'emptyDir' => ['sizeLimit' => '256Mi']],
-            // The app's config/config.php (edited by the worker) and database.php
-            ['name' => 'database', 'secret' => [
+            // The config files the worker edited (Trongate_config::config_files)
+            ['name' => 'config-files', 'secret' => [
                 'secretName' => $o['secret_name'],
-                'items' => [
-                    ['key' => 'database.php', 'path' => 'database.php'],
-                    ['key' => 'config.php', 'path' => 'config.php'],
-                ],
+                'items' => array_map(fn(string $file) => ['key' => $file, 'path' => $file], $o['config_files']),
             ]],
         ];
 
         $init_containers = [];
+        $mounts = [['name' => 'tmp', 'mountPath' => '/tmp']];
 
-        $mounts = [
-            ['name' => 'database', 'mountPath' => "{$app_dir}/config/config.php", 'subPath' => 'config.php', 'readOnly' => true],
-            ['name' => 'database', 'mountPath' => "{$app_dir}/config/database.php", 'subPath' => 'database.php', 'readOnly' => true],
-            ['name' => 'tmp', 'mountPath' => '/tmp'],
-        ];
+        foreach ($o['config_files'] as $file) {
+            $mounts[] = ['name' => 'config-files', 'mountPath' => "{$app_dir}/config/{$file}", 'subPath' => $file, 'readOnly' => true];
+        }
 
         if ($o['sessions']) {
             // Images built before the redis extension was added (a rollback)

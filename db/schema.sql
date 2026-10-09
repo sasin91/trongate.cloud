@@ -276,8 +276,8 @@ CREATE TABLE deployment (
   source_url VARCHAR(512) NULL,
   commit_sha VARCHAR(40) NULL,
   image VARCHAR(255) NULL,
-  -- The repository's config/config.php at commit_sha; the worker edits it at every apply
-  config_php MEDIUMTEXT NULL,
+  -- The repository's config/*.php at commit_sha (JSON: file name => source); the worker edits them at every apply
+  config_files MEDIUMTEXT NULL,
   trigger_type ENUM('manual', 'webhook', 'mcp', 'rollback', 'reconcile') NOT NULL DEFAULT 'manual',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   completed_at TIMESTAMP NULL DEFAULT NULL,
@@ -412,4 +412,4 @@ CREATE TABLE schema_migrations (
 
 INSERT INTO schema_migrations (name) VALUES
   ('0001_service'),
-  ('0002_deployment_config_php');
+  ('0002_deployment_config_files');

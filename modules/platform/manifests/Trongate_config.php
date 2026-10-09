@@ -28,79 +28,45 @@ class Trongate_config {
     }
 
     /**
-     * Full config/database.php
+     * What the platform sets in an app's config/*.php: BASE_URL and ENV
+     * wherever the app defines them, and the database connection in
+     * database.php (v2 apps read $databases['default'], v1 apps the
+     * HOST/PORT/USER/PASSWORD/DATABASE constants).
      *
-     * $db keys: host, port, user, password, database.
-     * v2 apps read $databases['default']; v1 apps read HOST/PORT/USER/PASSWORD/DATABASE constants.
+     * @param array{host: string, port: string, user: string, password: string, database: string} $db
+     * @return list<Config_rule>
      */
-    static function database_php(array $db, string $type = 'trongate_v2'): string {
-        $values = [
-            'host' => (string) ($db['host'] ?? '127.0.0.1'),
-            'port' => (string) ($db['port'] ?? '3306'),
-            'user' => (string) ($db['user'] ?? ''),
-            'password' => (string) ($db['password'] ?? ''),
-            'database' => (string) ($db['database'] ?? ''),
+    static function rules(array $app, array $db): array {
+        require_once __DIR__ . '/Config_rule.php';
+
+        $rules = [
+            new Config_rule('BASE_URL', self::base_url($app)),
+            new Config_rule('ENV', self::env($app)),
         ];
+        $v1 = ($app['type'] ?? 'trongate_v2') === 'trongate_v1';
 
-        $php = "<?php\n// Managed by trongate.cloud - changes are overwritten on deploy\n";
-
-        if ($type === 'trongate_v1') {
-            foreach ($values as $key => $value) {
-                $php .= 'define(' . self::php_string(strtoupper($key)) . ', ' . self::php_string($value) . ");\n";
-            }
-
-            return $php;
+        foreach (['host', 'port', 'user', 'password', 'database'] as $key) {
+            $rules[] = new Config_rule($v1 ? strtoupper($key) : "\$databases['default']['{$key}']", (string) $db[$key], 'database.php');
         }
 
-        $php .= "\$databases = [\n    'default' => [\n";
-
-        foreach ($values as $key => $value) {
-            $php .= '        ' . self::php_string($key) . ' => ' . self::php_string($value) . ",\n";
-        }
-
-        return $php . "    ],\n];\n";
+        return $rules;
     }
 
     /**
-     * The app's config/config.php: the customer's own file with the constants
-     * the platform sets (config_defines) changed by Config_editor. Mounted
-     * over the file in the image, like database.php.
+     * The app's config files (file name in config/ => source) with the
+     * platform's values set (rules()); only the edited files are returned,
+     * and mounted over the image's.
      *
-     * @throws RuntimeException when the file is not valid PHP or cannot be edited
+     * @return array<string, string>
+     * @throws RuntimeException when a file is not valid PHP or cannot be edited
      */
-    static function config_php(string $source, array $app): string {
-        $defines = self::config_defines($app);
-        self::assert_defines($defines);
+    static function config_files(array $files, array $app, array $db): array {
         require_once __DIR__ . '/Config_editor.php';
 
         try {
-            return Config_editor::set_constants($source, $defines);
+            return Config_editor::apply($files, self::rules($app, $db));
         } catch (RuntimeException $e) {
-            throw new RuntimeException("trongate.cloud could not update config/config.php: {$e->getMessage()}", 0, $e);
-        }
-    }
-
-    /**
-     * The constants the platform sets in an app's config/config.php
-     *
-     * @return array<string, string>
-     */
-    static function config_defines(array $app): array {
-        return ['BASE_URL' => self::base_url($app), 'ENV' => self::env($app)];
-    }
-
-    /**
-     * @param array<string, string> $defines
-     */
-    private static function assert_defines(array $defines): void {
-        foreach ($defines as $name => $value) {
-            if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', (string) $name)) {
-                throw new InvalidArgumentException("Invalid constant name: {$name}");
-            }
-
-            if (preg_match('/[\r\n\0]/', (string) $value)) {
-                throw new InvalidArgumentException("Value for {$name} must be a single line");
-            }
+            throw new RuntimeException("trongate.cloud could not set its values in config/: {$e->getMessage()}", 0, $e);
         }
     }
 
@@ -115,13 +81,6 @@ class Trongate_config {
         $domain = Manifests::secured_domains($app)[0] ?? strtolower($app['slug'] . '.' . PLATFORM_APPS_DOMAIN);
 
         return 'https://' . $domain . '/';
-    }
-
-    /**
-     * Single-quoted PHP string literal
-     */
-    static function php_string(string $value): string {
-        return "'" . str_replace(['\\', "'"], ['\\\\', "\\'"], $value) . "'";
     }
 
     /**

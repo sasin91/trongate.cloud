@@ -329,7 +329,7 @@ class Runtime {
         $sets = ['status = ?'];
         $values = [$status];
 
-        foreach (['commit_sha', 'image', 'config_php', 'completed_at'] as $column) {
+        foreach (['commit_sha', 'image', 'config_files', 'completed_at'] as $column) {
             if (array_key_exists($column, $extra)) {
                 $sets[] = "{$column} = ?";
                 $values[] = $extra[$column] === null ? null : (string) $extra[$column];

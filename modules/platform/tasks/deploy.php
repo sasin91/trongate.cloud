@@ -15,6 +15,7 @@
  */
 
 require_once __DIR__ . '/lib/Platform_task.php';
+require_once __DIR__ . '/../manifests/Config_editor.php';
 
 return function (Task_log $log) use ($payload, $runtime): int {
     $db = $runtime->db();
@@ -137,11 +138,24 @@ return function (Task_log $log) use ($payload, $runtime): int {
         }
 
         // Kept with the deployment: every apply (this one, a rollback, a new
-        // domain) edits it and mounts it over the image's (Manifests::app).
-        // Editing it once now fails a config the editor cannot handle before
-        // the build, with the reason.
-        $config_php = (string) file_get_contents("{$src}/config/config.php");
-        Trongate_config::config_php($config_php, $app);
+        // domain) edits them and mounts the edited ones over the image's
+        // (Manifests::app). A file that is not valid PHP fails the deploy
+        // here, before the build, with the reason.
+        $config_files = [];
+
+        foreach (glob("{$src}/config/*.php") ?: [] as $path) {
+            if (is_file($path)) {
+                $config_files[basename($path)] = (string) file_get_contents($path);
+            }
+        }
+
+        try {
+            Config_editor::check($config_files);
+        } catch (RuntimeException $e) {
+            throw new RuntimeException("Cannot deploy: config/{$e->getMessage()}", 0, $e);
+        }
+
+        $config_json = json_encode($config_files, JSON_THROW_ON_ERROR);
 
         // --- Dockerfile ------------------------------------------------------
         // Every Trongate app has the same shape, so the platform writes the
@@ -227,9 +241,9 @@ return function (Task_log $log) use ($payload, $runtime): int {
         }
     }
 
-    $runtime->set_deployment_status($deployment_id, 'deploying', ['image' => $image, 'config_php' => $config_php]);
+    $runtime->set_deployment_status($deployment_id, 'deploying', ['image' => $image, 'config_files' => $config_json]);
     $deployment['image'] = $image;
-    $deployment['config_php'] = $config_php;
+    $deployment['config_files'] = $config_json;
 
     // --- Roll out --------------------------------------------------------------
 
