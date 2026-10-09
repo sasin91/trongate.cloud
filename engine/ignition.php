@@ -32,8 +32,14 @@ spl_autoload_register(function ($class_name) {
     return false;
 });
 
-// Sessions in the database, shared by every app replica (engine/Db_session_handler.php)
-session_set_save_handler(new Db_session_handler(), true);
+// Sessions in the database, shared by every app replica (engine/Db_session_handler.php).
+// When this repo runs as an app on trongate.cloud itself, the platform's Valkey
+// sessions (Manifests::sessions_ini) are used instead: that app's database has
+// no php_session table, and every request failed with a 500.
+if (ini_get('session.save_handler') !== 'redis') {
+    session_set_save_handler(new Db_session_handler(), true);
+}
+
 session_start();
 
 /**
