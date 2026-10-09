@@ -156,6 +156,10 @@ final class Config_editor {
                 continue;
             }
 
+            if (!$node instanceof FuncCall) {
+                continue;
+            }
+
             [$name, $value] = self::define_arguments($node);
 
             if ($name === null) {
