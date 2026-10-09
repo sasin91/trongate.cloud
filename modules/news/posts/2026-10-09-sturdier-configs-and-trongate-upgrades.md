@@ -15,7 +15,7 @@ Rollbacks now reuse the exact config they were built with. Deploys made before t
 
 ## Trongate upgrades as pull requests
 
-Moving an app to a newer Trongate used to mean copying framework files by hand. Now a v2 app's Settings page has a **Trongate version** section with a **Check for an upgrade** button.
+Moving an app to a newer Trongate used to mean copying framework files by hand. Now a v2 app has an **Upgrade** tab with a **Check for an upgrade** button.
 
 It works out which release your app is on and opens a pull request on your repository, on a `trongate-upgrade/` branch, that moves it to the newest Trongate v2 release:
 

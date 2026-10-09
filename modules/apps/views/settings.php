@@ -146,42 +146,6 @@
     </div>
     <?php endif; ?>
 
-    <?php if ($app->type === 'trongate_v2'): ?>
-    <h2 id="trongate-upgrade">Trongate version</h2>
-    <div class="card settings-card">
-        <p class="form-hint">Opens a pull request on your repository that moves your app to the newest Trongate release. Framework files you changed are merged with the newer ones, and your config values stay as they are. Nothing deploys until you merge it.</p>
-
-        <?php if ($upgrade !== false): ?>
-        <p>
-            <?php if (in_array($upgrade->status, ['pending', 'running'], true)): ?>
-            Checking for a newer Trongate&hellip; Reload this page in a minute.
-            <?php elseif ($upgrade->status === 'current'): ?>
-            On the newest release, <code><?= htmlspecialchars((string) $upgrade->to_version) ?></code>.
-            <?php elseif ($upgrade->status === 'opened'): ?>
-            Upgrade from <code><?= htmlspecialchars((string) $upgrade->from_version) ?></code> to <code><?= htmlspecialchars((string) $upgrade->to_version) ?></code>:
-            <a href="<?= htmlspecialchars((string) $upgrade->pr_url) ?>" target="_blank" rel="noopener">review the pull request</a>.
-            <?php if (!empty($upgrade->summary['conflicts'])): ?>
-            <?= (int) $upgrade->summary['conflicts'] ?> <?= (int) $upgrade->summary['conflicts'] === 1 ? 'file needs' : 'files need' ?> your call before merging.
-            <?php endif; ?>
-            <?php if (!empty($upgrade->summary['sql'])): ?>
-            It adds SQL to import into your database.
-            <?php endif; ?>
-            <?php else: ?>
-            The last check failed: <?= htmlspecialchars((string) $upgrade->error) ?>
-            <?php endif; ?>
-        </p>
-        <?php endif; ?>
-
-        <?php if ($upgrade === false || !in_array($upgrade->status, ['pending', 'running'], true)): ?>
-        <?= form_open('apps/' . $app->id . '/upgrade') ?>
-            <div class="form-actions">
-                <button type="submit" class="btn-secondary">Check for an upgrade</button>
-            </div>
-        <?= form_close() ?>
-        <?php endif; ?>
-    </div>
-    <?php endif; ?>
-
     <h2>Delete app</h2>
     <div class="card settings-card danger-card">
         <p>Take the app offline and remove it from <?= htmlspecialchars((string) $app->project_name) ?>. Its database and files are kept.</p>

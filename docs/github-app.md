@@ -11,7 +11,7 @@ One GitHub App does everything trongate.cloud needs from GitHub:
   want to deploy. The worker reads them with an installation token scoped to
   one repository and read-only contents (`Github_app::repository_token`), so a
   build never depends on who added the app or whether they are still signed in.
-- **Trongate upgrades.** "Check for an upgrade" on an app's Settings page (or
+- **Trongate upgrades.** "Check for an upgrade" on an app's Upgrade tab (or
   the `upgrade_trongate` MCP tool) commits the upgrade to a new branch and
   opens a pull request (`modules/platform/tasks/upgrade_app.php`). Only that
   task asks for a token with contents and pull requests write; builds keep
