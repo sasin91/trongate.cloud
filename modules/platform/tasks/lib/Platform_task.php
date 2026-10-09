@@ -225,6 +225,9 @@ class Platform_task {
             $kube->apply($manifest);
         }
 
+        // What redeploy_outdated_apps compares with Trongate_config::CONFIG_VERSION
+        self::execute($runtime->db(), 'UPDATE deployment SET config_version = ? WHERE id = ?', [Trongate_config::CONFIG_VERSION, (int) $deployment['id']]);
+
         self::prune_domain_gateways($runtime, $log, $app);
     }
 
