@@ -197,26 +197,6 @@ class Apps extends Trongate {
     }
 
     /**
-     * Queue a Trongate upgrade pull request (POST), then back to Settings
-     */
-    function upgrade(): void {
-        $this->_make_sure_allowed();
-        $app = $this->_member_app_or_redirect(segment(3, 'int'));
-
-        $this->_require_post_with_csrf();
-
-        $customer = $this->_customer_or_redirect();
-
-        try {
-            $this->model->queue_upgrade((int) $app->project_id, (int) $app->id, (int) $customer->id);
-        } catch (RuntimeException $e) {
-            set_flashdata('Could not check for an upgrade: ' . htmlspecialchars($e->getMessage()));
-        }
-
-        redirect('apps/' . $app->id . '/settings#trongate-upgrade');
-    }
-
-    /**
      * Roll back to a given deployment (POST deployment_id) or, without one, the previous successful one.
      */
     function rollback(): void {
@@ -267,7 +247,6 @@ class Apps extends Trongate {
             'ingress_addresses' => Domain_dns::ingress_addresses(),
             'env_names' => array_keys($this->_app_env($app)),
             'env_name' => $this->env_form_posted ? (string) post('env_name', true) : '',
-            'upgrade' => $this->model->latest_upgrade((int) $app->id),
             'can_delete' => $this->_is_owner($app),
             'crumbs' => $this->_app_crumbs($app),
             'additional_includes_top' => ['apps_module/css/apps.css'],
