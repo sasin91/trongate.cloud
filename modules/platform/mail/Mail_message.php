@@ -80,7 +80,7 @@ final class Mail_message {
      * names) of one MIME part, following multiparts
      *
      * @param array<string, list<string>> $headers
-     * @param array{text: string, html: string, attachments: list<string>} $message
+     * @param array{from: string, to: string, cc: string, reply_to: string, subject: string, date: string, text: string, html: string, attachments: list<string>} $message
      */
     private static function part(array $headers, string $body, array &$message, int $depth): void {
         [$type, $params] = self::content_type($headers['content-type'][0] ?? 'text/plain');
