@@ -140,6 +140,11 @@ return function (Task_log $log) use ($payload, $runtime): int {
             throw new RuntimeException('config/config.php not found; the platform patches it at runtime');
         }
 
+        // The pod sets these constants in its config/config.php when it starts.
+        // Doing it here first fails the deploy with the reason, before a build,
+        // instead of a pod that never starts.
+        Trongate_config::patch_php((string) file_get_contents("{$src}/config/config.php"), Trongate_config::config_defines($app));
+
         // --- Dockerfile ------------------------------------------------------
         // Every Trongate app has the same shape, so the platform writes the
         // Dockerfile: the prebuilt base (docker/app-base) plus the app's extra

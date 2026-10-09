@@ -1018,6 +1018,8 @@ class Manifests {
             'name' => 'config',
             'image' => $o['image'],
             'command' => ['sh', '-c', $config_script],
+            // A config the editor refuses shows its reason in the deploy log (Platform_task::log_pod_state)
+            'terminationMessagePolicy' => 'FallbackToLogsOnError',
             'volumeMounts' => $config_mounts,
             'securityContext' => $container_security,
             'resources' => self::INIT_RESOURCES,

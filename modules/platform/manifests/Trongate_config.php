@@ -62,44 +62,66 @@ class Trongate_config {
     }
 
     /**
-     * POSIX sh that rewrites every define('NAME', ...) in a PHP file to the given
-     * values, appending the define when the file has none, then lints the result.
-     *
-     * The rewrite runs config_patcher.php with the image's own PHP and works on
-     * tokens, so multi-line defines (a closure, a getenv() ternary) are replaced
-     * whole instead of leaving their tail behind as a parse error.
+     * POSIX sh that sets the given constants in a PHP file with Config_editor
+     * (parse, change the values, regenerate; appends a constant the file does
+     * not define), then lints the result with the image's own PHP. Any failure
+     * exits non-zero with a message saying why, before the file is replaced,
+     * and the pod's init container fails instead of serving a broken config.
      *
      * @param array<string, string> $defines e.g. ['BASE_URL' => 'https://x/', 'ENV' => 'prod']
      */
-    static function patch_script(array $defines, string $file = 'config/config.php'): string {
+    static function patch_script(array $defines, string $file = 'config/config.php', string $label = 'config/config.php'): string {
         self::assert_defines($defines);
 
-        $patcher = preg_replace('/^<\?php\s*/', '', (string) file_get_contents(__DIR__ . '/config_patcher.php'));
-        $code = $patcher
-            . "\n\$f = \$argv[1];\n"
-            . '$out = tgc_patch_defines((string) file_get_contents($f), ' . var_export($defines, true) . ");\n"
-            . "if (file_put_contents(\$f, \$out) === false) { fwrite(STDERR, \"Cannot write {\$f}\\n\"); exit(1); }\n";
+        $editor = preg_replace('/^<\?php\s*/', '', (string) file_get_contents(__DIR__ . '/Config_editor.php'));
+        $code = $editor . "\n"
+            . '[, $f, $label] = $argv;' . "\n"
+            . 'try {' . "\n"
+            . '    $out = Config_editor::set_constants((string) file_get_contents($f), ' . var_export($defines, true) . ');' . "\n"
+            . '} catch (Throwable $e) {' . "\n"
+            . '    fwrite(STDERR, "trongate.cloud could not update {$label}: {$e->getMessage()}\\n");' . "\n"
+            . '    exit(1);' . "\n"
+            . '}' . "\n"
+            . 'if (file_put_contents("{$f}.new", $out) === false) { fwrite(STDERR, "Cannot write {$f}.new\\n"); exit(1); }' . "\n";
 
         return implode("\n", [
             'set -eu',
             'f=' . self::sh_quote($file),
+            'label=' . self::sh_quote($label),
             // FrankenPHP images without a php binary still carry the CLI.
             'if command -v php >/dev/null 2>&1; then php() { command php "$@"; }; else php() { frankenphp php-cli "$@"; }; fi',
-            'php -r ' . self::sh_quote($code) . ' -- "$f"',
-            'php -l "$f" >/dev/null',
+            'php -r ' . self::sh_quote($code) . ' -- "$f" "$label"',
+            'if ! lint=$(php -l "$f.new" 2>&1); then echo "trongate.cloud could not update $label: $lint" >&2; exit 1; fi',
+            'mv "$f.new" "$f"',
         ]) . "\n";
     }
 
     /**
-     * Rewrite define('NAME', ...) calls in PHP source; the in-process twin of patch_script.
+     * Set constants in PHP source in-process; the twin of patch_script. The
+     * deploy task runs it on the checked-out config before building, so a
+     * config the editor cannot handle fails the deploy with the reason.
      *
      * @param array<string, string> $defines
+     * @throws RuntimeException when the source is not valid PHP or cannot be edited
      */
-    static function patch_php(string $source, array $defines): string {
+    static function patch_php(string $source, array $defines, string $label = 'config/config.php'): string {
         self::assert_defines($defines);
-        require_once __DIR__ . '/config_patcher.php';
+        require_once __DIR__ . '/Config_editor.php';
 
-        return tgc_patch_defines($source, $defines);
+        try {
+            return Config_editor::set_constants($source, $defines);
+        } catch (RuntimeException $e) {
+            throw new RuntimeException("trongate.cloud could not update {$label}: {$e->getMessage()}", 0, $e);
+        }
+    }
+
+    /**
+     * The constants the platform sets in an app's config/config.php
+     *
+     * @return array<string, string>
+     */
+    static function config_defines(array $app): array {
+        return ['BASE_URL' => self::base_url($app), 'ENV' => self::env($app)];
     }
 
     /**
