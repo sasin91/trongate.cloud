@@ -55,6 +55,7 @@ $routes = [
     'apps/(:num)/logs' => 'apps/logs/$1',
     'apps/(:num)/logs/poll' => 'apps/logs_partial/$1',
     'apps/(:num)/upgrade' => 'apps-upgrade/index/$1',
+    'apps/(:num)/upgrade/status' => 'apps-upgrade/status/$1',
     'apps/(:num)/upgrade/submit' => 'apps-upgrade/submit/$1',
     'apps/(:num)/traffic' => 'apps-traffic/index/$1',
     'apps/(:num)/traffic/poll' => 'apps-traffic/poll/$1',
