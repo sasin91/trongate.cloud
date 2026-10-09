@@ -864,8 +864,10 @@ body.lp {
 
 .lp-figure img {
     display: block;
-    width: 100%;
+    width: auto;
+    max-width: 100%;
     height: auto;
+    margin: 0 auto;
     border: 1px solid var(--line);
     border-radius: 12px;
     box-shadow: 0 12px 32px -18px rgba(29, 30, 110, 0.35);

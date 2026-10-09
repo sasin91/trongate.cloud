@@ -12,7 +12,7 @@ The first stretch of trongate.cloud, in one list. The newest changes come first.
 
 Moving an app to a newer Trongate used to mean copying framework files by hand. Now a v2 app has an **Upgrade** tab with a **Check for an upgrade** button. The tab follows the check live while it runs.
 
-![The Upgrade tab with an open upgrade pull request from 2.2026.0115 to 2.2026.0928](/images/news/2026-10-09/upgrade.webp)
+![The Upgrade tab of a running app while it checks for a newer Trongate](/images/news/2026-10-09/upgrade.webp)
 
 It works out which release your app is on and opens a pull request on your repository, on a `trongate-upgrade/` branch, that moves it to the newest Trongate v2 release:
 
@@ -43,7 +43,7 @@ GitHub also emails a link to the same page. Deploys still only ever read your co
 
 Mail your app sends with Trongate's email module now lands in a **Mail** tab instead of going out, so you can see exactly what your users would get. Open a message to see the HTML, the plain text and the source, or download it as `.eml`.
 
-![The Mail tab: an inbox of captured messages and an order confirmation opened next to it](/images/news/2026-10-09/mail.webp)
+![The Mail tab with a captured password reset email open next to the inbox](/images/news/2026-10-09/mail.webp)
 
 It's on for every app. We set the SMTP settings in `config/trongate_email.php` on each deploy, and your own `smtp_user` stays as the From address. Mail is kept for seven days, up to 200 messages per app.
 
@@ -53,7 +53,7 @@ To send real mail through your own provider, turn **Capture mail** off on the Se
 
 Each app has a **Traffic** tab, and each project a Traffic page for all its apps. It shows the last five minutes of requests and every new one while the page is open: requests per minute, the share of server errors, median and p95 response times, bytes sent, and a chart.
 
-![The Traffic tab while recording: request counts, server errors, response times, a chart and the latest requests](/images/news/2026-10-09/traffic.webp)
+![The Traffic tab: requests, server errors, median and p95 times, a chart of the last five minutes and the latest requests](/images/news/2026-10-09/traffic.webp)
 
 Nothing is stored. Press **Start recording** to download the requests as CSV, for up to 60 minutes or 200,000 requests.
 
@@ -77,7 +77,7 @@ When a new build starts, your current version keeps serving. The new one only ta
 
 Once the new version is live, we load your app's address the way a visitor would and expect a real page back from your app. If the check fails, we put the last passing deploy back automatically. Nobody has to wake up for it.
 
-![An app's overview: the environment map, the live deployment, the Errors card and a deployment list with a failed deploy below the live one](/images/news/2026-10-09/overview.webp)
+![An app's overview: the environment map with its database and a service, the live deployment, the Errors card and earlier deploys to roll back to](/images/news/2026-10-09/overview.webp)
 
 Rollbacks get the same check. You can still roll back to any earlier build by hand, in one click and without a rebuild.
 
@@ -86,6 +86,8 @@ Rollbacks get the same check. You can still roll back to any earlier build by ha
 Each app has a **Logs** tab with the latest output of the running app. It refreshes every few seconds while you watch, marks each line's level and can hide everything except warnings and errors. **Copy last error** puts the most recent error, with its stack trace, on your clipboard.
 
 The app page has an **Errors** card: errors and warnings per hour over the last 24 hours. A spike after a deploy is easy to spot. Counting never wakes a sleeping app.
+
+![The Errors card: 7 errors and 66 warnings over the last 24 hours, as bars per hour](/images/news/2026-10-09/errors.webp)
 
 ## A Database tab
 
