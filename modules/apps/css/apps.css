@@ -534,6 +534,29 @@ textarea.form-input {
     color: var(--text-main);
 }
 
+/* Contents join the .ov-attached row; the wrapper only exists to be polled */
+.ov-processes {
+    display: contents;
+}
+
+.ov-node-process svg {
+    flex-shrink: 0;
+}
+
+.ov-node-process div {
+    min-width: 0;
+}
+
+.ov-process-command {
+    font-family: var(--font-mono, monospace);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    max-width: 260px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .ov-warn-text {
     color: #8a5300;
 }

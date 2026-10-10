@@ -58,6 +58,8 @@ class Welcome extends Trongate {
             'can_rollback' => true,
             'live_state' => ['state' => 'running', 'label' => 'Running', 'detail' => ''],
             'database_name' => Manifests::database_name(1),
+            'processes' => [['name' => 'worker', 'command' => 'php bin/queue.php work --time-limit=3600', 'replicas' => 1]],
+            'process_states' => ['worker' => ['state' => 'running', 'label' => 'Running', 'detail' => '1 of 1 ready']],
             'preview' => true,
         ];
 

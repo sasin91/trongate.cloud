@@ -380,7 +380,7 @@ trait Mcp_tools {
             'custom_domain' => $this->_domain_status($app),
             'persistent_paths' => Manifests::persistent_paths((array) $app),
             'php_extensions' => $this->_parse_php_extensions((string) ($app->php_extensions ?? '')),
-            'processes' => $this->model->app_processes((int) $app->id),
+            'processes' => $this->_processes_with_state($app),
             'auto_deploy' => (bool) ($app->auto_deploy ?? false),
             'trongate_env' => Trongate_config::env((array) $app),
             'mail_capture' => Mail_capture::enabled((array) $app),
@@ -395,6 +395,20 @@ trait Mcp_tools {
         }
 
         return $summary;
+    }
+
+    /**
+     * The app's processes, each with its live_state (null when the cluster
+     * cannot be read, not_running when the next deploy has yet to start it)
+     *
+     * @return list<array{name: string, command: string, replicas: int, live_state: array{state: string, label: string, detail: string}|null}>
+     */
+    function _processes_with_state(object $app): array {
+        $states = $this->_live_process_states($app);
+
+        return array_map(fn(array $process) => $process + [
+            'live_state' => $states === null ? null : ($states[$process['name']] ?? App_state::_make('not_running', 'Starts on the next deploy')),
+        ], $this->model->app_processes((int) $app->id));
     }
 
     function _tool_create_app(array $args): array {

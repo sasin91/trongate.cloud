@@ -45,7 +45,7 @@
             <p class="form-hint">Comma-separated. Installed at build time.</p>
         </div>
 
-        <div class="form-group">
+        <div class="form-group" id="processes">
             <label class="form-label">Processes</label>
             <input type="hidden" name="processes" value="1">
             <table class="process-table">
