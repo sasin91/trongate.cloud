@@ -162,6 +162,7 @@ trait Mcp_tools {
                     'domain' => ['type' => ['string', 'null'], 'description' => 'Custom domain; null or "" removes it'],
                     'persistent_paths' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => "Directories (relative to the app's root) kept across deploys, e.g. modules/blog/uploads"],
                     'php_extensions' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Extra PHP extensions'],
+                    'worker_command' => ['type' => 'string', 'description' => 'One command run next to the app in a worker that never sleeps, e.g. "php bin/messenger.php consume --time-limit=3600"; "" removes it'],
                     'always_on' => ['type' => 'boolean', 'description' => 'Never sleep when idle (needed when other apps call it directly)'],
                     'auto_deploy' => ['type' => 'boolean', 'description' => 'Deploy on every push to the branch'],
                     'trongate_env' => ['type' => 'string', 'description' => "Trongate's ENV constant in config/config.php, e.g. " . implode(', ', Trongate_config::ENV_SUGGESTIONS) . ' (dev shows errors)'],
@@ -379,6 +380,7 @@ trait Mcp_tools {
             'custom_domain' => $this->_domain_status($app),
             'persistent_paths' => Manifests::persistent_paths((array) $app),
             'php_extensions' => $this->_parse_php_extensions((string) ($app->php_extensions ?? '')),
+            'worker_command' => Manifests::worker_command((array) $app),
             'auto_deploy' => (bool) ($app->auto_deploy ?? false),
             'trongate_env' => Trongate_config::env((array) $app),
             'mail_capture' => Mail_capture::enabled((array) $app),
@@ -474,6 +476,7 @@ trait Mcp_tools {
             'domain' => $this->_normalise_domain((string) ($app->domain ?? '')),
             'persistent_paths' => Manifests::persistent_paths((array) $app),
             'php_extensions' => (string) ($app->php_extensions ?? ''),
+            'worker_command' => Manifests::worker_command((array) $app),
             'always_on' => (bool) $app->always_on,
             'auto_deploy' => (bool) $app->auto_deploy,
             'trongate_env' => Trongate_config::env((array) $app),
@@ -500,6 +503,14 @@ trait Mcp_tools {
             $this->_check($this->_validate_php_extensions($extensions));
             $settings['php_extensions'] = implode(',', $this->_parse_php_extensions($extensions));
             $changed[] = 'php_extensions';
+        }
+
+        if (array_key_exists('worker_command', $args)) {
+            $command = $this->_string_arg($args, 'worker_command', false);
+            $this->_check($this->_validate_worker_command($command));
+            $this->_check(mb_strlen(trim($command)) <= 500 ? true : 'The worker command is at most 500 characters.');
+            $settings['worker_command'] = trim($command);
+            $changed[] = 'worker_command';
         }
 
         foreach (['always_on', 'auto_deploy', 'mail_capture'] as $flag) {
@@ -529,6 +540,7 @@ trait Mcp_tools {
                 'domain' => $this->_domain_status($app),
                 'persistent_paths' => Manifests::persistent_paths((array) $app),
                 'php_extensions' => $this->_parse_php_extensions((string) $app->php_extensions),
+                'worker_command' => Manifests::worker_command((array) $app),
                 'always_on' => (bool) $app->always_on,
                 'auto_deploy' => (bool) $app->auto_deploy,
                 'trongate_env' => Trongate_config::env((array) $app),

@@ -46,6 +46,12 @@
         </div>
 
         <div class="form-group">
+            <label for="worker_command" class="form-label">Worker Command</label>
+            <input type="text" name="worker_command" id="worker_command" class="form-input mono" placeholder="e.g. php bin/messenger.php consume --time-limit=3600" value="<?= htmlspecialchars($worker_command) ?>">
+            <p class="form-hint">Runs next to your app, from the same code, settings and database, for work that shouldn't wait on a web request (a queue worker). It never sleeps, and it restarts when it exits. Leave empty for none.</p>
+        </div>
+
+        <div class="form-group">
             <label class="checkbox-label">
                 <input type="checkbox" name="always_on" value="1" <?= $always_on ? 'checked' : '' ?>>
                 Always on

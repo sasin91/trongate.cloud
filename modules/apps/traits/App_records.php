@@ -30,7 +30,7 @@ trait App_records {
     /**
      * Update an app's platform settings (the app must be in the project).
      *
-     * @param array{domain: ?string, persistent_paths: list<string>, php_extensions: string, always_on: bool, auto_deploy: bool, trongate_env: string, mail_capture: bool} $settings
+     * @param array{domain: ?string, persistent_paths: list<string>, php_extensions: string, worker_command: string, always_on: bool, auto_deploy: bool, trongate_env: string, mail_capture: bool} $settings
      */
     function update_app_settings(int $project_id, int $app_id, array $settings): void {
         $old = $this->find_project_app($project_id, $app_id);
@@ -49,6 +49,7 @@ trait App_records {
                 verified_domain = IF(verified_domain <=> :same_domain, verified_domain, NULL),
                 persistent_paths = :persistent_paths,
                 php_extensions = :php_extensions,
+                worker_command = :worker_command,
                 always_on = :always_on,
                 trongate_env = :trongate_env,
                 mail_capture = :mail_capture,
@@ -64,6 +65,7 @@ trait App_records {
             'same_domain_4' => $settings['domain'],
             'persistent_paths' => json_encode($settings['persistent_paths']),
             'php_extensions' => $settings['php_extensions'],
+            'worker_command' => trim($settings['worker_command']),
             'always_on' => $settings['always_on'] ? 1 : 0,
             'trongate_env' => $settings['trongate_env'],
             'mail_capture' => $settings['mail_capture'] ? 1 : 0,

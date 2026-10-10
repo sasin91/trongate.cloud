@@ -225,6 +225,11 @@ class Platform_task {
             $kube->apply($manifest);
         }
 
+        // A worker command that was cleared: its Deployment goes
+        if (Manifests::worker_command($app) === '' && $kube->delete('apps/v1', 'Deployment', $namespace, Manifests::worker_name((int) $app['id']))) {
+            $log->info('Removed the worker (no worker command)');
+        }
+
         // What redeploy_outdated_apps compares with Trongate_config::CONFIG_VERSION
         self::execute($runtime->db(), 'UPDATE deployment SET config_version = ? WHERE id = ?', [Trongate_config::CONFIG_VERSION, (int) $deployment['id']]);
 

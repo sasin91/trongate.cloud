@@ -192,6 +192,20 @@ trait App_rules {
     }
 
     /**
+     * One command, run with exec (Manifests::_worker_deployment): no line
+     * breaks, and none of ; & | ` $( that would chain or hide a second one
+     */
+    function _validate_worker_command(string $value): bool|string {
+        $value = trim($value);
+
+        if ($value !== '' && preg_match('/[\r\n;&|`]|\$\(/', $value)) {
+            return 'The worker command is one command on one line, without ; & | ` or $( ).';
+        }
+
+        return true;
+    }
+
+    /**
      * Trongate's ENV constant for the app (Trongate_config::ENV_PATTERN)
      */
     function _validate_trongate_env(string $value): bool|string {

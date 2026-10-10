@@ -232,6 +232,8 @@ CREATE TABLE app (
   -- Runtime settings
   persistent_paths JSON DEFAULT '[]',
   php_extensions VARCHAR(255) NOT NULL DEFAULT '',
+  -- Run in a p{id}-worker Deployment that never sleeps (Manifests::_worker_deployment); '' = none
+  worker_command VARCHAR(500) NOT NULL DEFAULT '',
   always_on TINYINT(1) NOT NULL DEFAULT 0,
   -- Trongate's ENV constant, patched into config/config.php (Trongate_config::env)
   trongate_env VARCHAR(20) NOT NULL DEFAULT 'dev',
@@ -461,4 +463,5 @@ INSERT INTO schema_migrations (name) VALUES
   ('0002_deployment_config_files'),
   ('0003_app_upgrade'),
   ('0004_app_mail'),
-  ('0005_deployment_config_version');
+  ('0005_deployment_config_version'),
+  ('0006_app_worker_command');

@@ -200,6 +200,7 @@ $platform_host = $app->slug . '.' . PLATFORM_APPS_DOMAIN;
                 <dl class="ov-settings">
                     <div><dt>Deploy on push</dt><dd><?= $auto_deploy ? 'On' : 'Off' ?></dd></div>
                     <div><dt>Always on</dt><dd><?= !empty($app->always_on) ? 'On' : 'Off' ?></dd></div>
+                    <div><dt>Worker</dt><dd><?= Manifests::worker_command((array) $app) !== '' ? '<code>' . htmlspecialchars(Manifests::worker_command((array) $app)) . '</code>' : 'None' ?></dd></div>
                 </dl>
             </section>
         </div>

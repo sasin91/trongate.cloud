@@ -401,6 +401,44 @@ $test('Manifests::app mounts the edited files from the app Secret', function () 
     $same(false, isset($mounts[Manifests::APP_DIR . '/config/site_owner.php']));
 });
 
+$test('Manifests::app runs a worker command in its own Deployment that never sleeps', function () use ($same) {
+    $app = ['id' => 7, 'project_id' => 1, 'namespace' => 'project-1', 'slug' => 'shop', 'type' => 'trongate_v2', 'trongate_env' => 'prod'];
+    $files = ['config.php' => "<?php\ndefine('ENV', 'dev');\ndefine('BASE_URL', 'x');\n", 'database.php' => "<?php\n\$databases = ['default' => []];\n"];
+    $deployment = ['id' => 3, 'image' => 'registry/p7:abc', 'config_files' => json_encode($files)];
+    $deployments = fn(array $app) => array_values(array_filter(
+        Manifests::app($app, $deployment, ['host' => 'db', 'operator_name' => 'shared-1', 'password' => 'pw']),
+        fn(array $m) => $m['kind'] === 'Deployment'
+    ));
+
+    $same(['p7-app'], array_map(fn($m) => $m['metadata']['name'], $deployments($app + ['worker_command' => '  '])));
+
+    $all = $deployments($app + ['worker_command' => ' php bin/messenger.php consume --time-limit=3600 ']);
+    [$web, $worker] = $all;
+    $same(['p7-app', 'p7-worker'], [$web['metadata']['name'], $worker['metadata']['name']]);
+
+    // Its own selector, so the app's Service never sends it traffic; no Sablier labels, one replica
+    $same(['app.kubernetes.io/name' => 'p7-worker'], $worker['spec']['selector']['matchLabels']);
+    $same('p7-worker', $worker['spec']['template']['metadata']['labels']['app.kubernetes.io/name']);
+    $same('7', $worker['metadata']['labels'][Manifests::APP_LABEL]);
+    $same(false, isset($worker['metadata']['labels']['sablier.enable']));
+    $same(true, isset($web['metadata']['labels']['sablier.enable']));
+    $same(1, $worker['spec']['replicas']);
+    $same('Recreate', $worker['spec']['strategy']['type']);
+
+    // The app's pod, running the command instead of FrankenPHP
+    $container = $worker['spec']['template']['spec']['containers'][0];
+    $web_container = $web['spec']['template']['spec']['containers'][0];
+    $same(['sh', '-c', 'exec php bin/messenger.php consume --time-limit=3600'], $container['command']);
+    $same($web_container['image'], $container['image']);
+    $same($web_container['envFrom'], $container['envFrom']);
+    $same($web_container['volumeMounts'], $container['volumeMounts']);
+    $same([false, false, false], [isset($container['ports']), isset($container['startupProbe']), isset($container['securityContext']['capabilities']['add'])]);
+    $same(['ALL'], $container['securityContext']['capabilities']['drop']);
+    $same(Manifests::WORKER_GRACE_SECONDS, $worker['spec']['template']['spec']['terminationGracePeriodSeconds']);
+
+    $same(true, in_array(['apps/v1', 'Deployment', 'p7-worker'], Manifests::app_objects(7), true));
+});
+
 /** Run an edited trongate_email.php in a fresh PHP and return $config['trongate_email'] */
 $run_email = function (string $source): array {
     $file = tempnam(sys_get_temp_dir(), 'cfg');

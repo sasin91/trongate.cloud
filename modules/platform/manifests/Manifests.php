@@ -39,6 +39,9 @@ class Manifests {
     const SERVICE_PORT = 80;
     const RUN_AS_USER = 1000;
 
+    /** How long an app's worker gets to finish its current job on a rollout (an LLM call can take 180 s) */
+    const WORKER_GRACE_SECONDS = 210;
+
     // No CPU or memory limit yet: apps grow as they need while we observe what
     // real apps use. The small requests only let the scheduler place pods.
     // ephemeral-storage is capped so one app cannot fill a node's disk.
@@ -155,6 +158,20 @@ class Manifests {
 
     static function app_name(int $app_id): string {
         return "p{$app_id}-app";
+    }
+
+    /**
+     * The Deployment running the app's worker command, when it has one
+     */
+    static function worker_name(int $app_id): string {
+        return "p{$app_id}-worker";
+    }
+
+    /**
+     * The app's worker command, trimmed; '' when it has none
+     */
+    static function worker_command(array $app): string {
+        return trim((string) ($app['worker_command'] ?? ''));
     }
 
     static function database_name(int $app_id): string {
@@ -734,7 +751,7 @@ class Manifests {
             ],
         ];
 
-        $manifests[] = self::_deployment($app, $deployment, [
+        $manifests[] = $app_deployment = self::_deployment($app, $deployment, [
             'name' => $name,
             'namespace' => $namespace,
             'labels' => $labels,
@@ -751,6 +768,10 @@ class Manifests {
             // Changed variables roll the pods: envFrom is only read at container start
             'config_hash' => substr(hash('sha256', json_encode($config_files) . $sessions_ini . json_encode($paths) . json_encode($env)), 0, 16),
         ]);
+
+        if (self::worker_command($app) !== '') {
+            $manifests[] = self::_worker_deployment($app_deployment, $app_id, self::worker_command($app));
+        }
 
         $manifests[] = [
             'apiVersion' => 'v1',
@@ -898,6 +919,7 @@ class Manifests {
             ['traefik.io/v1alpha1', 'Middleware', $name],
             ['v1', 'Service', $name],
             ['apps/v1', 'Deployment', $name],
+            ['apps/v1', 'Deployment', self::worker_name($app_id)],
             ['k8s.mariadb.com/v1alpha1', 'Grant', "{$name}-db-grant"],
             ['k8s.mariadb.com/v1alpha1', 'User', "{$name}-db-user"],
             ['k8s.mariadb.com/v1alpha1', 'Database', "{$name}-db"],
@@ -1180,6 +1202,45 @@ class Manifests {
             'metadata' => self::_metadata($o['name'], $o['namespace'], $labels),
             'spec' => $spec,
         ];
+    }
+
+    /**
+     * The app's worker: the app Deployment's pod (same image, config files,
+     * variables, persistent files and database) running the app's worker
+     * command instead of FrankenPHP, e.g. `php bin/messenger.php consume
+     * --time-limit=3600`. One replica, never scaled to zero by Sablier, and
+     * not behind the Service (its name label differs from the app's).
+     *
+     * The command is exec'd, so it gets SIGTERM on a rollout and has
+     * WORKER_GRACE_SECONDS to finish what it is doing. When it exits, the
+     * kubelet starts it again; a worker that stops on a time limit is how it
+     * keeps memory and code fresh.
+     */
+    static function _worker_deployment(array $app_deployment, int $app_id, string $command): array {
+        $name = self::worker_name($app_id);
+        $worker = $app_deployment;
+        $relabel = function (array $labels) use ($name): array {
+            unset($labels['sablier.enable'], $labels['sablier.group']);
+            return ['app.kubernetes.io/name' => $name, 'app.kubernetes.io/component' => 'worker'] + $labels;
+        };
+
+        $worker['metadata']['name'] = $name;
+        $worker['metadata']['labels'] = $relabel($worker['metadata']['labels']);
+        $worker['spec'] = ['replicas' => 1] + $worker['spec'];
+        $worker['spec']['selector'] = ['matchLabels' => ['app.kubernetes.io/name' => $name]];
+        // Never two workers at once: the old one stops before the new one starts
+        $worker['spec']['strategy'] = ['type' => 'Recreate'];
+        $worker['spec']['template']['metadata']['labels'] = $relabel($worker['spec']['template']['metadata']['labels']);
+        $worker['spec']['template']['spec']['terminationGracePeriodSeconds'] = self::WORKER_GRACE_SECONDS;
+
+        // Same container name as the app's, so App_logs reads both
+        $container = &$worker['spec']['template']['spec']['containers'][0];
+        $container['command'] = ['sh', '-c', 'exec ' . $command];
+        unset($container['ports'], $container['startupProbe'], $container['readinessProbe']);
+        unset($container['securityContext']['capabilities']['add']);
+        unset($container);
+
+        return $worker;
     }
 
     static function _metadata(string $name, string $namespace, array $labels): array {
