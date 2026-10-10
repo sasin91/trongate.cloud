@@ -13,6 +13,14 @@
 	}
 
 	frankenphp
+
+	# Requests arrive from Traefik (pods in 10.42.0.0/16), which replaces any
+	# X-Forwarded-For a visitor sends with the visitor's address. Trust the
+	# header from there only, rightmost untrusted entry first.
+	servers {
+		trusted_proxies static 10.42.0.0/16
+		trusted_proxies_strict
+	}
 }
 
 :{$PORT:8080} {
@@ -34,5 +42,8 @@
 	# $_SERVER['HTTPS'] builds http:// links and form actions.
 	php_server {
 		env HTTPS on
+		# The visitor's address, not Traefik's: sign-in throttling and
+		# anything else reading REMOTE_ADDR would otherwise see one IP for all.
+		env REMOTE_ADDR {client_ip}
 	}
 }
