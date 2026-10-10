@@ -1,7 +1,8 @@
 # Platform app (trongate.cloud): FrankenPHP serving public/ on :8080 as a non-root user.
 FROM dunglas/frankenphp:1.12-php8.4-bookworm
 
-RUN install-php-extensions pdo_mysql intl sodium
+# redis: PHP sessions in the shared Valkey (engine/Valkey_sessions.php)
+RUN install-php-extensions pdo_mysql intl sodium redis
 
 ENV PORT=8080 \
     SERVER_NAME=:8080 \

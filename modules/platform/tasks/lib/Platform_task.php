@@ -319,10 +319,7 @@ class Platform_task {
         }
 
         $user = Manifests::session_user($app_id);
-        $password = Manifests::session_password($app_id);
-
-        $valkey->command('ACL', 'SETUSER', $user, ...Manifests::session_acl($app_id, $password));
-        $valkey->command('ACL', 'SAVE');
+        $password = Valkey_sessions::set_user($valkey, $user);
         $log->info("Session store ready (Valkey user {$user})");
 
         return ['host' => VALKEY_HOST, 'port' => VALKEY_PORT, 'password' => $password];
