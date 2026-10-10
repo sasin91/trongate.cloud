@@ -282,7 +282,8 @@ class Manifests {
         return "; Managed by trongate.cloud: PHP sessions in the shared Valkey, so redeploys\n"
             . "; and wake-ups from sleep keep visitors signed in.\n"
             . "session.save_handler = redis\n"
-            . "session.save_path = \"{$save_path}\"\n";
+            . "session.save_path = \"{$save_path}\"\n"
+            . 'session.gc_maxlifetime = ' . Valkey_sessions::LIFETIME_SECONDS . "\n";
     }
 
     /**

@@ -13,6 +13,12 @@ class Valkey_sessions {
     /** The panel's ACL user; customer apps are tc_p{id} */
     const PLATFORM_USER = 'tc_platform';
 
+    // phpredis gives each session key a TTL of session.gc_maxlifetime, renewed
+    // on every request. PHP's default of 24 minutes signed people out of a
+    // Trongate admin login after a short break, such as waiting on a deploy.
+    // One day, like a Trongate login token without "remember me".
+    const LIFETIME_SECONDS = 86400;
+
     // Key commands and connection basics only. SCAN and RANDOMKEY take no key,
     // so key patterns would not stop them listing other users' session ids;
     // FUNCTION would reach server-wide Lua libraries.
@@ -91,6 +97,7 @@ class Valkey_sessions {
             $user = self::PLATFORM_USER;
             ini_set('session.save_handler', 'redis');
             ini_set('session.save_path', self::save_path(VALKEY_HOST, VALKEY_PORT, $user, self::password($user)));
+            ini_set('session.gc_maxlifetime', (string) self::LIFETIME_SECONDS);
         }
 
         session_start();
