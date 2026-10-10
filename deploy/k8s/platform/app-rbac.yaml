@@ -1,7 +1,9 @@
 # The web app reads its customers' apps (Deployments and Pods) to show their live
 # state (modules/platform/live/App_state.php) and their output on the Logs tab
 # (App_logs.php, pods/log), and lists the other per-app kinds for the admin
-# MCP's read-only orphan audit (App_resource_audit.php).
+# MCP's read-only orphan audit (App_resource_audit.php). The tg-admin overview
+# reads nodes and their and the pods' usage from metrics-server
+# (Cluster_overview.php).
 # Read-only, and no Secrets: writes stay with the worker (worker-rbac.yaml).
 # Cluster-wide because tenant namespaces (one per project: project-*) are
 # created on the fly.
@@ -24,6 +26,12 @@ rules:
     verbs: ["get"]
   - apiGroups: ["apps"]
     resources: ["deployments"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["nodes", "pods"]
     verbs: ["get", "list"]
   - apiGroups: [""]
     resources: ["services", "persistentvolumeclaims"]

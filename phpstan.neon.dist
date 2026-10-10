@@ -11,6 +11,7 @@ parameters:
         - modules/mcp
         - modules/metrics
         - modules/news
+        - modules/overview
         - modules/platform
         - modules/projects
         - modules/secrets

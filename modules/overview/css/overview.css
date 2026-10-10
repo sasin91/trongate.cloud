@@ -1,0 +1,24 @@
+/* tg-admin overview (modules/overview) */
+.ovw-counts { display: flex; flex-wrap: wrap; gap: 0.5em 1.5em; }
+.ovw-counts a { text-decoration: none; }
+.ovw-counts strong { font-size: 1.4em; margin-right: 0.2em; }
+.ovw-bad, .ovw-counts a.ovw-bad { color: #b42318; }
+.ovw-notice { padding: 0.75em 1em; border-left: 4px solid #d97706; background: #fffbeb; }
+.ovw-hint, .ovw-muted { color: #6b7280; font-size: 0.85em; }
+.ovw-nodes { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1em; }
+.ovw-node .card-heading { display: flex; justify-content: space-between; align-items: center; gap: 0.5em; flex-wrap: wrap; }
+.ovw-node-tags { font-size: 0.8em; display: flex; gap: 0.4em; align-items: center; flex-wrap: wrap; }
+.ovw-node-bad { outline: 2px solid #b42318; }
+.ovw-bar { margin-bottom: 0.7em; }
+.ovw-bar-label { display: flex; justify-content: space-between; font-size: 0.85em; margin-bottom: 0.2em; }
+.ovw-track { height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden; }
+.ovw-track > div { height: 100%; background: #16a34a; }
+.ovw-warn .ovw-track > div { background: #d97706; }
+.ovw-high .ovw-track > div { background: #b42318; }
+.ovw-state { display: inline-block; padding: 0.1em 0.6em; border-radius: 999px; font-size: 0.8em; background: #e5e7eb; color: #374151; white-space: nowrap; }
+.ovw-state-running { background: #dcfce7; color: #166534; }
+.ovw-state-asleep { background: #e0e7ff; color: #3730a3; }
+.ovw-state-starting { background: #fef3c7; color: #92400e; }
+.ovw-state-crashing, .ovw-state-stuck { background: #fee2e2; color: #991b1b; }
+.ovw-scroll { overflow-x: auto; }
+.ovw-reason { min-width: 16em; }

@@ -34,7 +34,8 @@
             "php tests/App_traffic_test.php",
             "php tests/Mail_capture_test.php",
             "php tests/App_state_test.php",
-            "php tests/Admin_pages_test.php"
+            "php tests/Admin_pages_test.php",
+            "php tests/Cluster_overview_test.php"
         ],
         "qa": [
             "@lint",
