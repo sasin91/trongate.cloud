@@ -416,8 +416,9 @@ class Trongate_administrators extends Trongate {
                     die('No active users found in database');
                 }
             } else {
-                // PROD: Redirect to login page
-                redirect('login/login');
+                // PROD: Redirect to the admin login form (a bare login/login
+                // has no level, so the login module sends it to the home page)
+                redirect('tg-admin');
             }
         }
 

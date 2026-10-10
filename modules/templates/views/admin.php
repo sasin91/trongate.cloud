@@ -9,10 +9,62 @@
     <link rel="stylesheet" href="templates_module/css/admin.css">
     <script src="js/trongate-mx.min.js"></script>
     <?= $additional_includes_top ?? '' ?>
-    <title><?= $page_title ?? 'Admin Panel' ?></title>
+    <title><?= out($page_title ?? WEBSITE_NAME . ' admin') ?></title>
 </head>
 <body class="theme-<?= $theme ?? 'default' ?>">
 
+<?php
+// The admin pages, shown in the side menu and the mobile menu: url => label,
+// or a group label => its pages
+$admin_nav = [
+    'Customers' => [
+        'customer-admin/manage' => 'Customers',
+        'project/manage' => 'Projects',
+        'project_member/manage' => 'Project members',
+        'secrets-admin/manage' => 'Secrets',
+    ],
+    'Apps' => [
+        'app/manage' => 'Apps',
+        'deployment/manage' => 'Deployments',
+        'app_process/manage' => 'Processes',
+        'service/manage' => 'Services',
+        'app_upgrade/manage' => 'Upgrades',
+        'app_mail/manage' => 'Captured mail',
+        'app_log_rate/manage' => 'Log rates',
+        'app_log_cursor/manage' => 'Log cursors',
+    ],
+    'Databases' => [
+        'database_server/manage' => 'Database servers',
+        'app_database_log/manage' => 'Database tab log',
+        'app_database_backup/manage' => 'Database backups',
+    ],
+    'Worker' => [
+        'tasks/manage' => 'Tasks',
+        'task_logs/manage' => 'Task logs',
+        'scheduled_jobs/manage' => 'Scheduled jobs',
+        'schema_migrations/manage' => 'Migrations',
+    ],
+    'Assistants' => [
+        'mcp_oauth_client/manage' => 'Clients',
+        'mcp_oauth_grant/manage' => 'Connections',
+        'mcp_oauth_token/manage' => 'Tokens',
+    ],
+    'Sign-in' => [
+        'trongate_users/manage' => 'Users',
+        'trongate_user_levels/manage' => 'User levels',
+        'login_attempts/manage' => 'Failed sign-ins',
+        'trongate_tokens-admin/manage' => 'Sign-in tokens',
+        'password_resets/manage' => 'Password resets',
+        'trongate_administrators/manage' => 'Administrators',
+    ],
+];
+$current_module = segment(1);
+$is_current = fn(string $url): bool => strtok($url, '/') === $current_module;
+$nav_link = function (string $url, string $label) use ($is_current): string {
+    $current = $is_current($url) ? ' class="current" aria-current="page"' : '';
+    return '<a href="' . $url . '"' . $current . '>' . $label . '</a>';
+};
+?>
 <header>
     <div class="header-lg">
         <div><?= WEBSITE_NAME ?></div>
@@ -20,8 +72,7 @@
             <div>
                 <nav>
                     <ul class="top-nav">
-                        <li><a href="#" class="highlight"><i class="tg tg-envelope"></i> Messages (1)</a></li>
-                        <li><a href="#"><i class="tg tg-shopping-cart"></i> Orders</a></li>
+                        <li><a href="<?= BASE_URL ?>"><i class="tg tg-home"></i> View site</a></li>
                     </ul>
                 </nav>
             </div>
@@ -48,52 +99,24 @@
 if (strtolower(ENV) === 'dev') {
     echo Modules::run('trongate_control-flo/draw_flow_trigger');
 }
-    ?>
+?>
     <nav aria-label="Main navigation">
         <ul class="side-nav-menu">
-            <li>
-                <a href="#">
-                    Dashboard
-                </a>
-            </li>
-            <li class="nav-dropdown">
-                <div>
-                    <span>Messages</span>
-                    <span aria-hidden="true" class="arrow-icon">&#9660;</span>
-                </div>
-                <ul id="messages-submenu" class="nav-submenu">
-                    <li><a href="#">Inbox</a></li>
-                    <li><a href="#">Important</a></li>
-                    <li><a href="#">Junk</a></li>
-                    <li><a href="#">Archives</a></li>
+            <?php foreach ($admin_nav as $url => $label): ?>
+            <?php if (is_array($label)):
+                $open = array_filter(array_keys($label), $is_current) !== []; ?>
+            <li class="nav-dropdown<?= $open ? ' open' : '' ?>">
+                <div><span><?= $url ?></span><span class="arrow-icon<?= $open ? ' rotate' : '' ?>">&#9660;</span></div>
+                <ul class="nav-submenu"<?= $open ? ' style="max-height: none"' : '' ?>>
+                    <?php foreach ($label as $sub_url => $sub_label): ?>
+                    <li><?= $nav_link($sub_url, $sub_label) ?></li>
+                    <?php endforeach; ?>
                 </ul>
             </li>
-            <li>
-                <a href="#">
-                    Manage News
-                </a>
-            </li>
-            <li class="nav-dropdown">
-                <div>
-                    <span>Reports</span>
-                    <span aria-hidden="true" class="arrow-icon">&#9660;</span>
-                </div>
-                <ul id="reports-submenu" class="nav-submenu">
-                    <li><a href="#">Sales Reports</a></li>
-                    <li><a href="#">Analytics</a></li>
-                    <li><a href="#">Exports</a></li>
-                </ul>
-            </li>
-            <li>
-                <a href="#">
-                    Settings
-                </a>
-            </li>
-            <li>
-                <a href="#">
-                    Manage Users
-                </a>
-            </li>
+            <?php else: ?>
+            <li><?= $nav_link($url, $label) ?></li>
+            <?php endif; ?>
+            <?php endforeach; ?>
         </ul>
     </nav>
 </aside>
@@ -136,13 +159,14 @@ if (strtolower(ENV) === 'dev') {
   </div>
 
   <ul class="slide-nav-list">
-    <li><a href="#">Dashboard</a></li>
-    <li><a href="#">Manage Users</a></li>
-    <li><a href="#">Products</a></li>
-    <li><a href="#">Orders</a></li>
-    <li><a href="#">Messages (1)</a></li>
-    <li><a href="#">Settings</a></li>
-    <li><a href="logout">Log Out</a></li>
+    <?php foreach ($admin_nav as $url => $label): ?>
+    <?php foreach (is_array($label) ? $label : [$url => $label] as $sub_url => $sub_label): ?>
+    <li><?= $nav_link($sub_url, $sub_label) ?></li>
+    <?php endforeach; ?>
+    <?php endforeach; ?>
+    <li><a href="trongate_administrators/update_your_details">Update your details</a></li>
+    <li><a href="<?= BASE_URL ?>">View site</a></li>
+    <li><a href="trongate_administrators/logout">Log out</a></li>
   </ul>
 </nav>
 

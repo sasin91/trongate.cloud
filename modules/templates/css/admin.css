@@ -474,3 +474,8 @@ body.nav-open { overflow: hidden; }
   #admin-settings-dropdown { top: 35px; }
   .slide-nav, .nav-overlay { display: none !important; }
 }
+/* The page you're on, in the side menu and the mobile menu */
+.side-nav-menu > li > a.current,
+.slide-nav-list a.current { font-weight: 600; }
+.side-nav-menu > li:has(> a.current) { background-color: rgba(255, 255, 255, 0.1); }
+.slide-nav-list a.current { background: rgba(255, 255, 255, 0.1); }
