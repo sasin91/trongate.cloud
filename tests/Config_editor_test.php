@@ -412,7 +412,7 @@ $test('Manifests::app runs a worker command in its own Deployment that never sle
 
     $same(['p7-app'], array_map(fn($m) => $m['metadata']['name'], $deployments($app + ['worker_command' => '  '])));
 
-    $all = $deployments($app + ['worker_command' => ' php bin/messenger.php consume --time-limit=3600 ']);
+    $all = $deployments($app + ['worker_command' => ' php bin/queue.php work --time-limit=3600 ']);
     [$web, $worker] = $all;
     $same(['p7-app', 'p7-worker'], [$web['metadata']['name'], $worker['metadata']['name']]);
 
@@ -428,7 +428,7 @@ $test('Manifests::app runs a worker command in its own Deployment that never sle
     // The app's pod, running the command instead of FrankenPHP
     $container = $worker['spec']['template']['spec']['containers'][0];
     $web_container = $web['spec']['template']['spec']['containers'][0];
-    $same(['sh', '-c', 'exec php bin/messenger.php consume --time-limit=3600'], $container['command']);
+    $same(['sh', '-c', 'exec php bin/queue.php work --time-limit=3600'], $container['command']);
     $same($web_container['image'], $container['image']);
     $same($web_container['envFrom'], $container['envFrom']);
     $same($web_container['volumeMounts'], $container['volumeMounts']);

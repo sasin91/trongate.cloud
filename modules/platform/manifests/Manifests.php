@@ -1207,7 +1207,7 @@ class Manifests {
     /**
      * The app's worker: the app Deployment's pod (same image, config files,
      * variables, persistent files and database) running the app's worker
-     * command instead of FrankenPHP, e.g. `php bin/messenger.php consume
+     * command instead of FrankenPHP, e.g. `php bin/queue.php work
      * --time-limit=3600`. One replica, never scaled to zero by Sablier, and
      * not behind the Service (its name label differs from the app's).
      *

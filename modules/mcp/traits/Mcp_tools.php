@@ -162,7 +162,7 @@ trait Mcp_tools {
                     'domain' => ['type' => ['string', 'null'], 'description' => 'Custom domain; null or "" removes it'],
                     'persistent_paths' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => "Directories (relative to the app's root) kept across deploys, e.g. modules/blog/uploads"],
                     'php_extensions' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Extra PHP extensions'],
-                    'worker_command' => ['type' => 'string', 'description' => 'One command run next to the app in a worker that never sleeps, e.g. "php bin/messenger.php consume --time-limit=3600"; "" removes it'],
+                    'worker_command' => ['type' => 'string', 'description' => 'One command run next to the app in a worker that never sleeps, e.g. "php bin/queue.php work --time-limit=3600"; "" removes it'],
                     'always_on' => ['type' => 'boolean', 'description' => 'Never sleep when idle (needed when other apps call it directly)'],
                     'auto_deploy' => ['type' => 'boolean', 'description' => 'Deploy on every push to the branch'],
                     'trongate_env' => ['type' => 'string', 'description' => "Trongate's ENV constant in config/config.php, e.g. " . implode(', ', Trongate_config::ENV_SUGGESTIONS) . ' (dev shows errors)'],
