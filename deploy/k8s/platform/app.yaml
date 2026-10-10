@@ -46,6 +46,17 @@ spec:
             - secretRef:
                 name: trongate-cloud-github
                 optional: true
+          # Sessions live in Valkey under a user the worker creates when it
+          # starts (Valkey_sessions); until then this pod takes no traffic and
+          # the old pods keep serving. 10 minutes covers the worker's Recreate.
+          # Passes on images without the script, which Flux may still run
+          # under this manifest until the image tag is bumped.
+          startupProbe:
+            exec:
+              command: ["sh", "-c", "test ! -f /app/bin/check-sessions.php || exec php /app/bin/check-sessions.php"]
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 120
           readinessProbe:
             tcpSocket:
               port: http

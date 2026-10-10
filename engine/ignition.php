@@ -36,9 +36,9 @@ spl_autoload_register(function ($class_name) {
 // instead of a bare 500 (modules/error_pages).
 Error_pages::_register();
 
-// Sessions in the database, shared by every app replica (engine/Db_session_handler.php)
-session_set_save_handler(new Db_session_handler(), true);
-session_start();
+// Sessions in the shared Valkey, so every panel replica and rollout sees them
+// (engine/Valkey_sessions.php)
+Valkey_sessions::start_platform();
 
 /**
  * Retrieves the URL segments after processing custom routes.

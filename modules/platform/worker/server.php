@@ -39,5 +39,21 @@ try {
 }
 
 $runtime = new Runtime($db);
+
+// The panel's Valkey session user (Valkey_sessions::start_platform). New panel
+// pods wait for it in their startup probe (bin/check-sessions.php). Retried
+// like the DB connection, since Valkey may be restarting; a failure is logged
+// and the worker carries on, so builds and deploys still run.
+if ($valkey = $runtime->valkey()) {
+    try {
+        retry(5, fn() => Valkey_sessions::set_user($valkey, Valkey_sessions::PLATFORM_USER), fn(int $attempt) => min(500 * 2 ** ($attempt - 1), 5000));
+        error_log('Panel session store ready (Valkey user ' . Valkey_sessions::PLATFORM_USER . ')');
+    } catch (Throwable $e) {
+        error_log("Panel session store failed: {$e->getMessage()}");
+    }
+} else {
+    error_log('Valkey is not configured for the worker; panel sessions will not work');
+}
+
 $runtime->recover_stale_tasks();
 $runtime->poll();

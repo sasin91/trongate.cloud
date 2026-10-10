@@ -4,6 +4,7 @@ require_once __DIR__ . '/../../../config/platform.php';
 require_once __DIR__ . '/Trongate_config.php';
 require_once __DIR__ . '/App_env.php';
 require_once __DIR__ . '/../mail/Mail_capture.php';
+require_once __DIR__ . '/../../../engine/Valkey_sessions.php';
 
 /**
  * Kubernetes manifests for tenants and their apps, as arrays ready for Kubernetes::apply_all().
@@ -91,13 +92,6 @@ class Manifests {
     // under its own prefix. The ini file sorts after the image's other conf.d
     // files, so it wins over their session settings.
     const SESSIONS_INI_PATH = '/usr/local/etc/php/conf.d/zz-trongate-cloud-sessions.ini';
-    // Key commands and connection basics only. SCAN and RANDOMKEY take no key,
-    // so key patterns would not stop them listing other apps' session ids;
-    // FUNCTION would reach server-wide Lua libraries.
-    const SESSION_ACL_COMMANDS = [
-        '-@all', '+@connection', '+@read', '+@write', '+@keyspace', '+@transaction',
-        '-@dangerous', '-scan', '-randomkey', '-function',
-    ];
 
     const FILES_SIZE = '10Gi';
     const MAX_USER_CONNECTIONS = 20;
@@ -311,67 +305,25 @@ class Manifests {
     }
 
     /**
-     * The app's Valkey ACL user; its session keys start with session_key_prefix()
+     * The app's Valkey ACL user; its session keys start with "{user}:" (Valkey_sessions)
      */
     static function session_user(int $app_id): string {
         return "tc_p{$app_id}";
     }
 
-    static function session_key_prefix(int $app_id): string {
-        return "tc_p{$app_id}:";
-    }
-
     /**
-     * Stable per-app Valkey password derived from APP_KEY, like database_password()
-     */
-    static function session_password(int $app_id): string {
-        $key = defined('APP_KEY') ? (string) constant('APP_KEY') : (string) getenv('APP_KEY');
-
-        if ($key === '') {
-            throw new RuntimeException('APP_KEY is required to derive session passwords');
-        }
-
-        return substr(hash_hmac('sha256', 'sessions:' . self::session_user($app_id), $key), 0, 48);
-    }
-
-    /**
-     * Arguments for "ACL SETUSER {session_user}": replaces whatever the user had
-     *
-     * @return list<string>
-     */
-    static function session_acl(int $app_id, string $password): array {
-        return array_merge(
-            ['reset', 'on', '>' . $password, '~' . self::session_key_prefix($app_id) . '*', 'resetchannels'],
-            self::SESSION_ACL_COMMANDS
-        );
-    }
-
-    /**
-     * php.ini that keeps the app's sessions in Valkey (phpredis session handler).
-     * persistent=1 reuses the connection across requests; without it every
-     * request reconnects and throughput collapses (benchmarks 2026-10-04).
+     * php.ini that keeps the app's sessions in Valkey (phpredis session handler)
      *
      * @param array{host: string, port: int, password: string} $sessions
      */
     static function sessions_ini(int $app_id, array $sessions): string {
-        $user = self::session_user($app_id);
-        $password = $sessions['password'];
-
-        foreach ([$sessions['host'], $user, $password] as $value) {
-            if (!preg_match('/^[A-Za-z0-9._-]+$/', $value)) {
-                throw new InvalidArgumentException('Unsafe value for the sessions save_path');
-            }
-        }
-
-        $save_path = "tcp://{$sessions['host']}:" . (int) $sessions['port']
-            . '?persistent=1&timeout=2&read_timeout=2'
-            . '&prefix=' . self::session_key_prefix($app_id) . 'sess:'
-            . "&auth[]={$user}&auth[]={$password}";
+        $save_path = Valkey_sessions::save_path($sessions['host'], (int) $sessions['port'], self::session_user($app_id), $sessions['password']);
 
         return "; Managed by trongate.cloud: PHP sessions in the shared Valkey, so redeploys\n"
             . "; and wake-ups from sleep keep visitors signed in.\n"
             . "session.save_handler = redis\n"
-            . "session.save_path = \"{$save_path}\"\n";
+            . "session.save_path = \"{$save_path}\"\n"
+            . 'session.gc_maxlifetime = ' . Valkey_sessions::LIFETIME_SECONDS . "\n";
     }
 
     /**
