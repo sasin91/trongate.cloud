@@ -32,6 +32,10 @@ spl_autoload_register(function ($class_name) {
     return false;
 });
 
+// Uncaught exceptions and fatal errors get a page that says what went wrong
+// instead of a bare 500 (modules/error_pages).
+Error_pages::_register();
+
 // Sessions in the database, shared by every app replica (engine/Db_session_handler.php)
 session_set_save_handler(new Db_session_handler(), true);
 session_start();
