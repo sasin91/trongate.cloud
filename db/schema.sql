@@ -58,14 +58,6 @@ CREATE TABLE trongate_tokens (
   code VARCHAR(3) DEFAULT '0'
 );
 
--- PHP sessions, shared by every app replica (engine/Db_session_handler.php)
-CREATE TABLE php_session (
-  id VARCHAR(128) PRIMARY KEY,
-  data MEDIUMBLOB NOT NULL,
-  updated_at INT UNSIGNED NOT NULL,
-  KEY idx_updated_at (updated_at)
-);
-
 -- Login module (modules/login): lockouts and password resets
 CREATE TABLE login_attempts (
   id INT PRIMARY KEY AUTO_INCREMENT,
@@ -478,4 +470,5 @@ INSERT INTO schema_migrations (name) VALUES
   ('0003_app_upgrade'),
   ('0004_app_mail'),
   ('0005_deployment_config_version'),
-  ('0006_app_process');
+  ('0006_app_process'),
+  ('0007_drop_php_session');
