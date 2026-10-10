@@ -33,7 +33,9 @@ $features = [
 $faq = [
     ['Which Trongate versions work?', 'Trongate v1 and v2. You pick the version when you set up the app.'],
     ['Do I need Docker or a Dockerfile?', 'No. We build the container image from your repository for you.'],
-    ['What does it cost?', "Nothing while we're in early access."],
+    ['What does it cost?', "Nothing while we're in early access. After that we plan a flat price of about $5 a month per project, with no usage charges and no surprise bills."],
+    ['Are there limits on bandwidth, storage or database size?', "No hard limits. Hosting is fair use, and a typical Trongate app never comes close to what we plan for. If a project uses far more than its share, we'll get in touch and talk it through before anything changes."],
+    ['What happens when my project outgrows it?', "Nothing breaks. Apps sleep after 15 minutes without visitors and wake on the next request, so quiet apps cost nothing to keep. If your project keeps needing a lot more, like an always-on service or a heavy background job, we'll reach out about a plan that fits."],
     ['How do I use my own domain?', 'Add it to your app and create a CNAME record pointing at ' . PLATFORM_APPS_DOMAIN . '. We check the DNS and switch it on with a certificate as soon as it resolves.'],
     ['Where is my app hosted?', 'On Hetzner servers in Falkenstein, Germany.'],
 ];
