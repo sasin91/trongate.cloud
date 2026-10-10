@@ -45,6 +45,26 @@
             <p class="form-hint">Comma-separated. Installed at build time.</p>
         </div>
 
+        <div class="form-group" id="processes">
+            <label class="form-label">Processes</label>
+            <input type="hidden" name="processes" value="1">
+            <table class="process-table">
+                <thead>
+                    <tr><th>Name</th><th>Command</th><th>Replicas</th></tr>
+                </thead>
+                <tbody>
+                    <?php foreach (array_merge($processes, [['name' => '', 'command' => '', 'replicas' => 1]]) as $process): ?>
+                    <tr>
+                        <td><input type="text" name="process_name[]" class="form-input mono" placeholder="worker" aria-label="Name" value="<?= htmlspecialchars((string) $process['name']) ?>"></td>
+                        <td><input type="text" name="process_command[]" class="form-input mono" placeholder="php bin/queue.php work --time-limit=3600" aria-label="Command" value="<?= htmlspecialchars((string) $process['command']) ?>"></td>
+                        <td><input type="number" name="process_replicas[]" class="form-input" min="1" max="<?= Manifests::MAX_PROCESS_REPLICAS ?>" aria-label="Replicas" value="<?= (int) $process['replicas'] ?>"></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+            <p class="form-hint">Commands that run next to your app, from the same code, settings and database, for work that shouldn't wait on a web request, such as a queue worker. They never sleep, and restart when they exit. Replicas run side by side, so the work they share must be safe to run concurrently. Clear a row's name and command to remove it; save to add another row. Lowercase letters, numbers and <code>-</code> in names.</p>
+        </div>
+
         <div class="form-group">
             <label class="checkbox-label">
                 <input type="checkbox" name="always_on" value="1" <?= $always_on ? 'checked' : '' ?>>

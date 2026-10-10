@@ -4,11 +4,13 @@
  * Shared by apps/show and the landing page's product shot.
  *
  * Expects: $app, $urls, $current (deployment|false), $deployments, $can_rollback,
- * $live_state (array|null), $database_name, and optionally $services (the
- * project's services, Platform_actions::project_services) and $preview (true:
- * no forms, no polling).
+ * $live_state (array|null), $database_name, and optionally $processes and
+ * $process_states (see _processes.php), $services (the project's services,
+ * Platform_actions::project_services) and $preview (true: no forms, no polling).
  */
 $preview = $preview ?? false;
+$processes = $processes ?? [];
+$process_states = $process_states ?? null;
 $services = $services ?? [];
 $e = fn($value) => htmlspecialchars((string) $value);
 $short_sha = fn(?string $sha) => $sha ? substr($sha, 0, 7) : '';
@@ -85,6 +87,11 @@ $platform_host = $app->slug . '.' . PLATFORM_APPS_DOMAIN;
                                 <span class="muted">MariaDB<?php if (!$preview): ?> &middot; <a href="apps/<?= (int) $app->id ?>/database">Open</a><?php endif; ?></span>
                             </div>
                         </div>
+                        <?php if ($processes !== [] || !empty($process_states)): ?>
+                            <div class="ov-processes"<?php if (!$preview && $process_states !== null): ?> mx-get="apps/<?= (int) $app->id ?>/processes" mx-trigger="every 5s"<?php endif; ?>>
+                                <?php require __DIR__ . '/_processes.php'; ?>
+                            </div>
+                        <?php endif; ?>
                         <?php foreach ($services as $service): ?>
                             <?php $status = (string) ($service->status ?? 'queued'); ?>
                             <div class="ov-node ov-node-db">
@@ -200,6 +207,7 @@ $platform_host = $app->slug . '.' . PLATFORM_APPS_DOMAIN;
                 <dl class="ov-settings">
                     <div><dt>Deploy on push</dt><dd><?= $auto_deploy ? 'On' : 'Off' ?></dd></div>
                     <div><dt>Always on</dt><dd><?= !empty($app->always_on) ? 'On' : 'Off' ?></dd></div>
+                    <div><dt>Processes</dt><dd><?php if ($processes === []): ?>None<?php else: ?><?php foreach ($processes as $process): ?><code><?= $e($process['name']) ?><?= $process['replicas'] > 1 ? ' &times;' . (int) $process['replicas'] : '' ?></code> <?php endforeach; ?><?php endif; ?></dd></div>
                 </dl>
             </section>
         </div>

@@ -32,6 +32,10 @@ spl_autoload_register(function ($class_name) {
     return false;
 });
 
+// Uncaught exceptions and fatal errors get a page that says what went wrong
+// instead of a bare 500 (modules/error_pages).
+Error_pages::_register();
+
 // Sessions in the shared Valkey, so every panel replica and rollout sees them
 // (engine/Valkey_sessions.php)
 Valkey_sessions::start_platform();

@@ -57,6 +57,48 @@ class App_state {
     }
 
     /**
+     * States of the app's processes (Manifests::_process_deployment) that have
+     * a Deployment; a process missing here has not been deployed yet
+     *
+     * @return array<string, array{state: string, label: string, detail: string}> keyed by process name
+     */
+    static function for_processes(Kubernetes $kube, string $namespace, int $app_id): array {
+        if (!Manifests::is_tenant_namespace($namespace)) {
+            throw new InvalidArgumentException("Not a tenant namespace: '{$namespace}'");
+        }
+
+        $kube = $kube->with_timeout(self::TIMEOUT_SECONDS);
+        $selector = Manifests::process_selector($app_id);
+
+        try {
+            $deployments = $kube->list('apps/v1', 'Deployment', $namespace, $selector);
+            $pods = $kube->list('v1', 'Pod', $namespace, $selector);
+        } catch (Client_Error $e) {
+            if ($e->getCode() === 404) {
+                return [];
+            }
+
+            throw $e;
+        }
+
+        $pods_by_process = [];
+        foreach ($pods as $pod) {
+            $pods_by_process[$pod['metadata']['labels'][Manifests::PROCESS_LABEL] ?? ''][] = $pod;
+        }
+
+        $states = [];
+        foreach ($deployments as $deployment) {
+            $process = (string) ($deployment['metadata']['labels'][Manifests::PROCESS_LABEL] ?? '');
+
+            if ($process !== '') {
+                $states[$process] = self::_state($deployment, $pods_by_process[$process] ?? []);
+            }
+        }
+
+        return $states;
+    }
+
+    /**
      * @return array<int, array{state: string, label: string, detail: string}>
      */
     static function _collect(Kubernetes $kube, string $namespace, string $selector): array {
@@ -88,7 +130,8 @@ class App_state {
             $labels = $deployment['metadata']['labels'] ?? [];
             $app_id = (int) ($labels[Manifests::APP_LABEL] ?? 0);
 
-            if ($app_id > 0) {
+            // The app's own Deployment, not its processes' (Manifests::_process_deployment)
+            if ($app_id > 0 && ($deployment['metadata']['name'] ?? '') === Manifests::app_name($app_id)) {
                 $states[$app_id] = self::_state($deployment, $pods_by_app[$labels['app.kubernetes.io/name'] ?? ''] ?? []);
             }
         }

@@ -219,6 +219,34 @@ textarea.form-input {
     }
 }
 
+.process-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.process-table th {
+    text-align: left;
+    font-weight: 500;
+    font-size: 0.85rem;
+    padding: 0 0.5rem 0.25rem 0;
+}
+
+.process-table td {
+    padding: 0 0.5rem 0.5rem 0;
+    vertical-align: top;
+}
+
+.process-table th:first-child,
+.process-table td:first-child {
+    width: 9rem;
+}
+
+.process-table th:last-child,
+.process-table td:last-child {
+    width: 5.5rem;
+    padding-right: 0;
+}
+
 .danger-card {
     border-color: #fecaca;
 }
@@ -504,6 +532,29 @@ textarea.form-input {
     flex-direction: column;
     gap: 2px;
     color: var(--text-main);
+}
+
+/* Contents join the .ov-attached row; the wrapper only exists to be polled */
+.ov-processes {
+    display: contents;
+}
+
+.ov-node-process svg {
+    flex-shrink: 0;
+}
+
+.ov-node-process div {
+    min-width: 0;
+}
+
+.ov-process-command {
+    font-family: var(--font-mono, monospace);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    max-width: 260px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .ov-warn-text {

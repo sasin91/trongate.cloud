@@ -79,6 +79,24 @@ return function (Task_log $log) use ($payload, $runtime): int {
         $log->error("Listing custom-domain Gateways failed: {$e->getMessage()}");
     }
 
+    // The app's processes, found by label because their names come from app_process
+    try {
+        foreach ($kube->list('apps/v1', 'Deployment', $namespace, Manifests::process_selector($app_id)) as $process) {
+            $process_name = (string) $process['metadata']['name'];
+
+            try {
+                Platform_task::delete_owned($kube, 'apps/v1', 'Deployment', $namespace, $app_id, $process_name);
+                $log->info("Deleted process {$process_name}");
+            } catch (Throwable $e) {
+                $failures++;
+                $log->error("Deleting process {$process_name} failed: {$e->getMessage()}");
+            }
+        }
+    } catch (Throwable $e) {
+        $failures++;
+        $log->error("Listing the app's processes failed: {$e->getMessage()}");
+    }
+
     foreach (Manifests::app_objects($app_id) as [$api_version, $kind, $name]) {
         try {
             $deleted = Platform_task::delete_owned($kube, $api_version, $kind, $namespace, $app_id, $name);
