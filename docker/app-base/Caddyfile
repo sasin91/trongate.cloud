@@ -28,6 +28,11 @@
 	# .htaccess is ignored by Caddy; apps can only be framed by themselves
 	header Content-Security-Policy "frame-ancestors 'self'"
 
-	# Serves existing files, otherwise falls back to index.php with REQUEST_URI intact
-	php_server
+	# Serves existing files, otherwise falls back to index.php with REQUEST_URI intact.
+	# TLS ends at Traefik, which redirects plain http to https, so every visitor
+	# is on https: tell PHP so, or current_url() and anything else reading
+	# $_SERVER['HTTPS'] builds http:// links and form actions.
+	php_server {
+		env HTTPS on
+	}
 }

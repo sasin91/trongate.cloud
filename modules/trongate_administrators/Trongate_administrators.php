@@ -47,7 +47,7 @@ class Trongate_administrators extends Trongate {
             ? BASE_URL . $this->module_name . '/show/' . $update_id 
             : BASE_URL . $this->module_name . '/manage';
 
-        $data['update_password_url'] = BASE_URL . $this->module_name . '/update_password/' . $update_id;
+        $data['update_password_url'] = str_replace('/create', '/update_password', current_url());
         $data['form_location'] = BASE_URL . $this->module_name . '/submit/' . $update_id;
         $data['theme'] = $this->admin_theme;
         $data['view_module'] = $this->module_name;
@@ -185,7 +185,7 @@ class Trongate_administrators extends Trongate {
             ? BASE_URL . $this->module_name . '/show/' . $update_id 
             : BASE_URL . $this->module_name . '/manage';
 
-        $data['form_location'] = BASE_URL . $this->module_name . '/submit_update_password/' . $update_id;
+        $data['form_location'] = str_replace('/update_password/', '/submit_update_password/', current_url());
         $data['theme'] = $this->admin_theme;
         $data['view_module'] = $this->module_name;
         $data['view_file'] = 'update_password';

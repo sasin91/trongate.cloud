@@ -23,9 +23,7 @@ class Url extends Trongate {
      * @return string The current URL as a string.
      */
     public function current_url(): string {
-        // TLS ends at Traefik, so PHP itself only ever sees plain http
-        $https = ($_SERVER['HTTPS'] ?? '') === 'on' || ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https';
-        $current_url = ($https ? "https" : "http") . "://" . $_SERVER['HTTP_HOST'] .  $_SERVER['REQUEST_URI'];
+        $current_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://" . $_SERVER['HTTP_HOST'] .  $_SERVER['REQUEST_URI'];
         return $current_url;
     }
 
