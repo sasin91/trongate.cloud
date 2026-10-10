@@ -108,6 +108,18 @@ class Trongate_administrators extends Trongate {
     }
 
     /**
+     * Redirect user to the password form for their own account.
+     * 
+     * @return void
+     */
+    public function update_your_password(): void {
+        $token = $this->trongate_security->make_sure_allowed();
+        $my_user_obj = $this->model->get_user_by_token($token);
+        $logged_in_user_id = (int) ($my_user_obj->id ?? 0);
+        redirect($this->module_name.'/update_password/'.$logged_in_user_id);
+    }
+
+    /**
      * Display confirmation page before deleting a record
      * 
      * @return void

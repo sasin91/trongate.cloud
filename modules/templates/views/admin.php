@@ -17,6 +17,7 @@
 // The admin pages, shown in the side menu and the mobile menu: url => label,
 // or a group label => its pages
 $admin_nav = [
+    'overview' => 'Overview',
     'Customers' => [
         'customer-admin/manage' => 'Customers',
         'project/manage' => 'Projects',
@@ -89,6 +90,7 @@ $nav_link = function (string $url, string $label) use ($is_current): string {
     <div id="admin-settings-dropdown">
         <ul>
             <li><a href="trongate_administrators/update_your_details"><i class="tg tg-user"></i> Update Your Details</a></li>
+            <li><a href="trongate_administrators/update_your_password"><i class="tg tg-padlock"></i> Change Password</a></li>
             <li class="top-border"><a href="trongate_administrators/logout"><i class="tg tg-sign-out"></i> Log Out</a></li>
         </ul>
     </div>
@@ -165,6 +167,7 @@ if (strtolower(ENV) === 'dev') {
     <?php endforeach; ?>
     <?php endforeach; ?>
     <li><a href="trongate_administrators/update_your_details">Update your details</a></li>
+    <li><a href="trongate_administrators/update_your_password">Change password</a></li>
     <li><a href="<?= BASE_URL ?>">View site</a></li>
     <li><a href="trongate_administrators/logout">Log out</a></li>
   </ul>

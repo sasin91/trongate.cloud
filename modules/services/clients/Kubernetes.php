@@ -14,10 +14,12 @@ class Kubernetes extends Client {
     const IN_CLUSTER_URL = 'https://kubernetes.default.svc';
 
     /**
-     * Resource plural and scope per "apiVersion/Kind"; covers every kind Manifests emits
+     * Resource plural and scope per "apiVersion/Kind"; covers every kind Manifests emits,
+     * and the nodes and metrics the tg-admin overview reads
      */
     const RESOURCES = [
         'v1/Namespace' => ['namespaces', false],
+        'v1/Node' => ['nodes', false],
         'v1/Pod' => ['pods', true],
         'v1/Event' => ['events', true],
         'v1/Service' => ['services', true],
@@ -38,6 +40,8 @@ class Kubernetes extends Client {
         'k8s.mariadb.com/v1alpha1/Database' => ['databases', true],
         'k8s.mariadb.com/v1alpha1/User' => ['users', true],
         'k8s.mariadb.com/v1alpha1/Grant' => ['grants', true],
+        'metrics.k8s.io/v1beta1/NodeMetrics' => ['nodes', false],
+        'metrics.k8s.io/v1beta1/PodMetrics' => ['pods', true],
     ];
 
     /** Overrides Client's 30s request timeout when set (see with_timeout) */
