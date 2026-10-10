@@ -88,7 +88,7 @@ class App_state {
             $labels = $deployment['metadata']['labels'] ?? [];
             $app_id = (int) ($labels[Manifests::APP_LABEL] ?? 0);
 
-            // The app's own Deployment, not its worker's (Manifests::worker_name)
+            // The app's own Deployment, not its processes' (Manifests::_process_deployment)
             if ($app_id > 0 && ($deployment['metadata']['name'] ?? '') === Manifests::app_name($app_id)) {
                 $states[$app_id] = self::_state($deployment, $pods_by_app[$labels['app.kubernetes.io/name'] ?? ''] ?? []);
             }

@@ -192,17 +192,78 @@ trait App_rules {
     }
 
     /**
-     * One command, run with exec (Manifests::_worker_deployment): no line
-     * breaks, and none of ; & | ` $( that would chain or hide a second one
+     * The Processes rows of the settings form (process_name[], process_command[],
+     * process_replicas[]); rows left empty are dropped
+     *
+     * @return list<array{name: string, command: string, replicas: int}>
      */
-    function _validate_worker_command(string $value): bool|string {
-        $value = trim($value);
+    function _processes_from_post(): array {
+        $names = (array) post('process_name');
+        $commands = (array) post('process_command');
+        $replicas = (array) post('process_replicas');
+        $processes = [];
 
-        if ($value !== '' && preg_match('/[\r\n;&|`]|\$\(/', $value)) {
-            return 'The worker command is one command on one line, without ; & | ` or $( ).';
+        foreach ($names as $i => $name) {
+            $name = strtolower(trim((string) $name));
+            $command = trim((string) ($commands[$i] ?? ''));
+
+            if ($name === '' && $command === '') {
+                continue;
+            }
+
+            $count = trim((string) ($replicas[$i] ?? ''));
+            $processes[] = ['name' => $name, 'command' => $command, 'replicas' => $count === '' ? 1 : (int) $count];
         }
 
-        return true;
+        return $processes;
+    }
+
+    /**
+     * Settings form callback (on a hidden field): the Processes rows are valid
+     */
+    function _validate_processes(): bool|string {
+        return $this->_processes_error($this->_processes_from_post()) ?? true;
+    }
+
+    /**
+     * What is wrong with a list of processes, or null
+     *
+     * @param list<array{name: string, command: string, replicas: int}> $processes
+     */
+    function _processes_error(array $processes): ?string {
+        if (count($processes) > Manifests::MAX_PROCESSES) {
+            return 'An app can have at most ' . Manifests::MAX_PROCESSES . ' processes.';
+        }
+
+        $seen = [];
+
+        foreach ($processes as $process) {
+            $name = $process['name'];
+
+            if (!preg_match(Manifests::PROCESS_NAME_PATTERN, $name) || $name === 'app') {
+                return "\"{$name}\" can't be a process name: use lowercase letters, digits and dashes (up to 20), not \"app\".";
+            }
+
+            if (isset($seen[$name])) {
+                return "There are two processes named {$name}.";
+            }
+            $seen[$name] = true;
+
+            // One command, run with exec (Manifests::_process_deployment)
+            if ($process['command'] === '' || mb_strlen($process['command']) > 500) {
+                return "Give {$name} a command (at most 500 characters).";
+            }
+
+            if (preg_match('/[\r\n;&|`]|\$\(/', $process['command'])) {
+                return "{$name}'s command is one command on one line, without ; & | ` or $( ).";
+            }
+
+            if ($process['replicas'] < 1 || $process['replicas'] > Manifests::MAX_PROCESS_REPLICAS) {
+                return "{$name} runs 1 to " . Manifests::MAX_PROCESS_REPLICAS . ' copies.';
+            }
+        }
+
+        return null;
     }
 
     /**

@@ -93,6 +93,7 @@ class Apps extends Trongate {
             'view_module' => 'apps',
             'view_file' => 'show',
             'app' => $app,
+            'processes' => $this->model->app_processes((int) $app->id),
             'urls' => $this->_app_urls($app),
             'current' => $current,
             'deployments' => $deployments,
@@ -239,7 +240,7 @@ class Apps extends Trongate {
             'domain' => $is_resubmit ? (string) post('domain', true) : (string) ($app->domain ?? ''),
             'persistent_paths' => $is_resubmit ? (string) post('persistent_paths') : implode("\n", $paths),
             'php_extensions' => $is_resubmit ? (string) post('php_extensions', true) : (string) $app->php_extensions,
-            'worker_command' => $is_resubmit ? (string) post('worker_command') : (string) ($app->worker_command ?? ''),
+            'processes' => $is_resubmit ? $this->_processes_from_post() : $this->model->app_processes((int) $app->id),
             'always_on' => $is_resubmit ? (bool) post('always_on') : (bool) $app->always_on,
             'trongate_env' => $is_resubmit ? (string) post('trongate_env', true) : Trongate_config::env((array) $app),
             'auto_deploy' => $is_resubmit ? (bool) post('auto_deploy') : (bool) $app->auto_deploy,
@@ -315,7 +316,7 @@ class Apps extends Trongate {
         $this->validation->set_rules('domain', 'Custom Domain', 'max_length[253]|callback__validate_domain');
         $this->validation->set_rules('persistent_paths', 'Persistent Paths', 'max_length[4000]|callback__validate_persistent_paths');
         $this->validation->set_rules('php_extensions', 'PHP Extensions', 'max_length[255]|callback__validate_php_extensions');
-        $this->validation->set_rules('worker_command', 'Worker Command', 'max_length[500]|callback__validate_worker_command');
+        $this->validation->set_rules('processes', 'Processes', 'callback__validate_processes');
         $this->validation->set_rules('trongate_env', 'Environment', 'required|callback__validate_trongate_env');
 
         if ($this->validation->run() !== true) {
@@ -327,12 +328,13 @@ class Apps extends Trongate {
             'domain' => $this->_normalise_domain((string) post('domain', true)),
             'persistent_paths' => $this->_parse_persistent_paths((string) post('persistent_paths')),
             'php_extensions' => implode(',', $this->_parse_php_extensions((string) post('php_extensions', true))),
-            'worker_command' => trim((string) post('worker_command')),
             'always_on' => (bool) post('always_on'),
             'auto_deploy' => (bool) post('auto_deploy'),
             'trongate_env' => trim((string) post('trongate_env', true)),
             'mail_capture' => (bool) post('mail_capture'),
         ]);
+
+        $this->model->save_app_processes((int) $app->id, $this->_processes_from_post());
 
         set_flashdata('Settings saved. They take effect on the next deployment.');
         redirect('apps/' . $app->id);

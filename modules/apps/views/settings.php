@@ -46,9 +46,23 @@
         </div>
 
         <div class="form-group">
-            <label for="worker_command" class="form-label">Worker Command</label>
-            <input type="text" name="worker_command" id="worker_command" class="form-input mono" placeholder="e.g. php bin/queue.php work --time-limit=3600" value="<?= htmlspecialchars($worker_command) ?>">
-            <p class="form-hint">Runs next to your app, from the same code, settings and database, for work that shouldn't wait on a web request (a queue worker). It never sleeps, and it restarts when it exits. Leave empty for none.</p>
+            <label class="form-label">Processes</label>
+            <input type="hidden" name="processes" value="1">
+            <table class="process-table">
+                <thead>
+                    <tr><th>Name</th><th>Command</th><th>Replicas</th></tr>
+                </thead>
+                <tbody>
+                    <?php foreach (array_merge($processes, [['name' => '', 'command' => '', 'replicas' => 1]]) as $process): ?>
+                    <tr>
+                        <td><input type="text" name="process_name[]" class="form-input mono" placeholder="worker" aria-label="Name" value="<?= htmlspecialchars((string) $process['name']) ?>"></td>
+                        <td><input type="text" name="process_command[]" class="form-input mono" placeholder="php bin/queue.php work --time-limit=3600" aria-label="Command" value="<?= htmlspecialchars((string) $process['command']) ?>"></td>
+                        <td><input type="number" name="process_replicas[]" class="form-input" min="1" max="<?= Manifests::MAX_PROCESS_REPLICAS ?>" aria-label="Replicas" value="<?= (int) $process['replicas'] ?>"></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+            <p class="form-hint">Commands that run next to your app, from the same code, settings and database, for work that shouldn't wait on a web request, such as a queue worker. They never sleep, and restart when they exit. Replicas run side by side, so the work they share must be safe to run concurrently. Clear a row's name and command to remove it; save to add another row. Lowercase letters, numbers and <code>-</code> in names.</p>
         </div>
 
         <div class="form-group">

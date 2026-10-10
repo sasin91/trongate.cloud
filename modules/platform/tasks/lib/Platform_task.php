@@ -217,6 +217,11 @@ class Platform_task {
         // The app's own variables win over a service URL of the same name
         $env = self::app_env($runtime, $log, (int) $app['id']) + self::service_urls($runtime, $log, (int) $app['project_id']);
         $deployment['config_files'] = self::config_files($deployment);
+        $app['processes'] = self::rows(
+            $runtime->db(),
+            'SELECT name, command, replicas FROM app_process WHERE app_id = ? ORDER BY name',
+            [(int) $app['id']],
+        );
         $manifests = Manifests::app($app, $deployment, $database, self::ensure_session_user($runtime, $log, (int) $app['id']), $env);
 
         foreach ($manifests as $manifest) {
@@ -225,9 +230,13 @@ class Platform_task {
             $kube->apply($manifest);
         }
 
-        // A worker command that was cleared: its Deployment goes
-        if (Manifests::worker_command($app) === '' && $kube->delete('apps/v1', 'Deployment', $namespace, Manifests::worker_name((int) $app['id']))) {
-            $log->info('Removed the worker (no worker command)');
+        // Processes that were removed: their Deployments go
+        $kept = array_map(fn(array $p) => Manifests::process_deployment_name((int) $app['id'], $p['name']), Manifests::processes($app));
+        foreach ($kube->list('apps/v1', 'Deployment', $namespace, Manifests::process_selector((int) $app['id'])) as $process) {
+            $name = (string) $process['metadata']['name'];
+            if (!in_array($name, $kept, true) && $kube->delete('apps/v1', 'Deployment', $namespace, $name)) {
+                $log->info("Removed process {$name}");
+            }
         }
 
         // What redeploy_outdated_apps compares with Trongate_config::CONFIG_VERSION
