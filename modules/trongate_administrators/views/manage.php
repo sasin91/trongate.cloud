@@ -1,4 +1,4 @@
-<h1>Manage Trongate Administrators</h1>
+<h1>Administrators</h1>
 <?php
 echo flashdata();
 echo '<p>'.anchor('trongate_administrators/create', 'Create New Record', array('class' => 'button alt')).'</p>';
