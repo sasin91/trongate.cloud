@@ -52,12 +52,14 @@ class Manifests {
     const MAX_PROCESSES = 5;
     const MAX_PROCESS_REPLICAS = 5;
 
-    // No CPU or memory limit yet: apps grow as they need while we observe what
-    // real apps use. The small requests only let the scheduler place pods.
+    // No CPU limit, and customers see no limits (fair use). The memory limit is
+    // only a safety net, far above what real apps use (Recruiter: ~60Mi), so a
+    // leaking app restarts instead of pushing its node out of memory and taking
+    // its neighbours down. The small requests only let the scheduler place pods.
     // ephemeral-storage is capped so one app cannot fill a node's disk.
     const APP_RESOURCES = [
         'requests' => ['cpu' => '50m', 'memory' => '128Mi', 'ephemeral-storage' => '256Mi'],
-        'limits' => ['ephemeral-storage' => '1Gi'],
+        'limits' => ['memory' => '2Gi', 'ephemeral-storage' => '1Gi'],
     ];
 
     // Rollout gate (see _deployment()): a new pod takes no traffic until its
@@ -74,7 +76,7 @@ class Manifests {
         'limits' => ['cpu' => '200m', 'memory' => '128Mi', 'ephemeral-storage' => '256Mi'],
     ];
 
-    // Shared by every app in the project. No CPU or memory caps (see
+    // Shared by every app in the project. No CPU or memory quota (see
     // APP_RESOURCES); the quota only bounds disk, pod count and exposure.
     const TENANT_QUOTA = [
         'requests.ephemeral-storage' => '8Gi',
@@ -94,7 +96,7 @@ class Manifests {
     const SESSIONS_INI_PATH = '/usr/local/etc/php/conf.d/zz-trongate-cloud-sessions.ini';
 
     const FILES_SIZE = '10Gi';
-    const MAX_USER_CONNECTIONS = 20;
+    const MAX_USER_CONNECTIONS = 50;
     const SABLIER_SESSION = '15m';
     const SABLIER_PLUGIN = 'sablier';
 
