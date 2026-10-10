@@ -200,6 +200,7 @@ $platform_host = $app->slug . '.' . PLATFORM_APPS_DOMAIN;
                 <dl class="ov-settings">
                     <div><dt>Deploy on push</dt><dd><?= $auto_deploy ? 'On' : 'Off' ?></dd></div>
                     <div><dt>Always on</dt><dd><?= !empty($app->always_on) ? 'On' : 'Off' ?></dd></div>
+                    <div><dt>Processes</dt><dd><?php if ($processes === []): ?>None<?php else: ?><?php foreach ($processes as $process): ?><code><?= $e($process['name']) ?><?= $process['replicas'] > 1 ? ' &times;' . (int) $process['replicas'] : '' ?></code> <?php endforeach; ?><?php endif; ?></dd></div>
                 </dl>
             </section>
         </div>

@@ -333,6 +333,22 @@ CREATE TABLE deployment (
   CONSTRAINT fk_deployment_customer FOREIGN KEY (customer_id) REFERENCES customer (id)
 );
 
+-- An app's processes (Manifests::_process_deployment): other entrypoints run
+-- from the app's own image, settings and database, e.g. a queue worker. Each
+-- runs as a p{app id}-{name} Deployment that never sleeps, with this many replicas.
+CREATE TABLE app_process (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  app_id INT NOT NULL,
+  -- Lowercase slug, not 'app' (p{id}-app is the app itself)
+  name VARCHAR(20) NOT NULL,
+  command VARCHAR(500) NOT NULL,
+  replicas TINYINT UNSIGNED NOT NULL DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY unique_app_process_name (app_id, name),
+  CONSTRAINT fk_app_process_app FOREIGN KEY (app_id) REFERENCES app (id) ON DELETE CASCADE
+);
+
 -- A project's services (Project_service): an image that runs next to the
 -- project's apps, always on, reachable by them at {NAME}_URL. Environment
 -- variables live in secrets as (module 'service', id, service 'env').
@@ -461,4 +477,5 @@ INSERT INTO schema_migrations (name) VALUES
   ('0002_deployment_config_files'),
   ('0003_app_upgrade'),
   ('0004_app_mail'),
-  ('0005_deployment_config_version');
+  ('0005_deployment_config_version'),
+  ('0006_app_process');

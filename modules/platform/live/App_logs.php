@@ -78,8 +78,15 @@ class App_logs {
             return ['state' => App_state::_make('not_running'), 'lines' => [], 'cursor' => $cursor, 'pods' => 0];
         }
 
-        $pods = $kube->list('v1', 'Pod', $namespace, 'app.kubernetes.io/name=' . $name);
-        $state = App_state::_state($deployment, $pods);
+        // The app's pods and its processes' (Manifests::_process_deployment), in one log
+        $pods = array_merge(
+            $kube->list('v1', 'Pod', $namespace, 'app.kubernetes.io/name=' . $name),
+            $kube->list('v1', 'Pod', $namespace, Manifests::process_selector($app_id)),
+        );
+        $state = App_state::_state($deployment, array_values(array_filter(
+            $pods,
+            fn(array $pod) => ($pod['metadata']['labels']['app.kubernetes.io/name'] ?? '') === $name
+        )));
 
         $lines = [];
         $readable = 0;

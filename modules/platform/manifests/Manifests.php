@@ -39,6 +39,15 @@ class Manifests {
     const SERVICE_PORT = 80;
     const RUN_AS_USER = 1000;
 
+    /** How long an app's process gets to finish its current job on a rollout (an LLM call can take 180 s) */
+    const PROCESS_GRACE_SECONDS = 210;
+
+    /** An app process's name: a lowercase slug, ending in a letter or digit (it ends a Deployment name) */
+    const PROCESS_NAME_PATTERN = '/^[a-z](?:[a-z0-9-]{0,18}[a-z0-9])?$/';
+
+    const MAX_PROCESSES = 5;
+    const MAX_PROCESS_REPLICAS = 5;
+
     // No CPU or memory limit yet: apps grow as they need while we observe what
     // real apps use. The small requests only let the scheduler place pods.
     // ephemeral-storage is capped so one app cannot fill a node's disk.
@@ -155,6 +164,34 @@ class Manifests {
 
     static function app_name(int $app_id): string {
         return "p{$app_id}-app";
+    }
+
+    /**
+     * The Deployment running one of the app's processes
+     */
+    static function process_deployment_name(int $app_id, string $process): string {
+        return "p{$app_id}-{$process}";
+    }
+
+    /**
+     * Pods and Deployments of the app's processes (Manifests::_process_deployment)
+     */
+    static function process_selector(int $app_id): string {
+        return self::APP_LABEL . '=' . $app_id . ',app.kubernetes.io/component=process';
+    }
+
+    /**
+     * The app's processes as Platform_task loaded them into $app['processes']:
+     * list of ['name' => ..., 'command' => ..., 'replicas' => ...]
+     *
+     * @return list<array{name: string, command: string, replicas: int}>
+     */
+    static function processes(array $app): array {
+        return array_values(array_map(fn(array $p) => [
+            'name' => (string) $p['name'],
+            'command' => trim((string) $p['command']),
+            'replicas' => max(1, min(self::MAX_PROCESS_REPLICAS, (int) ($p['replicas'] ?? 1))),
+        ], (array) ($app['processes'] ?? [])));
     }
 
     static function database_name(int $app_id): string {
@@ -734,7 +771,7 @@ class Manifests {
             ],
         ];
 
-        $manifests[] = self::_deployment($app, $deployment, [
+        $manifests[] = $app_deployment = self::_deployment($app, $deployment, [
             'name' => $name,
             'namespace' => $namespace,
             'labels' => $labels,
@@ -751,6 +788,10 @@ class Manifests {
             // Changed variables roll the pods: envFrom is only read at container start
             'config_hash' => substr(hash('sha256', json_encode($config_files) . $sessions_ini . json_encode($paths) . json_encode($env)), 0, 16),
         ]);
+
+        foreach (self::processes($app) as $process) {
+            $manifests[] = self::_process_deployment($app_deployment, $app_id, $process);
+        }
 
         $manifests[] = [
             'apiVersion' => 'v1',
@@ -1180,6 +1221,49 @@ class Manifests {
             'metadata' => self::_metadata($o['name'], $o['namespace'], $labels),
             'spec' => $spec,
         ];
+    }
+
+    /**
+     * One of the app's processes: the app Deployment's pod (same image,
+     * config files, variables, persistent files and database) running the
+     * process's command instead of FrankenPHP, e.g. a queue worker's
+     * `php bin/queue.php work --time-limit=3600`. Never scaled to zero by
+     * Sablier, and not behind the Service (its name label differs from the
+     * app's).
+     *
+     * The command is exec'd, so it gets SIGTERM on a rollout and has
+     * PROCESS_GRACE_SECONDS to finish what it is doing. When it exits, the
+     * kubelet starts it again; a worker that stops on a time limit is how it
+     * keeps memory and code fresh. Its replicas run side by side (a queue
+     * hands each job to one of them); on a rollout the old ones stop before
+     * the new ones start.
+     *
+     * @param array{name: string, command: string, replicas: int} $process
+     */
+    static function _process_deployment(array $app_deployment, int $app_id, array $process): array {
+        $name = self::process_deployment_name($app_id, $process['name']);
+        $deployment = $app_deployment;
+        $relabel = function (array $labels) use ($name, $process): array {
+            unset($labels['sablier.enable'], $labels['sablier.group']);
+            return ['app.kubernetes.io/name' => $name, 'app.kubernetes.io/component' => 'process', 'trongate.cloud/process' => $process['name']] + $labels;
+        };
+
+        $deployment['metadata']['name'] = $name;
+        $deployment['metadata']['labels'] = $relabel($deployment['metadata']['labels']);
+        $deployment['spec']['replicas'] = $process['replicas'];
+        $deployment['spec']['selector'] = ['matchLabels' => ['app.kubernetes.io/name' => $name]];
+        $deployment['spec']['strategy'] = ['type' => 'Recreate'];
+        $deployment['spec']['template']['metadata']['labels'] = $relabel($deployment['spec']['template']['metadata']['labels']);
+        $deployment['spec']['template']['spec']['terminationGracePeriodSeconds'] = self::PROCESS_GRACE_SECONDS;
+
+        // Same container name as the app's, so App_logs reads them all
+        $container = &$deployment['spec']['template']['spec']['containers'][0];
+        $container['command'] = ['sh', '-c', 'exec ' . $process['command']];
+        unset($container['ports'], $container['startupProbe'], $container['readinessProbe']);
+        unset($container['securityContext']['capabilities']['add']);
+        unset($container);
+
+        return $deployment;
     }
 
     static function _metadata(string $name, string $namespace, array $labels): array {

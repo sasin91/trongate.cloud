@@ -28,6 +28,45 @@ trait App_records {
     }
 
     /**
+     * The app's processes (Manifests::_process_deployment), by name
+     *
+     * @return list<array{name: string, command: string, replicas: int}>
+     */
+    function app_processes(int $app_id): array {
+        $rows = $this->db->query_bind('SELECT name, command, replicas FROM app_process WHERE app_id = :app_id ORDER BY name', ['app_id' => $app_id], 'array');
+
+        return array_map(fn(array $row) => ['name' => (string) $row['name'], 'command' => (string) $row['command'], 'replicas' => (int) $row['replicas']], $rows ?: []);
+    }
+
+    /**
+     * Replace the app's processes with these (checked by _processes_error);
+     * they take effect on the next deploy.
+     *
+     * @param list<array{name: string, command: string, replicas: int}> $processes
+     */
+    function save_app_processes(int $app_id, array $processes): void {
+        $this->db->transaction(function () use ($app_id, $processes) {
+            $names = array_column($processes, 'name');
+            $keep = $names === [] ? "''" : implode(',', array_map(fn(int $i) => ":name_{$i}", array_keys($names)));
+            $params = ['app_id' => $app_id];
+            foreach ($names as $i => $name) {
+                $params["name_{$i}"] = $name;
+            }
+            $this->db->query_bind("DELETE FROM app_process WHERE app_id = :app_id AND name NOT IN ({$keep})", $params);
+
+            foreach ($processes as $process) {
+                $this->db->query_bind(
+                    'INSERT INTO app_process (app_id, name, command, replicas) VALUES (:app_id, :name, :command, :replicas)
+                     ON DUPLICATE KEY UPDATE command = VALUES(command), replicas = VALUES(replicas)',
+                    ['app_id' => $app_id, 'name' => $process['name'], 'command' => $process['command'], 'replicas' => $process['replicas']]
+                );
+            }
+
+            return true; // Db::transaction commits only on a truthy result
+        });
+    }
+
+    /**
      * Update an app's platform settings (the app must be in the project).
      *
      * @param array{domain: ?string, persistent_paths: list<string>, php_extensions: string, always_on: bool, auto_deploy: bool, trongate_env: string, mail_capture: bool} $settings
