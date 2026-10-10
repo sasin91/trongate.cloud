@@ -43,6 +43,24 @@ trait Live_app_state {
     }
 
     /**
+     * States of the app's processes by name (App_state::for_processes), or
+     * null when the cluster cannot be read or it was never deployed
+     *
+     * @return array<string, array{state: string, label: string, detail: string}>|null
+     */
+    function _live_process_states(object $app): ?array {
+        if (empty($app->current_deployment_id)) {
+            return null;
+        }
+
+        try {
+            return App_state::for_processes(Kubernetes::from_env(), Manifests::namespace_name($app), (int) $app->id);
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
      * An app's state and log lines newer than $cursor (see App_logs::read),
      * or null when the cluster cannot be read or it was never deployed
      *

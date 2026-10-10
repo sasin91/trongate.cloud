@@ -52,6 +52,7 @@ $routes = [
     'apps/(:num)/env/delete' => 'apps/delete_env/$1',
     'apps/(:num)/verify-domain' => 'apps/verify_domain/$1',
     'apps/(:num)/live-state' => 'apps/live_state/$1',
+    'apps/(:num)/processes' => 'apps/processes_partial/$1',
     'apps/(:num)/logs' => 'apps/logs/$1',
     'apps/(:num)/logs/poll' => 'apps/logs_partial/$1',
     'apps/(:num)/upgrade' => 'apps-upgrade/index/$1',

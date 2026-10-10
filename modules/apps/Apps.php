@@ -94,6 +94,7 @@ class Apps extends Trongate {
             'view_file' => 'show',
             'app' => $app,
             'processes' => $this->model->app_processes((int) $app->id),
+            'process_states' => $this->_live_process_states($app),
             'urls' => $this->_app_urls($app),
             'current' => $current,
             'deployments' => $deployments,
@@ -126,6 +127,26 @@ class Apps extends Trongate {
         }
 
         $this->view('_live_state', ['live_state' => $this->_live_app_state($app)]);
+    }
+
+    /**
+     * MX partial polled by the app page: the app's processes and what each is doing.
+     */
+    function processes_partial(): void {
+        $this->_make_sure_allowed();
+        $customer = $this->_customer_or_redirect();
+        $app = $this->model->find_member_app((int) $customer->id, segment(3, 'int'));
+
+        if ($app === false) {
+            http_response_code(404);
+            return;
+        }
+
+        $this->view('_processes', [
+            'app' => $app,
+            'processes' => $this->model->app_processes((int) $app->id),
+            'process_states' => $this->_live_process_states($app),
+        ]);
     }
 
     /**

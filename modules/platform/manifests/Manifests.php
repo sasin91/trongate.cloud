@@ -45,6 +45,9 @@ class Manifests {
     /** An app process's name: a lowercase slug, ending in a letter or digit (it ends a Deployment name) */
     const PROCESS_NAME_PATTERN = '/^[a-z](?:[a-z0-9-]{0,18}[a-z0-9])?$/';
 
+    /** Label naming the process on its Deployment and Pods (Manifests::_process_deployment) */
+    const PROCESS_LABEL = 'trongate.cloud/process';
+
     const MAX_PROCESSES = 5;
     const MAX_PROCESS_REPLICAS = 5;
 
@@ -1245,7 +1248,7 @@ class Manifests {
         $deployment = $app_deployment;
         $relabel = function (array $labels) use ($name, $process): array {
             unset($labels['sablier.enable'], $labels['sablier.group']);
-            return ['app.kubernetes.io/name' => $name, 'app.kubernetes.io/component' => 'process', 'trongate.cloud/process' => $process['name']] + $labels;
+            return ['app.kubernetes.io/name' => $name, 'app.kubernetes.io/component' => 'process', self::PROCESS_LABEL => $process['name']] + $labels;
         };
 
         $deployment['metadata']['name'] = $name;
