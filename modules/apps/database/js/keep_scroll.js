@@ -6,7 +6,7 @@
     const storageKey = 'tcloud.database.scroll';
 
     function tablesList() {
-        return document.querySelector('.db-tables ul');
+        return document.querySelector('.db-side-list');
     }
 
     function savePositions(link) {

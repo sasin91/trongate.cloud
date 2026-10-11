@@ -33,13 +33,15 @@ document.addEventListener('DOMContentLoaded', function () {
         change.setAttribute('mx-build-modal', cell.closest('table').dataset.passwordModal);
         menu.appendChild(change);
 
-        const edit = cell.parentElement.querySelector('a[data-edit-row]');
+        const edit = cell.parentElement.querySelector('[data-edit-row]');
         if (edit) {
-            const link = document.createElement('a');
-            link.textContent = 'Edit row';
-            link.href = edit.href;
-            link.setAttribute('role', 'menuitem');
-            menu.appendChild(link);
+            const editItem = document.createElement('button');
+            editItem.type = 'button';
+            editItem.textContent = 'Edit row';
+            editItem.setAttribute('role', 'menuitem');
+            editItem.setAttribute('mx-get', edit.getAttribute('mx-get'));
+            editItem.setAttribute('mx-build-modal', edit.getAttribute('mx-build-modal'));
+            menu.appendChild(editItem);
         }
 
         menu.hidden = false;
