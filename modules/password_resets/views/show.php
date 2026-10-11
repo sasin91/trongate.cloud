@@ -20,7 +20,7 @@
             </div>
             <div class="detail-row">
                 <div class="detail-label">Expiry Date</div>
-                <div class="detail-value"><?= out($expiry_date) ?></div>
+                <div class="detail-value"><?= out(date('Y-m-d H:i:s', (int) $expiry_date)) ?></div>
             </div>
             <div class="detail-row">
                 <div class="detail-label">Used</div>
@@ -28,7 +28,7 @@
             </div>
             <div class="detail-row">
                 <div class="detail-label">Created At</div>
-                <div class="detail-value"><?= out($created_at) ?></div>
+                <div class="detail-value"><?= out(date('Y-m-d H:i:s', (int) $created_at)) ?></div>
             </div>
         </div>
     </div>

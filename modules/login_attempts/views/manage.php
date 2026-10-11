@@ -64,7 +64,7 @@ echo Modules::run('pagination/display', $pagination_data);
                 <td><?= anchor('#', out($row->target_table), $link_attr) ?></td>
                 <td><?= out($row->identifier) ?></td>
                 <td><?= out($row->ip_address) ?></td>
-                <td><?= out($row->attempted_at) ?></td>                    <td>
+                <td><?= out(date('Y-m-d H:i:s', (int) $row->attempted_at)) ?></td>                    <td>
                         <div class="actions">
                             <a href="login_attempts/show/<?= $row->id ?>" class="button alt button-round"><i class="tg tg-eye"></i></a>
                             <a href="login_attempts/delete_conf/<?= $row->id ?>" class="button alt button-round"><i class="tg tg-trash"></i></a>

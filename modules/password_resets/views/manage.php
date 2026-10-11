@@ -64,9 +64,9 @@ echo Modules::run('pagination/display', $pagination_data);
                 <tr>
                 <td><?= anchor('#', out($row->target_table), $link_attr) ?></td>
                 <td><?= out($row->identifier) ?></td>
-                <td><?= out($row->expiry_date) ?></td>
+                <td><?= out(date('Y-m-d H:i:s', (int) $row->expiry_date)) ?></td>
                 <td><?= out($row->used) ?></td>
-                <td><?= out($row->created_at) ?></td>                    <td>
+                <td><?= out(date('Y-m-d H:i:s', (int) $row->created_at)) ?></td>                    <td>
                         <div class="actions">
                             <a href="password_resets/show/<?= $row->id ?>" class="button alt button-round"><i class="tg tg-eye"></i></a>
                             <a href="password_resets/delete_conf/<?= $row->id ?>" class="button alt button-round"><i class="tg tg-trash"></i></a>

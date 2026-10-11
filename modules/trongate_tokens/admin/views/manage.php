@@ -46,7 +46,7 @@ echo Modules::run('pagination/display', $pagination_data);
                 ?>
                 <tr>
                 <td><?= anchor('#', out($row->user_id), $link_attr) ?></td>
-                <td><?= out($row->expiry_date) ?></td>
+                <td><?= ($row->expiry_date ? out(date('Y-m-d H:i:s', (int) $row->expiry_date)) : '') ?></td>
                 <td><?= out($row->code) ?></td>                    <td>
                         <div class="actions">
                             <a href="trongate_tokens-admin/show/<?= $row->id ?>" class="button alt button-round"><i class="tg tg-eye"></i></a>
