@@ -5,6 +5,7 @@ require_once APPPATH . 'modules/apps/traits/App_page.php';
 require_once APPPATH . 'modules/platform/live/App_database.php';
 require_once APPPATH . 'modules/platform/live/App_password.php';
 require_once __DIR__ . '/traits/App_database_guard.php';
+require_once __DIR__ . '/traits/App_database_diagram.php';
 
 /**
  * Child module of apps: apps/{id}/database, browse and edit an app's own
@@ -20,6 +21,7 @@ class Database extends Trongate {
     use Customer_guard;
     use App_page;
     use App_database_guard;
+    use App_database_diagram;
 
     /** mx-build-modal for the Change password form (views/_password_form.php) */
     const PASSWORD_MODAL = '{"id":"db-password-modal","modalHeading":"Change password","width":"32rem","marginTop":"8vh"}';
@@ -34,7 +36,7 @@ class Database extends Trongate {
     const ADD_ROW_MODAL = '{"id":"db-row-modal","modalHeading":"Add row","width":"44rem","marginTop":"6vh"}';
 
     /** What the workspace shows (?view=); data is the default */
-    const VIEWS = ['data', 'structure', 'sql', 'history', 'backups'];
+    const VIEWS = ['data', 'structure', 'diagram', 'sql', 'history', 'backups'];
 
     /** Tables kept open as tabs along the top of the workspace, per app */
     const OPEN_TABS = 6;
@@ -541,8 +543,9 @@ class Database extends Trongate {
             'query_error' => null,
             'error' => null,
             'backup_id' => null,
+            'diagram' => null,
             'crumbs' => [...$this->_app_crumbs($app), ['apps/' . $app->id . '/database', 'Database']],
-            'additional_includes_top' => ['apps_module/css/apps.css', 'apps-database_module/css/database.css'],
+            'additional_includes_top' => ['apps_module/css/apps.css', 'apps-database_module/css/database.css', 'apps-database_module/css/diagram.css'],
             'additional_includes_btm' => [
                 'apps-database_module/js/password.js',
                 'apps-database_module/js/keep_scroll.js',
@@ -559,6 +562,7 @@ class Database extends Trongate {
         } else {
             try {
                 $data = $this->_load_table($app, $database, $data);
+                $data = $this->_load_diagram($app, $database, $data);
             } catch (PDOException $e) {
                 $data['error'] = $this->_database_error($e);
             }
@@ -606,6 +610,22 @@ class Database extends Trongate {
         $data['delete_rows_confirm_url'] = 'apps/' . $app->id . '/database/rows/delete/confirm?' . http_build_query(['table' => $table]);
 
         return $data;
+    }
+
+    /**
+     * The Diagram view's values (App_database_diagram) when it is the view asked for
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    function _load_diagram(object $app, App_database $database, array $data): array {
+        if ($data['view'] !== 'diagram' || $data['table'] === null) {
+            return $data;
+        }
+
+        $diagram = $this->_diagram_data($app, $database, $data['tables'], $data['table']['name']);
+
+        return $diagram + $data;
     }
 
     /**
@@ -760,6 +780,7 @@ class Database extends Trongate {
         return [
             [$this->_database_url($app, ['table' => $table_name]), 'Data', $view === 'data'],
             [$this->_database_url($app, ['table' => $table_name, 'view' => 'structure']), 'Structure', $view === 'structure'],
+            [$this->_database_url($app, ['table' => $table_name, 'view' => 'diagram']), 'Diagram', $view === 'diagram'],
         ];
     }
 

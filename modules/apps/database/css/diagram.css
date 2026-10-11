@@ -1,12 +1,4 @@
 /* apps-database: views/_diagram.php. Card sizes match Schema_diagram's constants (230px wide, 34px head, 24px rows). */
-.db-diagram {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    min-height: 0;
-    height: 100%;
-}
-
 .db-diagram-tools {
     display: flex;
     flex-wrap: wrap;
@@ -84,7 +76,7 @@
 
 .db-diagram-canvas {
     flex: 1;
-    min-height: 24rem;
+    min-height: 0;
     overflow: auto;
     background: var(--bg-subtle);
 }
@@ -233,12 +225,4 @@
 
 .db-diagram-link b {
     color: var(--accent-ink);
-}
-
-.db-diagram-summary {
-    margin: 0;
-    padding: 0.5rem 0.625rem;
-    border-top: 1px solid var(--border);
-    font-size: 0.8125rem;
-    color: var(--text-muted);
 }
