@@ -401,19 +401,15 @@
 }
 
 .db-password-form .validation-errors {
-    margin: 0 0 1rem;
-    padding: 0.625rem 0.75rem 0.625rem 1.75rem;
-    font-size: 0.875rem;
+    margin: 0 0 0.375rem;
+    padding: 0;
+    list-style: none;
+    font-size: 0.8125rem;
     color: #8a2a22;
-    background: #fdf0ef;
-    border: 1px solid #f3cfcb;
-    border-radius: 8px;
 }
 
-.db-password-form .db-error {
-    margin: 0 0 1rem;
-    border: 1px solid #f3cfcb;
-    border-radius: 8px;
+.db-password-form .form-field-validation-error {
+    border-color: #c4473c;
 }
 
 .db-dialog-what {

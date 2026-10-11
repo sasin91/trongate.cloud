@@ -1,26 +1,22 @@
 <?php
 /**
  * The Change password form, loaded into a Trongate MX modal (mx-build-modal)
- * by Database::password_form, and re-rendered there by change_password when
- * it is refused. On success change_password answers with the table's URL,
- * which mx-redirect-on-success follows.
+ * by Database::password_form. change_password answers with the table's URL,
+ * which mx-redirect-on-success follows, or 422 with JSON errors that MX
+ * shows next to the fields (highlight-errors).
  * Expects: $base (apps/{id}/database), $table, $key, $column, $choices
- * (App_password::choices of the cell's value), $error (or null).
+ * (App_password::choices of the cell's value).
  */
 $e = fn($value) => htmlspecialchars((string) $value);
 ?>
 <?= form_open($base . '/row/password/submit', [
-    'class' => 'db-password-form',
+    'class' => 'db-password-form highlight-errors',
     'autocomplete' => 'off',
     'mx-post' => $base . '/row/password/submit',
-    'mx-target' => 'closest .modal-body',
+    'mx-target' => 'none',
     'mx-redirect-on-success' => 'true',
 ]) ?>
     <p class="db-dialog-what muted ov-mono"><?= $e($table) ?> row <?= $e(implode(', ', array_map(fn($name, $value) => $name . ' = ' . $value, array_keys($key), $key))) ?>, column <?= $e($column) ?></p>
-    <?= validation_errors() ?>
-    <?php if ($error !== null): ?>
-        <p class="db-error" role="alert"><?= $e($error) ?></p>
-    <?php endif; ?>
     <input type="hidden" name="table" value="<?= $e($table) ?>">
     <input type="hidden" name="column" value="<?= $e($column) ?>">
     <?php foreach ($key as $name => $value): ?>

@@ -189,7 +189,7 @@ class Database extends Trongate {
      * POST apps/{id}/database/row/password/submit: hash a new password into one cell
      * (table, key[], column, password, password_confirm, algorithm, backup).
      * Answers with the table's URL, which the modal's form follows
-     * (mx-redirect-on-success), or the form again with why it was refused.
+     * (mx-redirect-on-success), or 422 with JSON errors that MX shows in the form.
      * The log names the column, never the password or the hash.
      */
     function change_password(): void {
@@ -206,14 +206,13 @@ class Database extends Trongate {
         $this->validation->set_rules('password_confirm', 'password confirmation', 'required|matches[password]');
 
         if ($this->validation->run() !== true) {
-            $this->_password_form($app, $table, $key, $column, $database->row($table, $key)); // shows validation_errors()
+            echo validation_errors(422); // JSON that MX shows next to each field (highlight-errors)
             return;
         }
 
         $password = (string) post('password');
         $choice = (string) post('algorithm');
         $backup = !post('backup') ? null : fn() => $this->_save_backup($app, $this->_describe_row($table, $key), $database->back_up_row($table, $key));
-        $current = null;
         $hash = '';
 
         // Every refusal (rate limit, lock, backup, hashing, MariaDB) comes back to the modal with its reason
@@ -240,7 +239,10 @@ class Database extends Trongate {
                 return [$changed, $changed];
             }, $backup, $backup_id);
         } catch (PDOException | RuntimeException $e) {
-            $this->_password_form($app, $table, $key, $column, $current, $e instanceof PDOException ? $this->_database_error($e) : $e->getMessage());
+            // The same 422 JSON as validation_errors(422), shown under the password field
+            http_response_code(422);
+            header('Content-Type: application/json');
+            echo json_encode(['password' => [$e instanceof PDOException ? $this->_database_error($e) : $e->getMessage()]], JSON_INVALID_UTF8_SUBSTITUTE);
             return;
         }
 
@@ -526,18 +528,15 @@ class Database extends Trongate {
      *
      * @param array<string, string> $key
      * @param array{name: string, column_type: string} $column
-     * @param array<string, string|null>|string|null $current the row, or the cell's value
+     * @param array<string, string|null>|null $row
      */
-    function _password_form(object $app, string $table, array $key, array $column, array|string|null $current, ?string $error = null): void {
-        $value = is_array($current) ? ($current[$column['name']] ?? null) : $current;
-
+    function _password_form(object $app, string $table, array $key, array $column, ?array $row): void {
         $this->view('_password_form', [
             'base' => 'apps/' . $app->id . '/database',
             'table' => $table,
             'key' => $key,
             'column' => $column['name'],
-            'choices' => App_password::choices($value, $column['column_type']),
-            'error' => $error,
+            'choices' => App_password::choices($row[$column['name']] ?? null, $column['column_type']),
         ]);
     }
 
