@@ -213,51 +213,38 @@ class Database extends Trongate {
         $password = (string) post('password');
         $choice = (string) post('algorithm');
         $backup = !post('backup') ? null : fn() => $this->_save_backup($app, $this->_describe_row($table, $key), $database->back_up_row($table, $key));
-        $hashed_with = null;
         $current = null;
+        $hash = '';
 
+        // Every refusal (rate limit, lock, backup, hashing, MariaDB) comes back to the modal with its reason
         try {
+            $row = $database->row($table, $key);
+
+            if ($row === null) {
+                throw new RuntimeException('That row is gone.');
+            }
+
+            $current = $row[$name];
+
             // Hashing inside _logged() keeps it under the customer's rate limit and lock
-            $this->_logged($app, 'update', $this->_describe_row_change('update', $table, $key, [$name]) . ' -- new password hash', true, function () use ($database, $table, $key, $column, $password, $choice, &$hashed_with, &$current) {
-                $row = $database->row($table, $key);
-
-                if ($row === null) {
-                    throw new RuntimeException('That row is gone.');
-                }
-
-                $current = $row[$column['name']];
-
-                try {
-                    $hash = App_password::hash($password, $current, $choice);
-                } catch (InvalidArgumentException $e) {
-                    throw new RuntimeException($e->getMessage());
-                }
-
+            $this->_logged($app, 'update', $this->_describe_row_change('update', $table, $key, [$name]) . ' -- new password hash', true, function () use ($database, $table, $key, $column, $password, $current, $choice, &$hash) {
+                $hash = App_password::hash($password, $current, $choice);
                 $too_long = App_password::too_long($hash, $column['column_type']);
 
                 if ($too_long !== null) {
                     throw new RuntimeException($too_long);
                 }
 
-                $hashed_with = App_password::describe(App_password::settings($hash) ?? ['algorithm' => 'bcrypt', 'options' => ['cost' => 0]]);
                 $changed = $database->update($table, $key, [$column['name'] => $hash]);
 
                 return [$changed, $changed];
             }, $backup, $backup_id);
         } catch (PDOException | RuntimeException $e) {
-            if ($current === null) {
-                try {
-                    $current = $database->row($table, $key); // refused before it was read: rate limit, lock or backup
-                } catch (PDOException) {
-                    // the form then offers PHP's defaults only
-                }
-            }
-
             $this->_password_form($app, $table, $key, $column, $current, $e instanceof PDOException ? $this->_database_error($e) : $e->getMessage());
             return;
         }
 
-        set_flashdata(htmlspecialchars('New password saved in ' . $this->_describe_row($table, $key) . ', column ' . $name . ' (' . $hashed_with . ').' . ($backup_id !== null ? ' The old hash is under Backups.' : '')));
+        set_flashdata(htmlspecialchars('New password saved in ' . $this->_describe_row($table, $key) . ', column ' . $name . ' (' . App_password::describe_hash($hash) . ').' . ($backup_id !== null ? ' The old hash is under Backups.' : '')));
         echo BASE_URL . $this->_database_url($app, ['table' => $table]);
     }
 

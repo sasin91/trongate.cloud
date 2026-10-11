@@ -125,25 +125,25 @@ final class App_password {
     /**
      * A new hash of $password made the $choice way (a key of choices())
      *
-     * @throws InvalidArgumentException when $choice is not offered for $current, or the password cannot be hashed that way
+     * @throws RuntimeException when $choice is not offered for $current, or the password cannot be hashed that way
      */
     static function hash(#[\SensitiveParameter] string $password, ?string $current, string $choice): string {
         if (!array_key_exists($choice, self::choices($current)['choices'])) {
-            throw new InvalidArgumentException('That hashing choice is not available for this value.');
+            throw new RuntimeException('That hashing choice is not available for this value.');
         }
 
         if (str_contains($password, "\0")) {
-            throw new InvalidArgumentException('The password cannot contain a NUL byte.');
+            throw new RuntimeException('The password cannot contain a NUL byte.');
         }
 
         ['algorithm' => $algorithm, 'options' => $options, 'prefix' => $prefix] = match ($choice) {
-            'same' => self::settings($current) ?? throw new InvalidArgumentException('That hashing choice is not available for this value.'),
+            'same' => self::settings($current) ?? throw new RuntimeException('That hashing choice is not available for this value.'),
             'argon2id' => ['algorithm' => 'argon2id', 'options' => [], 'prefix' => '$argon2id$'],
             default => ['algorithm' => 'bcrypt', 'options' => [], 'prefix' => '$2y$'],
         };
 
         if ($algorithm === 'bcrypt' && strlen($password) > self::BCRYPT_MAX_BYTES) {
-            throw new InvalidArgumentException('bcrypt only reads the first ' . self::BCRYPT_MAX_BYTES . ' bytes of a password. Use a shorter one, or Argon2id.');
+            throw new RuntimeException('bcrypt only reads the first ' . self::BCRYPT_MAX_BYTES . ' bytes of a password. Use a shorter one, or Argon2id.');
         }
 
         $constant = match ($algorithm) {
@@ -155,7 +155,7 @@ final class App_password {
         try {
             $hash = password_hash($password, $constant, $options);
         } catch (ValueError $e) {
-            throw new InvalidArgumentException('Could not hash it that way here: ' . $e->getMessage() . ' Pick another choice.');
+            throw new RuntimeException('Could not hash it that way here: ' . $e->getMessage() . ' Pick another choice.');
         }
 
         // $2b$ is the same algorithm as PHP's $2y$; keep the prefix the app already stores
@@ -202,6 +202,16 @@ final class App_password {
         return $settings['algorithm'] === 'bcrypt'
             ? 'bcrypt, cost ' . $options['cost']
             : ucfirst($settings['algorithm']) . ', ' . intdiv($options['memory_cost'], 1024) . ' MiB, ' . $options['time_cost'] . ' passes, ' . $options['threads'] . ' ' . ($options['threads'] === 1 ? 'thread' : 'threads');
+    }
+
+    static function describe_hash(string $hash): string {
+        $settings = self::settings($hash);
+
+        if ($settings === null) {
+            return 'not a password hash';
+        }
+
+        return self::describe($settings);
     }
 
     static function default_bcrypt_cost(): int {

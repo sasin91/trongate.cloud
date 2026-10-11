@@ -30,17 +30,21 @@ $same = function ($expected, $actual): void {
 };
 
 $throws = function (callable $body, string $needle): void {
+    $message = null;
+
     try {
         $body();
-    } catch (InvalidArgumentException $e) {
-        if (!str_contains($e->getMessage(), $needle)) {
-            throw new RuntimeException("Expected a message with '{$needle}', got: {$e->getMessage()}");
-        }
-
-        return;
+    } catch (RuntimeException $e) {
+        $message = $e->getMessage();
     }
 
-    throw new RuntimeException('Expected an InvalidArgumentException');
+    if ($message === null) {
+        throw new LogicException('Expected a RuntimeException');
+    }
+
+    if (!str_contains($message, $needle)) {
+        throw new LogicException("Expected a message with '{$needle}', got: {$message}");
+    }
 };
 
 $column = fn(string $name, string $type = 'varchar', bool $editable = true) => ['name' => $name, 'type' => $type, 'editable' => $editable];
@@ -72,7 +76,8 @@ $test('reads bcrypt settings, including other libraries\' $2a$ and $2b$', functi
 $test('reads Argon2 settings', function () use ($same) {
     $hash = password_hash('secret', PASSWORD_ARGON2ID, ['memory_cost' => 8192, 'time_cost' => 2, 'threads' => 1]);
     $same(['algorithm' => 'argon2id', 'options' => ['memory_cost' => 8192, 'time_cost' => 2, 'threads' => 1], 'prefix' => '$argon2id$'], App_password::settings($hash));
-    $same('Argon2id, 8 MiB, 2 passes, 1 thread', App_password::describe(App_password::settings($hash)));
+    $same('Argon2id, 8 MiB, 2 passes, 1 thread', App_password::describe_hash($hash));
+    $same('not a password hash', App_password::describe_hash(md5('x')));
 });
 
 $test('plain text, md5 and empty values are not hashes', function () use ($same) {
