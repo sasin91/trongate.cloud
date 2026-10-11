@@ -1,0 +1,210 @@
+/* Domain tab (apps/{id}/domain) */
+
+.domain-card h2 {
+    margin: 0 0 1rem;
+    font-size: 1.05rem;
+    overflow-wrap: anywhere;
+}
+
+.domain-form {
+    max-width: 760px;
+}
+
+.domain-steps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.5rem;
+    margin: 0 0 1rem;
+    padding: 0;
+    list-style: none;
+    counter-reset: domain-step;
+}
+
+.domain-step {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    counter-increment: domain-step;
+}
+
+.domain-step::before {
+    content: counter(domain-step);
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-strong);
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.domain-step.is-current {
+    color: var(--text-main);
+    font-weight: 600;
+}
+
+.domain-step.is-current::before {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+}
+
+.domain-step.is-done {
+    color: var(--text-main);
+}
+
+.domain-step.is-done::before {
+    content: '\2713';
+    border-color: #0f6b40;
+    background: #e3f4ea;
+    color: #0f6b40;
+}
+
+.domain-summary {
+    margin: 0 0 1.25rem;
+    font-size: 0.9rem;
+}
+
+.dns-table-wrap {
+    margin: 0 0 1.25rem;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow-x: auto;
+}
+
+.dns-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+
+.dns-table th {
+    text-align: left;
+    font-weight: 500;
+    color: var(--text-muted);
+    background: var(--bg-subtle);
+    padding: 0.625rem 0.875rem;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+}
+
+.dns-table td {
+    padding: 0.75rem 0.875rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+}
+
+.dns-table tr:last-child td {
+    border-bottom: none;
+}
+
+.dns-table code {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    word-break: break-all;
+}
+
+.dns-value {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+}
+
+.dns-copy {
+    display: none;
+    flex: none;
+    padding: 1px 8px;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    background: var(--white);
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    cursor: pointer;
+}
+
+.has-clipboard .dns-copy {
+    display: inline-block;
+}
+
+.dns-copy:hover {
+    color: var(--primary);
+    border-color: var(--accent);
+}
+
+.dns-status {
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 3px 8px;
+    border-radius: 999px;
+    white-space: nowrap;
+    display: inline-block;
+}
+
+.dns-status.is-checking {
+    color: var(--text-muted);
+    background: var(--bg-subtle);
+}
+
+.dns-status.is-ok {
+    color: #0f6b40;
+    background: #e3f4ea;
+}
+
+.dns-status.is-warn {
+    color: #8a5300;
+    background: #fff1d6;
+    white-space: normal;
+}
+
+.dns-status.is-missing {
+    color: var(--text-muted);
+    background: #f0f1f7;
+}
+
+.domain-notes {
+    margin: 0 0 1.25rem;
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+}
+
+.domain-notes p {
+    margin: 0 0 0.5rem;
+}
+
+/* Phones: each record becomes a small card of label/value rows */
+@media (max-width: 640px) {
+    .dns-table thead {
+        display: none;
+    }
+
+    .dns-table tr {
+        display: block;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .dns-table tr:last-child {
+        border-bottom: none;
+    }
+
+    .dns-table td {
+        display: grid;
+        grid-template-columns: 6.5rem 1fr;
+        gap: 0.5rem;
+        padding: 0.25rem 0.875rem;
+        border-bottom: none;
+    }
+
+    .dns-table td::before {
+        content: attr(data-label);
+        color: var(--text-muted);
+    }
+
+    .dns-table .dns-status {
+        justify-self: start;
+    }
+}

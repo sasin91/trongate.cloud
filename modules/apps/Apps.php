@@ -6,13 +6,12 @@ require_once __DIR__ . '/traits/App_form.php';
 require_once __DIR__ . '/traits/App_page.php';
 require_once APPPATH . 'modules/platform/manifests/Manifests.php';
 require_once APPPATH . 'modules/platform/manifests/App_env.php';
-require_once APPPATH . 'modules/platform/manifests/Domain_dns.php';
 require_once APPPATH . 'modules/platform/live/App_log_rates.php';
 require_once APPPATH . 'modules/platform/mail/Mail_capture.php';
 
 /**
  * Apps inside a project: create, overview, deploy/rollback, logs, platform settings and delete.
- * The database page is the child module apps-database (database/Database.php).
+ * The database page is the child module apps-database (database/Database.php), the custom domain apps-domain (domain/Domain.php).
  * Every member of the app's project may do all of it except delete, which is the owner's.
  *
  * @property-read Apps_model $model
@@ -258,7 +257,6 @@ class Apps extends Trongate {
             'view_file' => 'settings',
             'app' => $app,
             'urls' => $this->_app_urls($app),
-            'domain' => $is_resubmit ? (string) post('domain', true) : (string) ($app->domain ?? ''),
             'persistent_paths' => $is_resubmit ? (string) post('persistent_paths') : implode("\n", $paths),
             'php_extensions' => $is_resubmit ? (string) post('php_extensions', true) : (string) $app->php_extensions,
             'processes' => $is_resubmit ? $this->_processes_from_post() : $this->model->app_processes((int) $app->id),
@@ -266,10 +264,6 @@ class Apps extends Trongate {
             'trongate_env' => $is_resubmit ? (string) post('trongate_env', true) : Trongate_config::env((array) $app),
             'auto_deploy' => $is_resubmit ? (bool) post('auto_deploy') : (bool) $app->auto_deploy,
             'mail_capture' => $is_resubmit ? (bool) post('mail_capture') : Mail_capture::enabled((array) $app),
-            'domain_record' => !empty($app->domain) ? $this->model->domain_verification_record((int) $app->id, (string) $app->domain) : null,
-            'domain_routed' => Manifests::custom_domains((array) $app) !== [],
-            'domain_secured' => Manifests::secured_domains((array) $app) !== [],
-            'ingress_addresses' => Domain_dns::ingress_addresses(),
             'env_names' => array_keys($this->_app_env($app)),
             'env_name' => $this->env_form_posted ? (string) post('env_name', true) : '',
             'can_delete' => $this->_is_owner($app),
@@ -334,7 +328,6 @@ class Apps extends Trongate {
         $app = $this->_member_app_or_redirect(segment(3, 'int'));
         $this->editing_app_id = (int) $app->id;
 
-        $this->validation->set_rules('domain', 'Custom Domain', 'max_length[253]|callback__validate_domain');
         $this->validation->set_rules('persistent_paths', 'Persistent Paths', 'max_length[4000]|callback__validate_persistent_paths');
         $this->validation->set_rules('php_extensions', 'PHP Extensions', 'max_length[255]|callback__validate_php_extensions');
         $this->validation->set_rules('processes', 'Processes', 'callback__validate_processes');
@@ -346,7 +339,8 @@ class Apps extends Trongate {
         }
 
         $this->model->update_app_settings((int) $app->project_id, (int) $app->id, [
-            'domain' => $this->_normalise_domain((string) post('domain', true)),
+            // The custom domain has its own tab (apps-domain)
+            'domain' => !empty($app->domain) ? (string) $app->domain : null,
             'persistent_paths' => $this->_parse_persistent_paths((string) post('persistent_paths')),
             'php_extensions' => implode(',', $this->_parse_php_extensions((string) post('php_extensions', true))),
             'always_on' => (bool) post('always_on'),
@@ -359,23 +353,6 @@ class Apps extends Trongate {
 
         set_flashdata('Settings saved. They take effect on the next deployment.');
         redirect('apps/' . $app->id);
-    }
-
-    /**
-     * POST apps/{id}/verify-domain: check the domain's TXT record, then (in
-     * the worker) whether its DNS points here yet.
-     */
-    function verify_domain(): void {
-        $this->_make_sure_allowed();
-        $app = $this->_member_app_or_redirect(segment(3, 'int'));
-        $this->_require_post_with_csrf();
-
-        $result = $this->model->verify_app_domain((int) $app->project_id, (int) $app->id);
-
-        set_flashdata($result === true
-            ? 'Domain verified. It goes live by itself once its DNS points here; checking now.'
-            : 'Could not verify the domain: ' . $result);
-        redirect('apps/' . $app->id . '/settings');
     }
 
     /**

@@ -68,10 +68,41 @@ trait App_records {
 
     /**
      * Update an app's platform settings (the app must be in the project).
+     * The custom domain goes through update_app_domain().
      *
      * @param array{domain: ?string, persistent_paths: list<string>, php_extensions: string, always_on: bool, auto_deploy: bool, trongate_env: string, mail_capture: bool} $settings
      */
     function update_app_settings(int $project_id, int $app_id, array $settings): void {
+        $this->update_app_domain($project_id, $app_id, $settings['domain']);
+
+        $sql = <<<SQL
+            UPDATE app
+            SET persistent_paths = :persistent_paths,
+                php_extensions = :php_extensions,
+                always_on = :always_on,
+                trongate_env = :trongate_env,
+                mail_capture = :mail_capture,
+                auto_deploy = :auto_deploy
+            WHERE id = :app_id AND project_id = :project_id
+        SQL;
+        $this->db->query_bind($sql, [
+            'persistent_paths' => json_encode($settings['persistent_paths']),
+            'php_extensions' => $settings['php_extensions'],
+            'always_on' => $settings['always_on'] ? 1 : 0,
+            'trongate_env' => $settings['trongate_env'],
+            'mail_capture' => $settings['mail_capture'] ? 1 : 0,
+            'auto_deploy' => $settings['auto_deploy'] ? 1 : 0,
+            'app_id' => $app_id,
+            'project_id' => $project_id,
+        ]);
+    }
+
+    /**
+     * Set or clear an app's requested custom domain (the app must be in the
+     * project). Keeping the same domain changes nothing; a new one starts
+     * unverified and is checked afresh once verified.
+     */
+    function update_app_domain(int $project_id, int $app_id, ?string $domain): void {
         $old = $this->find_project_app($project_id, $app_id);
         $old_domain = $old !== false ? (string) ($old->verified_domain ?? '') : '';
 
@@ -85,28 +116,16 @@ trait App_records {
                 domain_dns_failures = IF(verified_domain <=> :same_domain_2, domain_dns_failures, 0),
                 domain_checked_at = IF(verified_domain <=> :same_domain_3, domain_checked_at, NULL),
                 domain_secured_at = IF(verified_domain <=> :same_domain_4, domain_secured_at, NULL),
-                verified_domain = IF(verified_domain <=> :same_domain, verified_domain, NULL),
-                persistent_paths = :persistent_paths,
-                php_extensions = :php_extensions,
-                always_on = :always_on,
-                trongate_env = :trongate_env,
-                mail_capture = :mail_capture,
-                auto_deploy = :auto_deploy
+                verified_domain = IF(verified_domain <=> :same_domain, verified_domain, NULL)
             WHERE id = :app_id AND project_id = :project_id
         SQL;
         $this->db->query_bind($sql, [
-            'domain' => $settings['domain'],
-            'same_domain' => $settings['domain'],
-            'same_domain_1' => $settings['domain'],
-            'same_domain_2' => $settings['domain'],
-            'same_domain_3' => $settings['domain'],
-            'same_domain_4' => $settings['domain'],
-            'persistent_paths' => json_encode($settings['persistent_paths']),
-            'php_extensions' => $settings['php_extensions'],
-            'always_on' => $settings['always_on'] ? 1 : 0,
-            'trongate_env' => $settings['trongate_env'],
-            'mail_capture' => $settings['mail_capture'] ? 1 : 0,
-            'auto_deploy' => $settings['auto_deploy'] ? 1 : 0,
+            'domain' => $domain,
+            'same_domain' => $domain,
+            'same_domain_1' => $domain,
+            'same_domain_2' => $domain,
+            'same_domain_3' => $domain,
+            'same_domain_4' => $domain,
             'app_id' => $app_id,
             'project_id' => $project_id,
         ]);
@@ -114,7 +133,7 @@ trait App_records {
         // Giving up a verified domain frees it for any other app at once, so
         // its Gateway and certificate leave the cluster now, not on this
         // app's next deploy (tasks/prune_domains.php)
-        if ($old_domain !== '' && $old_domain !== (string) $settings['domain']) {
+        if ($old_domain !== '' && $old_domain !== (string) $domain) {
             $this->_queue_task($project_id, $app_id, null, 'prune_domains', [
                 'project_id' => $project_id,
                 'app_id' => $app_id,

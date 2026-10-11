@@ -37,7 +37,8 @@
             "php tests/Admin_pages_test.php",
             "php tests/Cluster_overview_test.php",
             "php tests/App_password_test.php",
-            "php tests/Schema_diagram_test.php"
+            "php tests/Schema_diagram_test.php",
+            "php tests/Domain_dns_test.php"
         ],
         "qa": [
             "@lint",

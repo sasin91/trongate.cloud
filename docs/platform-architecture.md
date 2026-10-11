@@ -131,7 +131,8 @@ Done in code:
   - Dashboard: the customer's projects, each with its apps and their live state from the cluster (running, asleep, starting, crashing, stuck). No project switcher: every page is authorized against the project or app it names.
   - Project page (`projects/{id}`): its apps and members. New project, new app in a project (`projects/{id}/apps/new`), and for the owner: rename, add a member by the email of an existing account, remove a member (never the owner), and delete the project once it has no apps (queues `destroy_project`).
   - App page (`apps/{id}`): live URLs, the current deployment, the app's live state (polled every 5s), deployment history, Deploy and Rollback (to the previous deployment or one you pick).
-  - App settings: custom domain with DNS verification, persistent paths, extra PHP extensions, always-on and Deploy on push.
+  - App settings: persistent paths, extra PHP extensions, always-on and Deploy on push.
+  - Domain tab: custom domain with DNS verification, the exact records to add (DNS only, Cloudflare proxy detected) and a live check of each.
   - Delete app (project owner only; deploys, rollbacks and settings stay open to every member): a confirmation page (type the slug, CSRF-protected) soft-deletes the app and queues `destroy_app`. Refused while a deployment is running; queued deploys are cancelled.
   - Deployment page: logs polled with MX.
 - **Custom domains**: platform hosts (`BASE_URL`, `PLATFORM_REGISTRY` and their subdomains) are rejected, and a domain is routed only once its TXT record verifies it and its DNS points here; it then gets its own Gateway and HTTP-01 certificate (see "Custom domains"). The admission policy blocks platform hostnames on tenant HTTPRoutes and Gateways.

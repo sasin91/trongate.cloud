@@ -23,9 +23,9 @@ $domain = (string) ($app->domain ?? '');
 $domain_state = null;
 if ($domain !== '') {
     if ((string) ($app->verified_domain ?? '') !== $domain) {
-        $domain_state = ['label' => 'Needs verifying', 'class' => 'warn', 'hint' => 'Add the TXT record from settings to prove you own it.'];
+        $domain_state = ['label' => 'Needs verifying', 'class' => 'warn', 'hint' => 'Add the TXT record from the Domain tab to prove you own it.'];
     } elseif (empty($app->domain_pointed_at)) {
-        $domain_state = ['label' => 'Waiting for DNS', 'class' => 'warn', 'hint' => 'Point a CNAME at ' . PLATFORM_APPS_DOMAIN . '. It goes live by itself once it resolves.'];
+        $domain_state = ['label' => 'Waiting for DNS', 'class' => 'warn', 'hint' => 'Point its DNS here with the records on the Domain tab. It goes live by itself once they resolve.'];
     } elseif (empty($app->domain_secured_at)) {
         $domain_state = ['label' => 'Issuing certificate', 'class' => 'warn', 'hint' => 'It points here. HTTPS switches on once the certificate is issued.'];
     } else {
@@ -182,7 +182,7 @@ $platform_host = $app->slug . '.' . PLATFORM_APPS_DOMAIN;
             <section class="ov-card" aria-labelledby="dom-h">
                 <div class="ov-card-head">
                     <h2 id="dom-h">Domains</h2>
-                    <a href="apps/<?= (int) $app->id ?>/settings"><?= $domain === '' ? 'Add domain' : 'Manage' ?></a>
+                    <a href="apps/<?= (int) $app->id ?>/domain"><?= $domain === '' ? 'Add domain' : 'Manage' ?></a>
                 </div>
                 <div class="ov-domain">
                     <span class="ov-mono"><?= $e($platform_host) ?></span>
