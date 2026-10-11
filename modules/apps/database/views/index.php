@@ -78,7 +78,7 @@ $row_key = fn(array $row) => array_combine($primary_key, array_map(fn($c) => (st
                 <ul>
                     <?php foreach ($tables as $t): ?>
                     <li>
-                        <a href="<?= $e($table_url($t['name'])) ?>"<?= $table !== null && $table['name'] === $t['name'] ? ' aria-current="page"' : '' ?>>
+                        <a href="<?= $e($table_url($t['name'])) ?>" data-keep-scroll<?= $table !== null && $table['name'] === $t['name'] ? ' aria-current="page"' : '' ?>>
                             <span class="ov-mono"><?= $e($t['name']) ?></span>
                             <span class="muted"><?= $t['view'] ? 'view' : $e($size($t['bytes'])) ?></span>
                         </a>
