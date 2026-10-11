@@ -76,8 +76,8 @@ $test('reads bcrypt settings, including other libraries\' $2a$ and $2b$', functi
 $test('reads Argon2 settings', function () use ($same) {
     $hash = password_hash('secret', PASSWORD_ARGON2ID, ['memory_cost' => 8192, 'time_cost' => 2, 'threads' => 1]);
     $same(['algorithm' => 'argon2id', 'options' => ['memory_cost' => 8192, 'time_cost' => 2, 'threads' => 1], 'prefix' => '$argon2id$'], App_password::settings($hash));
-    $same('Argon2id, 8 MiB, 2 passes, 1 thread', App_password::describe_hash($hash));
-    $same('not a password hash', App_password::describe_hash(md5('x')));
+    $same('Argon2id, 8 MiB, 2 passes, 1 thread', App_password::describe_value($hash));
+    $same('not a password hash', App_password::describe_value(md5('x')));
 });
 
 $test('plain text, md5 and empty values are not hashes', function () use ($same) {

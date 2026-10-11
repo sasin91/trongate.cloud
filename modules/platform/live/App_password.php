@@ -117,7 +117,7 @@ final class App_password {
         return [
             'choices' => $choices,
             'default' => array_key_first($choices),
-            'current' => $settings !== null ? self::describe($settings) : ($current === null || $current === '' ? 'empty' : 'not a password hash'),
+            'current' => self::describe_value($current),
             'note' => $note,
         ];
     }
@@ -128,7 +128,9 @@ final class App_password {
      * @throws RuntimeException when $choice is not offered for $current, or the password cannot be hashed that way
      */
     static function hash(#[\SensitiveParameter] string $password, ?string $current, string $choice): string {
-        if (!array_key_exists($choice, self::choices($current)['choices'])) {
+        $offered = self::choices($current)['choices'];
+
+        if (!array_key_exists($choice, $offered)) {
             throw new RuntimeException('That hashing choice is not available for this value.');
         }
 
@@ -136,30 +138,60 @@ final class App_password {
             throw new RuntimeException('The password cannot contain a NUL byte.');
         }
 
-        ['algorithm' => $algorithm, 'options' => $options, 'prefix' => $prefix] = match ($choice) {
-            'same' => self::settings($current) ?? throw new RuntimeException('That hashing choice is not available for this value.'),
-            'argon2id' => ['algorithm' => 'argon2id', 'options' => [], 'prefix' => '$argon2id$'],
-            default => ['algorithm' => 'bcrypt', 'options' => [], 'prefix' => '$2y$'],
-        };
+        $settings = self::settings_for_choice($current, $choice);
 
-        if ($algorithm === 'bcrypt' && strlen($password) > self::BCRYPT_MAX_BYTES) {
+        if ($settings['algorithm'] === 'bcrypt' && strlen($password) > self::BCRYPT_MAX_BYTES) {
             throw new RuntimeException('bcrypt only reads the first ' . self::BCRYPT_MAX_BYTES . ' bytes of a password. Use a shorter one, or Argon2id.');
         }
 
-        $constant = match ($algorithm) {
-            'argon2i' => PASSWORD_ARGON2I,
-            'argon2id' => PASSWORD_ARGON2ID,
-            default => PASSWORD_BCRYPT,
-        };
-
         try {
-            $hash = password_hash($password, $constant, $options);
+            $hash = password_hash($password, self::php_algorithm($settings['algorithm']), $settings['options']);
         } catch (ValueError $e) {
             throw new RuntimeException('Could not hash it that way here: ' . $e->getMessage() . ' Pick another choice.');
         }
 
         // $2b$ is the same algorithm as PHP's $2y$; keep the prefix the app already stores
-        return $prefix === '$2b$' ? '$2b$' . substr($hash, 4) : $hash;
+        if ($settings['prefix'] === '$2b$') {
+            $hash = '$2b$' . substr($hash, 4);
+        }
+
+        return $hash;
+    }
+
+    /**
+     * The algorithm, options and prefix a new hash is made with, for a $choice that choices() offered
+     *
+     * @return array{algorithm: string, options: array<string, int>, prefix: string}
+     */
+    static function settings_for_choice(?string $current, string $choice): array {
+        if ($choice === 'argon2id') {
+            return ['algorithm' => 'argon2id', 'options' => [], 'prefix' => '$argon2id$'];
+        }
+
+        if ($choice === 'same') {
+            $settings = self::settings($current);
+
+            if ($settings !== null) {
+                return $settings;
+            }
+        }
+
+        return ['algorithm' => 'bcrypt', 'options' => [], 'prefix' => '$2y$'];
+    }
+
+    /**
+     * password_hash()'s constant for an algorithm name from settings()
+     */
+    static function php_algorithm(string $algorithm): string {
+        if ($algorithm === 'argon2i') {
+            return PASSWORD_ARGON2I;
+        }
+
+        if ($algorithm === 'argon2id') {
+            return PASSWORD_ARGON2ID;
+        }
+
+        return PASSWORD_BCRYPT;
     }
 
     /**
@@ -179,18 +211,40 @@ final class App_password {
      * @param array{algorithm: string, options: array<string, int>} $settings
      */
     static function refusal(array $settings): ?string {
-        $options = $settings['options'];
+        $algorithm = $settings['algorithm'];
 
-        if ($settings['algorithm'] !== 'bcrypt' && !defined('PASSWORD_' . strtoupper($settings['algorithm']))) {
-            return 'This server cannot make ' . $settings['algorithm'] . ' hashes, so pick another algorithm.';
+        if ($algorithm !== 'bcrypt' && !defined('PASSWORD_' . strtoupper($algorithm))) {
+            return 'This server cannot make ' . $algorithm . ' hashes, so pick another algorithm.';
         }
 
-        $too_slow = match ($settings['algorithm']) {
-            'bcrypt' => $options['cost'] > self::MAX_BCRYPT_COST,
-            default => $options['memory_cost'] > self::MAX_ARGON2_MEMORY || $options['time_cost'] > self::MAX_ARGON2_TIME || $options['threads'] > self::MAX_ARGON2_THREADS,
-        };
+        if (!self::too_slow($settings)) {
+            return null;
+        }
 
-        return $too_slow ? 'The current hash (' . self::describe($settings) . ') is too slow to make here, so pick another algorithm, or set a hash made in your app with SQL.' : null;
+        return 'The current hash (' . self::describe($settings) . ') is too slow to make here, so pick another algorithm, or set a hash made in your app with SQL.';
+    }
+
+    /**
+     * Whether making a hash with these settings would take too long or too much memory in the panel's pod
+     *
+     * @param array{algorithm: string, options: array<string, int>} $settings
+     */
+    static function too_slow(array $settings): bool {
+        $options = $settings['options'];
+
+        if ($settings['algorithm'] === 'bcrypt') {
+            return $options['cost'] > self::MAX_BCRYPT_COST;
+        }
+
+        if ($options['memory_cost'] > self::MAX_ARGON2_MEMORY) {
+            return true;
+        }
+
+        if ($options['time_cost'] > self::MAX_ARGON2_TIME) {
+            return true;
+        }
+
+        return $options['threads'] > self::MAX_ARGON2_THREADS;
     }
 
     /**
@@ -199,13 +253,24 @@ final class App_password {
     static function describe(array $settings): string {
         $options = $settings['options'];
 
-        return $settings['algorithm'] === 'bcrypt'
-            ? 'bcrypt, cost ' . $options['cost']
-            : ucfirst($settings['algorithm']) . ', ' . intdiv($options['memory_cost'], 1024) . ' MiB, ' . $options['time_cost'] . ' passes, ' . $options['threads'] . ' ' . ($options['threads'] === 1 ? 'thread' : 'threads');
+        if ($settings['algorithm'] === 'bcrypt') {
+            return 'bcrypt, cost ' . $options['cost'];
+        }
+
+        $threads = $options['threads'] === 1 ? '1 thread' : $options['threads'] . ' threads';
+
+        return ucfirst($settings['algorithm']) . ', ' . intdiv($options['memory_cost'], 1024) . ' MiB, ' . $options['time_cost'] . ' passes, ' . $threads;
     }
 
-    static function describe_hash(string $hash): string {
-        $settings = self::settings($hash);
+    /**
+     * What a cell holds, for the form: its hash settings, 'empty' or 'not a password hash'
+     */
+    static function describe_value(?string $value): string {
+        if ($value === null || $value === '') {
+            return 'empty';
+        }
+
+        $settings = self::settings($value);
 
         if ($settings === null) {
             return 'not a password hash';

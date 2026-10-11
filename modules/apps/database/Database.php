@@ -212,41 +212,33 @@ class Database extends Trongate {
 
         $password = (string) post('password');
         $choice = (string) post('algorithm');
-        $backup = !post('backup') ? null : fn() => $this->_save_backup($app, $this->_describe_row($table, $key), $database->back_up_row($table, $key));
-        $hash = '';
+        $backup = null;
 
-        // Every refusal (rate limit, lock, backup, hashing, MariaDB) comes back to the modal with its reason
+        if (post('backup')) {
+            $backup = fn() => $this->_save_backup($app, $this->_describe_row($table, $key), $database->back_up_row($table, $key));
+        }
+
+        $statement = $this->_describe_row_change('update', $table, $key, [$name]) . ' -- new password hash';
+
+        // Every refusal (rate limit, lock, backup, hashing, MariaDB) goes back to the modal with its reason.
+        // Hashing runs inside _logged(), so it stays under the customer's rate limit and lock.
         try {
-            $row = $database->row($table, $key);
-
-            if ($row === null) {
-                throw new RuntimeException('That row is gone.');
-            }
-
-            $current = $row[$name];
-
-            // Hashing inside _logged() keeps it under the customer's rate limit and lock
-            $this->_logged($app, 'update', $this->_describe_row_change('update', $table, $key, [$name]) . ' -- new password hash', true, function () use ($database, $table, $key, $column, $password, $current, $choice, &$hash) {
-                $hash = App_password::hash($password, $current, $choice);
-                $too_long = App_password::too_long($hash, $column['column_type']);
-
-                if ($too_long !== null) {
-                    throw new RuntimeException($too_long);
-                }
-
-                $changed = $database->update($table, $key, [$column['name'] => $hash]);
-
-                return [$changed, $changed];
-            }, $backup, $backup_id);
-        } catch (PDOException | RuntimeException $e) {
-            // The same 422 JSON as validation_errors(422), shown under the password field
-            http_response_code(422);
-            header('Content-Type: application/json');
-            echo json_encode(['password' => [$e instanceof PDOException ? $this->_database_error($e) : $e->getMessage()]], JSON_INVALID_UTF8_SUBSTITUTE);
+            $hash = $this->_logged($app, 'update', $statement, true, fn() => $this->_write_password_hash($database, $table, $key, $column, $password, $choice), $backup, $backup_id);
+        } catch (PDOException $e) {
+            $this->_password_refused($this->_database_error($e));
+            return;
+        } catch (RuntimeException $e) {
+            $this->_password_refused($e->getMessage());
             return;
         }
 
-        set_flashdata(htmlspecialchars('New password saved in ' . $this->_describe_row($table, $key) . ', column ' . $name . ' (' . App_password::describe_hash($hash) . ').' . ($backup_id !== null ? ' The old hash is under Backups.' : '')));
+        $message = 'New password saved in ' . $this->_describe_row($table, $key) . ', column ' . $name . ' (' . App_password::describe_value($hash) . ').';
+
+        if ($backup_id !== null) {
+            $message .= ' The old hash is under Backups.';
+        }
+
+        set_flashdata(htmlspecialchars($message));
         echo BASE_URL . $this->_database_url($app, ['table' => $table]);
     }
 
@@ -406,7 +398,8 @@ class Database extends Trongate {
 
         if ($row !== null) {
             $password_columns = $this->_password_columns($columns, [$row]);
-            $password_urls = $this->_password_urls($app, $table, $columns, [$row], $password_columns)[0] ?? [];
+            $urls_by_row = $this->_password_urls($app, $table, $columns, [$row], $password_columns);
+            $password_urls = $urls_by_row[0] ?? [];
         }
 
         $data = [
@@ -507,6 +500,44 @@ class Database extends Trongate {
     }
 
     /**
+     * Hash $password the $choice way for the cell's current value and store it.
+     * Run by _logged(), which returns the hash.
+     *
+     * @param array<string, string> $key
+     * @param array{name: string, column_type: string} $column
+     * @return array{0: string, 1: int} the new hash, rows changed
+     * @throws RuntimeException when the row is gone or the hash cannot be made or does not fit
+     */
+    function _write_password_hash(App_database $database, string $table, array $key, array $column, #[\SensitiveParameter] string $password, string $choice): array {
+        $row = $database->row($table, $key);
+
+        if ($row === null) {
+            throw new RuntimeException('That row is gone.');
+        }
+
+        $hash = App_password::hash($password, $row[$column['name']], $choice);
+        $too_long = App_password::too_long($hash, $column['column_type']);
+
+        if ($too_long !== null) {
+            throw new RuntimeException($too_long);
+        }
+
+        $changed = $database->update($table, $key, [$column['name'] => $hash]);
+
+        return [$hash, $changed];
+    }
+
+    /**
+     * Answer the Change password form with why it was refused: the same 422 JSON as
+     * validation_errors(422), which MX shows under the password field
+     */
+    function _password_refused(string $message): void {
+        http_response_code(422);
+        header('Content-Type: application/json');
+        echo json_encode(['password' => [$message]], JSON_INVALID_UTF8_SUBSTITUTE);
+    }
+
+    /**
      * The app's database and one cell's column, by primary key, or back to the table
      *
      * @param array<string, string> $key
@@ -514,13 +545,19 @@ class Database extends Trongate {
      */
     function _password_cell_or_redirect(object $app, string $table, array $key, string $name): array {
         [$database, $columns] = $this->_database_table_or_redirect($app, $table);
-        $column = array_values(array_filter($columns, fn($c) => $c['name'] === $name))[0] ?? null;
+        $back_url = $this->_database_url($app, ['table' => $table]);
 
-        if ($column === null || !App_password::can_hold_hash($column) || !$this->_is_primary_key($key, $columns)) {
-            redirect($this->_database_url($app, ['table' => $table]));
+        if (!$this->_is_primary_key($key, $columns)) {
+            redirect($back_url);
         }
 
-        return [$database, $column];
+        foreach ($columns as $column) {
+            if ($column['name'] === $name && App_password::can_hold_hash($column)) {
+                return [$database, $column];
+            }
+        }
+
+        redirect($back_url);
     }
 
     /**
