@@ -2,10 +2,10 @@
 /**
  * App page header: name, live state, address, Deploy/Roll back and the section tabs.
  * Shared by the overview (_overview.php), the logs page (logs.php), the database page (database/views/index.php),
- * the traffic page (traffic/views/index.php), the mail page (mail/views/index.php) and the upgrade page (upgrade/views/index.php).
+ * the traffic page (traffic/views/index.php), the mail page (mail/views/index.php), the upgrade page (upgrade/views/index.php) and the domain page (domain/views/index.php).
  *
  * Expects: $app, $urls, $live_state (array|null), $can_rollback, $active_tab
- * ('overview', 'logs', 'traffic', 'database', 'mail' or 'upgrade'), and optionally $preview (true: no forms, no polling).
+ * ('overview', 'logs', 'traffic', 'database', 'mail', 'upgrade' or 'domain'), and optionally $preview (true: no forms, no polling).
  */
 $preview = $preview ?? false;
 $e ??= fn($value) => htmlspecialchars((string) $value);
@@ -57,6 +57,7 @@ $tabs = [
     [$app_href . '/database', 'Database', $active_tab === 'database'],
     [$app_href . '/mail', 'Mail', $active_tab === 'mail'],
     [$app_href . '/upgrade', 'Upgrade', $active_tab === 'upgrade'],
+    [$app_href . '/domain', 'Domain', $active_tab === 'domain'],
     [$app_href . '/settings', 'Settings', false],
 ];
 $tabs_label = 'App sections';

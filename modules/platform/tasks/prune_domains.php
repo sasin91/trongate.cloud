@@ -9,7 +9,7 @@
  *
  * Payload: {project_id, app_id}
  *
- * Queued by App_records::update_app_settings when a verified domain is
+ * Queued by App_records::update_app_domain when a verified domain is
  * changed or removed. Clearing verified_domain frees the UNIQUE claim at once,
  * so another app, in any project, may verify and route the domain next.
  * Waiting for this app's next deploy (Platform_task::apply prunes too)

@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../manifests/Manifests.php';
 require_once __DIR__ . '/../manifests/Project_service.php';
+require_once __DIR__ . '/../manifests/Domain_dns.php';
 
 /**
  * Platform actions for models: projects and their members, queue
@@ -437,8 +438,8 @@ trait Platform_actions {
         $record = $this->domain_verification_record($app_id, $domain);
         $found = false;
 
-        foreach (@dns_get_record($record['name'], DNS_TXT) ?: [] as $txt) {
-            if (hash_equals($record['value'], trim((string) ($txt['txt'] ?? '')))) {
+        foreach (Domain_dns::txt_values($record['name']) as $value) {
+            if (hash_equals($record['value'], $value)) {
                 $found = true;
                 break;
             }
