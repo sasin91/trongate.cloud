@@ -24,7 +24,7 @@
             </div>
             <div class="detail-row">
                 <div class="detail-label">Attempted At</div>
-                <div class="detail-value"><?= out($attempted_at) ?></div>
+                <div class="detail-value"><?= out(date('Y-m-d H:i:s', (int) $attempted_at)) ?></div>
             </div>
         </div>
     </div>
