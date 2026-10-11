@@ -336,7 +336,7 @@ class Database extends Trongate {
             'backup_id' => null,
             'crumbs' => [...$this->_app_crumbs($app), ['apps/' . $app->id . '/database', 'Database']],
             'additional_includes_top' => ['apps_module/css/apps.css', 'apps-database_module/css/database.css'],
-            'additional_includes_btm' => ['apps-database_module/js/password.js'],
+            'additional_includes_btm' => ['apps-database_module/js/password.js', 'apps-database_module/js/keep_scroll.js'],
         ];
         $data = $page + $data;
 
