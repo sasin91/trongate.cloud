@@ -484,3 +484,8 @@
         max-height: 12rem;
     }
 }
+
+/* Delete selected: the modal that asks first (views/_delete_rows_form.php) */
+.db-delete-rows p {
+    margin: 0 0 1rem;
+}

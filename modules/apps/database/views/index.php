@@ -6,7 +6,8 @@
  * $sql, $results (App_database::run or null), $query_error, $error (the database cannot be opened),
  * $recent_actions (Database_model::recent_actions), $backups (Database_model::backups), $backup_id (the
  * backup taken before $sql ran, or null), $password_columns and $password_urls (Database::_password_urls),
- * $tick_values (Database::_tick_values, empty when rows cannot be ticked) and $delete_rows_url.
+ * $tick_values (Database::_tick_values, empty when rows cannot be ticked), $delete_rows_url and
+ * $delete_rows_confirm_url (the modal that asks before Delete selected submits the form).
  */
 $e = fn($value) => htmlspecialchars((string) $value);
 $base = 'apps/' . (int) $app->id . '/database';
@@ -182,11 +183,7 @@ $row_key = fn(array $row) => array_combine($primary_key, array_map(fn($c) => (st
                 <?php if ($tick_values !== []): ?>
                 <?= form_open($delete_rows_url, ['id' => 'db-rows-form', 'data-delete-rows' => '']) ?>
                 <div class="db-rows-bar">
-                    <label class="checkbox-label">
-                        <input type="checkbox" name="backup" value="1" checked>
-                        Back up first
-                    </label>
-                    <button type="submit" class="btn-danger" data-delete-selected>Delete selected</button>
+                    <button type="button" class="btn-danger" data-delete-selected data-confirm-url="<?= $e($delete_rows_confirm_url) ?>" mx-get="<?= $e($delete_rows_confirm_url) ?>" mx-build-modal="<?= $e(Database::DELETE_ROWS_MODAL) ?>">Delete selected</button>
                 </div>
                 <?php endif; ?>
                 <div class="db-grid-wrap">

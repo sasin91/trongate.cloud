@@ -70,6 +70,7 @@ $routes = [
     'apps/(:num)/database/row/submit' => 'apps-database/submit_row/$1',
     'apps/(:num)/database/row/delete' => 'apps-database/delete_row/$1',
     'apps/(:num)/database/rows/delete' => 'apps-database/delete_rows/$1',
+    'apps/(:num)/database/rows/delete/confirm' => 'apps-database/delete_rows_form/$1',
     'apps/(:num)/database/row/password' => 'apps-database/password_form/$1',
     'apps/(:num)/database/row/password/submit' => 'apps-database/change_password/$1',
     'apps/(:num)/database/backups/restore' => 'apps-database/restore_backup/$1',

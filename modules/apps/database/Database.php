@@ -24,6 +24,9 @@ class Database extends Trongate {
     /** mx-build-modal for the Change password form (views/_password_form.php) */
     const PASSWORD_MODAL = '{"id":"db-password-modal","modalHeading":"Change password","width":"32rem","marginTop":"8vh"}';
 
+    /** mx-build-modal for confirming Delete selected (views/_delete_rows_form.php) */
+    const DELETE_ROWS_MODAL = '{"id":"db-delete-rows-modal","modalHeading":"Delete rows","width":"28rem","marginTop":"12vh"}';
+
     /**
      * apps/{id}/database: the tables, one table's rows (?table=, ?page=) and the SQL box.
      */
@@ -280,6 +283,24 @@ class Database extends Trongate {
     }
 
     /**
+     * apps/{id}/database/rows/delete/confirm?table=&count=: asks before Delete
+     * selected, for a Trongate MX modal (mx-build-modal). Its button submits the
+     * grid's form (form="db-rows-form"), which carries the ticked rows.
+     */
+    function delete_rows_form(): void {
+        $this->_make_sure_allowed();
+        $this->_member_app_or_redirect(segment(3, 'int'));
+
+        $count = max(0, (int) ($_GET['count'] ?? 0));
+        $rows = $count === 1 ? '1 row' : $count . ' rows';
+
+        $this->view('_delete_rows_form', [
+            'table' => (string) ($_GET['table'] ?? ''),
+            'rows' => $rows,
+        ]);
+    }
+
+    /**
      * POST apps/{id}/database/rows/delete?table=&page=&where[col]=: delete the
      * ticked rows (rows[], each a key[col]=value query string) in one
      * transaction, after one backup of them all when backup is ticked.
@@ -475,6 +496,7 @@ class Database extends Trongate {
             'password_urls' => [],
             'tick_values' => [],
             'delete_rows_url' => null,
+            'delete_rows_confirm_url' => null,
             'page' => max(1, (int) ($_GET['page'] ?? 1)),
             'sql' => '',
             'results' => null,
@@ -511,6 +533,7 @@ class Database extends Trongate {
                     $data['password_urls'] = $this->_password_urls($app, $table, $data['columns'], $data['rows'], $data['password_columns']);
                     $data['tick_values'] = $this->_tick_values($data['table'], $data['columns'], $data['rows']);
                     $data['delete_rows_url'] = 'apps/' . $app->id . '/database/rows/delete?' . http_build_query($this->_table_page_query($table));
+                    $data['delete_rows_confirm_url'] = 'apps/' . $app->id . '/database/rows/delete/confirm?' . http_build_query(['table' => $table]);
                 }
             } catch (PDOException $e) {
                 $data['error'] = $this->_database_error($e);
