@@ -149,23 +149,16 @@ header {
 main {
     flex: 1;
     width: 100%;
-    max-width: 1200px;
-    margin: 0 auto;
     padding: 2rem;
     box-sizing: border-box;
 }
 
-/* Project and app pages use the full width (Templates::customer_wide) */
-main.wide {
+/* Pages use the full width; forms keep a readable width, aligned left */
+main .content {
     max-width: none;
 }
 
-main.wide .content {
-    max-width: none;
-}
-
-/* Settings forms keep a readable width but line up with the page, not the centre */
-main.wide .content.narrow {
+main .content.narrow {
     max-width: 760px;
     margin-left: 0;
 }

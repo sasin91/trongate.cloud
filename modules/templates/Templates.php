@@ -49,20 +49,7 @@ class Templates extends Trongate {
      */
     public function customer(array $data): void {
         $data['crumbs'] = $data['crumbs'] ?? [];
-        $data['main_class'] = $data['main_class'] ?? '';
         $this->display('customer', $data);
-    }
-
-    /**
-     * Display the customer template at full width, for project and app pages
-     * and their tabs (the dashboard and create pages stay centred).
-     *
-     * @param array $data The data to pass to the template view
-     * @return void
-     */
-    public function customer_wide(array $data): void {
-        $data['main_class'] = 'wide';
-        $this->customer($data);
     }
 
     /**

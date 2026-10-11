@@ -33,7 +33,7 @@
         </nav>
     </header>
 
-    <main class="<?= $main_class ?>">
+    <main>
         <?= $view_content ?? display($data) ?>
     </main>
 

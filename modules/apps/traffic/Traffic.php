@@ -36,7 +36,7 @@ class Traffic extends Trongate {
             'additional_includes_btm' => ['apps_module/js/app_traffic.js'],
         ];
         $this->module('templates');
-        $this->templates->customer_wide($data);
+        $this->templates->customer($data);
     }
 
     /**
