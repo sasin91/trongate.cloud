@@ -185,6 +185,38 @@
     font-family: var(--font-display);
 }
 
+/* Ticking rows to delete them together */
+.db-rows-bar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    padding: 0.5rem 0.875rem;
+    border-top: 1px solid var(--border);
+    font-size: 0.875rem;
+}
+
+.db-rows-bar .btn-danger {
+    padding: 0.3rem 0.75rem;
+    font-size: 0.8125rem;
+}
+
+.db-rows-bar .btn-danger:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.db-tick {
+    margin: 0 0.625rem 0 0;
+    vertical-align: middle;
+    cursor: pointer;
+}
+
+.db-grid tr:has(.db-tick:checked) td {
+    background: var(--accent-soft);
+}
+
 .db-null,
 .db-key,
 .db-type {
@@ -451,4 +483,9 @@
     .db-tables ul {
         max-height: 12rem;
     }
+}
+
+/* Delete selected: the modal that asks first (views/_delete_rows_form.php) */
+.db-delete-rows p {
+    margin: 0 0 1rem;
 }

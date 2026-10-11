@@ -24,6 +24,9 @@ class Database extends Trongate {
     /** mx-build-modal for the Change password form (views/_password_form.php) */
     const PASSWORD_MODAL = '{"id":"db-password-modal","modalHeading":"Change password","width":"32rem","marginTop":"8vh"}';
 
+    /** mx-build-modal for confirming Delete selected (views/_delete_rows_form.php) */
+    const DELETE_ROWS_MODAL = '{"id":"db-delete-rows-modal","modalHeading":"Delete rows","width":"28rem","marginTop":"12vh"}';
+
     /**
      * apps/{id}/database: the tables, one table's rows (?table=, ?page=) and the SQL box.
      */
@@ -280,6 +283,72 @@ class Database extends Trongate {
     }
 
     /**
+     * apps/{id}/database/rows/delete/confirm?table=&count=: asks before Delete
+     * selected, for a Trongate MX modal (mx-build-modal). Its button submits the
+     * grid's form (form="db-rows-form"), which carries the ticked rows.
+     */
+    function delete_rows_form(): void {
+        $this->_make_sure_allowed();
+        $this->_member_app_or_redirect(segment(3, 'int'));
+
+        $count = max(0, (int) ($_GET['count'] ?? 0));
+        $rows = $count === 1 ? '1 row' : $count . ' rows';
+
+        $this->view('_delete_rows_form', [
+            'table' => (string) ($_GET['table'] ?? ''),
+            'rows' => $rows,
+        ]);
+    }
+
+    /**
+     * POST apps/{id}/database/rows/delete?table=&page=&where[col]=: delete the
+     * ticked rows (rows[], each a key[col]=value query string) in one
+     * transaction, after one backup of them all when backup is ticked.
+     * Back to the same page of the table.
+     */
+    function delete_rows(): void {
+        $this->_make_sure_allowed();
+        $app = $this->_member_app_or_redirect(segment(3, 'int'));
+        $this->_require_post_with_csrf();
+
+        $table = (string) ($_GET['table'] ?? '');
+        $back_url = $this->_database_url($app, $this->_table_page_query($table));
+
+        [$database, $columns] = $this->_database_table_or_redirect($app, $table);
+        $keys = $this->_ticked_keys(post('rows'), $columns);
+
+        if ($keys === []) {
+            set_flashdata('Tick the rows to delete first.');
+            redirect($back_url);
+        }
+
+        $backup = null;
+
+        if (post('backup')) {
+            $backup = fn() => $this->_save_backup($app, $this->_describe_rows($table, $keys), $database->back_up_rows($table, $keys));
+        }
+
+        $statement = $this->_describe_rows_delete($table, $keys);
+
+        try {
+            $deleted = $this->_logged($app, 'delete', $statement, true, function () use ($database, $table, $keys) {
+                $deleted = $database->delete_rows($table, $keys);
+
+                return [$deleted, $deleted];
+            }, $backup, $backup_id);
+        } catch (PDOException $e) {
+            set_flashdata(htmlspecialchars('Nothing was deleted: ' . $this->_database_error($e)));
+            redirect($back_url);
+        } catch (RuntimeException $e) {
+            set_flashdata(htmlspecialchars('Nothing was deleted: ' . $e->getMessage()));
+            redirect($back_url);
+        }
+
+        set_flashdata($this->_rows_deleted_message(count($keys), $deleted, $backup_id));
+        redirect($back_url);
+    }
+
+    /**
      * POST apps/{id}/database/backups/restore: put back what a backup holds (backup).
      */
     function restore_backup(): void {
@@ -299,6 +368,105 @@ class Database extends Trongate {
     }
 
     // --- Helpers ---
+
+    /**
+     * The primary keys of the ticked rows (rows[], each a key[col]=value query
+     * string, as in the row's Edit link), each once. Anything that does not
+     * name exactly the table's primary key is left out.
+     *
+     * @param list<array{name: string, key: bool}> $columns
+     * @return list<array<string, string>>
+     */
+    function _ticked_keys(mixed $ticked, array $columns): array {
+        if (!is_array($ticked)) {
+            return [];
+        }
+
+        $keys = [];
+
+        foreach ($ticked as $query) {
+            if (!is_string($query)) {
+                continue;
+            }
+
+            parse_str($query, $fields);
+            $key = $this->_posted_key($fields['key'] ?? null);
+
+            if ($this->_is_primary_key($key, $columns)) {
+                $keys[$query] = $key;
+            }
+        }
+
+        return array_values($keys);
+    }
+
+    /**
+     * Rows as named in a backup: one row as _describe_row(), more by count
+     *
+     * @param list<array<string, string>> $keys
+     */
+    function _describe_rows(string $table, array $keys): string {
+        if (count($keys) === 1) {
+            return $this->_describe_row($table, $keys[0]);
+        }
+
+        return $table . ', ' . count($keys) . ' rows';
+    }
+
+    /**
+     * Deleting rows as logged: one DELETE per row
+     *
+     * @param list<array<string, string>> $keys
+     */
+    function _describe_rows_delete(string $table, array $keys): string {
+        $statements = [];
+
+        foreach ($keys as $key) {
+            $statements[] = $this->_describe_row_change('delete', $table, $key);
+        }
+
+        return implode(";\n", $statements);
+    }
+
+    function _rows_deleted_message(int $ticked, int $deleted, ?int $backup_id): string {
+        $message = $deleted === 1 ? '1 row deleted.' : $deleted . ' rows deleted.';
+        $gone = $ticked - $deleted;
+
+        if ($gone === 1) {
+            $message .= ' 1 was already gone.';
+        }
+
+        if ($gone > 1) {
+            $message .= ' ' . $gone . ' were already gone.';
+        }
+
+        if ($backup_id !== null) {
+            $message .= ' The backup is under Backups.';
+        }
+
+        return $message;
+    }
+
+    /**
+     * ?table=&page=&where[col]= of the table page a form came from
+     *
+     * @return array<string, mixed>
+     */
+    function _table_page_query(string $table): array {
+        $query = ['table' => $table];
+        $page = (int) ($_GET['page'] ?? 1);
+        $where = $this->_posted_key($_GET['where'] ?? null);
+
+        if ($page > 1) {
+            $query['page'] = $page;
+        }
+
+        if ($where !== []) {
+            $query['where'] = $where;
+        }
+
+        return $query;
+    }
 
     /**
      * Who App_database_guard::_logged() runs statements as
@@ -326,6 +494,9 @@ class Database extends Trongate {
             'more' => false,
             'password_columns' => [],
             'password_urls' => [],
+            'tick_values' => [],
+            'delete_rows_url' => null,
+            'delete_rows_confirm_url' => null,
             'page' => max(1, (int) ($_GET['page'] ?? 1)),
             'sql' => '',
             'results' => null,
@@ -336,7 +507,7 @@ class Database extends Trongate {
             'backup_id' => null,
             'crumbs' => [...$this->_app_crumbs($app), ['apps/' . $app->id . '/database', 'Database']],
             'additional_includes_top' => ['apps_module/css/apps.css', 'apps-database_module/css/database.css'],
-            'additional_includes_btm' => ['apps-database_module/js/password.js', 'apps-database_module/js/keep_scroll.js'],
+            'additional_includes_btm' => ['apps-database_module/js/password.js', 'apps-database_module/js/keep_scroll.js', 'apps-database_module/js/select.js'],
         ];
         $data = $page + $data;
 
@@ -360,6 +531,9 @@ class Database extends Trongate {
                     $data['more'] = $browse['more'];
                     $data['password_columns'] = $this->_password_columns($data['columns'], $data['rows']);
                     $data['password_urls'] = $this->_password_urls($app, $table, $data['columns'], $data['rows'], $data['password_columns']);
+                    $data['tick_values'] = $this->_tick_values($data['table'], $data['columns'], $data['rows']);
+                    $data['delete_rows_url'] = 'apps/' . $app->id . '/database/rows/delete?' . http_build_query($this->_table_page_query($table));
+                    $data['delete_rows_confirm_url'] = 'apps/' . $app->id . '/database/rows/delete/confirm?' . http_build_query(['table' => $table]);
                 }
             } catch (PDOException $e) {
                 $data['error'] = $this->_database_error($e);
@@ -423,6 +597,37 @@ class Database extends Trongate {
         ];
         $this->module('templates');
         $this->templates->customer($data);
+    }
+
+    /**
+     * What each row's tick box sends (key[col]=value, as in its Edit link), by
+     * row index. None for a view or a table without a primary key.
+     *
+     * @param array{view: bool} $table
+     * @param list<array{name: string, key: bool}> $columns
+     * @param list<array<string, string|null>> $rows
+     * @return array<int, string>
+     */
+    function _tick_values(array $table, array $columns, array $rows): array {
+        $primary_key = App_database::primary_key($columns);
+
+        if ($table['view'] || $primary_key === []) {
+            return [];
+        }
+
+        $values = [];
+
+        foreach ($rows as $i => $row) {
+            $key = [];
+
+            foreach ($primary_key as $name) {
+                $key[$name] = (string) $row[$name];
+            }
+
+            $values[$i] = http_build_query(['key' => $key]);
+        }
+
+        return $values;
     }
 
     /**
