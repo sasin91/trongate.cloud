@@ -289,6 +289,150 @@
     margin-top: 0;
 }
 
+/* Change password: password cells, their right-click menu and the dialog (views/_password_dialog.php) */
+.db-password-cell {
+    cursor: context-menu;
+}
+
+.db-menu {
+    position: fixed;
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    min-width: 11rem;
+    padding: 0.25rem;
+    background: var(--white);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    box-shadow: var(--card-hover-shadow);
+}
+
+.db-menu[hidden] {
+    display: none;
+}
+
+.db-menu button,
+.db-menu a {
+    padding: 0.45rem 0.75rem;
+    font: inherit;
+    font-size: 0.875rem;
+    text-align: left;
+    color: var(--text-main);
+    text-decoration: none;
+    background: none;
+    border: 0;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.db-menu button:hover,
+.db-menu button:focus,
+.db-menu a:hover,
+.db-menu a:focus {
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+    outline: none;
+}
+
+.db-password-button {
+    margin-bottom: 0.5rem;
+    font-size: 0.8125rem;
+}
+
+/* Trongate MX modal (mx-build-modal): the customer template has no trongate.css */
+#overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(29, 30, 110, 0.35);
+}
+
+#modal-container {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 0 1rem 2rem;
+    overflow-y: auto;
+}
+
+.modal {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 32rem;
+    color: var(--text-main);
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--card-hover-shadow);
+    opacity: 0;
+    transition: opacity 0.2s, margin-top 0.2s;
+}
+
+.modal-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    font-family: var(--font-display);
+    font-size: 1.125rem;
+    font-weight: 600;
+    border-bottom: 1px solid var(--border);
+}
+
+.modal-body {
+    padding: 1.25rem 1.5rem 1.5rem;
+}
+
+.modal-body .spinner {
+    width: 1.5rem;
+    height: 1.5rem;
+    margin: 1rem auto;
+    border: 3px solid var(--accent-soft);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: db-spin 0.8s linear infinite;
+}
+
+@keyframes db-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.db-password-form .validation-errors {
+    margin: 0 0 0.375rem;
+    padding: 0;
+    list-style: none;
+    font-size: 0.8125rem;
+    color: #8a2a22;
+}
+
+.db-password-form .form-field-validation-error {
+    border-color: #c4473c;
+}
+
+.db-dialog-what {
+    margin: 0 0 1rem;
+    font-size: 0.8125rem;
+    overflow-wrap: anywhere;
+}
+
+.db-dialog-note {
+    margin: 0.5rem 0 0;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8125rem;
+    color: #7a4a00;
+    background: #fdf5e6;
+    border: 1px solid #f1dfb8;
+    border-radius: 8px;
+}
+
+.db-show-password {
+    margin: -0.25rem 0 1rem;
+    font-size: 0.875rem;
+}
+
 @media (max-width: 760px) {
     .db-main {
         grid-template-columns: minmax(0, 1fr);

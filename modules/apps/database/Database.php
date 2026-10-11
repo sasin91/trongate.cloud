@@ -3,6 +3,7 @@
 require_once APPPATH . 'modules/customer/traits/Customer_guard.php';
 require_once APPPATH . 'modules/apps/traits/App_page.php';
 require_once APPPATH . 'modules/platform/live/App_database.php';
+require_once APPPATH . 'modules/platform/live/App_password.php';
 require_once __DIR__ . '/traits/App_database_guard.php';
 
 /**
@@ -19,6 +20,9 @@ class Database extends Trongate {
     use Customer_guard;
     use App_page;
     use App_database_guard;
+
+    /** mx-build-modal for the Change password form (views/_password_form.php) */
+    const PASSWORD_MODAL = '{"id":"db-password-modal","modalHeading":"Change password","width":"32rem","marginTop":"8vh"}';
 
     /**
      * apps/{id}/database: the tables, one table's rows (?table=, ?page=) and the SQL box.
@@ -166,6 +170,79 @@ class Database extends Trongate {
     }
 
     /**
+     * apps/{id}/database/row/password?table=&key[col]=&column=: the Change password
+     * form, for a Trongate MX modal (mx-build-modal). The choices come from the
+     * cell's value as stored (App_password::choices).
+     */
+    function password_form(): void {
+        $this->_make_sure_allowed();
+        $app = $this->_member_app_or_redirect(segment(3, 'int'));
+
+        $table = (string) ($_GET['table'] ?? '');
+        $key = $this->_posted_key($_GET['key'] ?? null);
+        [$database, $column] = $this->_password_cell_or_redirect($app, $table, $key, (string) ($_GET['column'] ?? ''));
+
+        $this->_password_form($app, $table, $key, $column, $database->row($table, $key));
+    }
+
+    /**
+     * POST apps/{id}/database/row/password/submit: hash a new password into one cell
+     * (table, key[], column, password, password_confirm, algorithm, backup).
+     * Answers with the table's URL, which the modal's form follows
+     * (mx-redirect-on-success), or 422 with JSON errors that MX shows in the form.
+     * The log names the column, never the password or the hash.
+     */
+    function change_password(): void {
+        $this->_make_sure_allowed();
+        $app = $this->_member_app_or_redirect(segment(3, 'int'));
+        $this->_require_post_with_csrf();
+
+        $table = (string) post('table');
+        $key = $this->_posted_key(post('key'));
+        [$database, $column] = $this->_password_cell_or_redirect($app, $table, $key, (string) post('column'));
+        $name = $column['name'];
+
+        $this->validation->set_rules('password', 'new password', 'required');
+        $this->validation->set_rules('password_confirm', 'password confirmation', 'required|matches[password]');
+
+        if ($this->validation->run() !== true) {
+            echo validation_errors(422); // JSON that MX shows next to each field (highlight-errors)
+            return;
+        }
+
+        $password = (string) post('password');
+        $choice = (string) post('algorithm');
+        $backup = null;
+
+        if (post('backup')) {
+            $backup = fn() => $this->_save_backup($app, $this->_describe_row($table, $key), $database->back_up_row($table, $key));
+        }
+
+        $statement = $this->_describe_row_change('update', $table, $key, [$name]) . ' -- new password hash';
+
+        // Every refusal (rate limit, lock, backup, hashing, MariaDB) goes back to the modal with its reason.
+        // Hashing runs inside _logged(), so it stays under the customer's rate limit and lock.
+        try {
+            $hash = $this->_logged($app, 'update', $statement, true, fn() => $this->_write_password_hash($database, $table, $key, $column, $password, $choice), $backup, $backup_id);
+        } catch (PDOException $e) {
+            $this->_password_refused($this->_database_error($e));
+            return;
+        } catch (RuntimeException $e) {
+            $this->_password_refused($e->getMessage());
+            return;
+        }
+
+        $message = 'New password saved in ' . $this->_describe_row($table, $key) . ', column ' . $name . ' (' . App_password::describe_value($hash) . ').';
+
+        if ($backup_id !== null) {
+            $message .= ' The old hash is under Backups.';
+        }
+
+        set_flashdata(htmlspecialchars($message));
+        echo BASE_URL . $this->_database_url($app, ['table' => $table]);
+    }
+
+    /**
      * POST apps/{id}/database/row/delete: delete one row (table, key[]).
      */
     function delete_row(): void {
@@ -247,6 +324,8 @@ class Database extends Trongate {
             'where' => [],
             'rows' => [],
             'more' => false,
+            'password_columns' => [],
+            'password_urls' => [],
             'page' => max(1, (int) ($_GET['page'] ?? 1)),
             'sql' => '',
             'results' => null,
@@ -257,6 +336,7 @@ class Database extends Trongate {
             'backup_id' => null,
             'crumbs' => [...$this->_app_crumbs($app), ['apps/' . $app->id . '/database', 'Database']],
             'additional_includes_top' => ['apps_module/css/apps.css', 'apps-database_module/css/database.css'],
+            'additional_includes_btm' => ['apps-database_module/js/password.js'],
         ];
         $data = $page + $data;
 
@@ -278,6 +358,8 @@ class Database extends Trongate {
                     $browse = $database->rows($table, $data['columns'], $data['page'], $data['where']);
                     $data['rows'] = $browse['rows'];
                     $data['more'] = $browse['more'];
+                    $data['password_columns'] = $this->_password_columns($data['columns'], $data['rows']);
+                    $data['password_urls'] = $this->_password_urls($app, $table, $data['columns'], $data['rows'], $data['password_columns']);
                 }
             } catch (PDOException $e) {
                 $data['error'] = $this->_database_error($e);
@@ -312,6 +394,14 @@ class Database extends Trongate {
             redirect($this->_database_url($app, ['table' => $table]));
         }
 
+        $password_urls = [];
+
+        if ($row !== null) {
+            $password_columns = $this->_password_columns($columns, [$row]);
+            $urls_by_row = $this->_password_urls($app, $table, $columns, [$row], $password_columns);
+            $password_urls = $urls_by_row[0] ?? [];
+        }
+
         $data = [
             'view_module' => 'apps/database',
             'view_file' => 'row',
@@ -321,6 +411,7 @@ class Database extends Trongate {
             'foreign_keys' => $database->foreign_keys($table, $columns),
             'key' => $key,
             'row' => $extra['posted'] ?? $row,
+            'password_urls' => $password_urls,
             'error' => $extra['error'] ?? null,
             'back_url' => $this->_database_url($app, ['table' => $table]),
             'crumbs' => [
@@ -332,6 +423,158 @@ class Database extends Trongate {
         ];
         $this->module('templates');
         $this->templates->customer($data);
+    }
+
+    /**
+     * Columns whose cells offer Change password: text columns named like a
+     * password column, or holding a password hash in one of $rows. None when
+     * the table has no primary key, since a cell is picked by it.
+     *
+     * @param list<array{name: string, type: string, editable: bool, key: bool}> $columns
+     * @param list<array<string, string|null>> $rows
+     * @return list<string>
+     */
+    function _password_columns(array $columns, array $rows): array {
+        if (App_database::primary_key($columns) === []) {
+            return [];
+        }
+
+        $names = [];
+
+        foreach ($columns as $column) {
+            if ($this->_offers_password_change($column, array_column($rows, $column['name']))) {
+                $names[] = $column['name'];
+            }
+        }
+
+        return $names;
+    }
+
+    /**
+     * @param array{name: string, type: string, editable: bool} $column
+     * @param list<string|null> $values
+     */
+    function _offers_password_change(array $column, array $values): bool {
+        if (!App_password::can_hold_hash($column)) {
+            return false;
+        }
+
+        if (App_password::is_password_column($column)) {
+            return true;
+        }
+
+        foreach ($values as $value) {
+            if (App_password::is_hash($value)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The Change password form's URL for each password cell of $rows, by row index then column
+     *
+     * @param list<array{name: string, key: bool}> $columns
+     * @param list<array<string, string|null>> $rows
+     * @param list<string> $password_columns
+     * @return array<int, array<string, string>>
+     */
+    function _password_urls(object $app, string $table, array $columns, array $rows, array $password_columns): array {
+        $primary_key = App_database::primary_key($columns);
+        $urls = [];
+
+        foreach ($rows as $i => $row) {
+            $key = [];
+
+            foreach ($primary_key as $name) {
+                $key[$name] = (string) $row[$name];
+            }
+
+            foreach ($password_columns as $name) {
+                $urls[$i][$name] = 'apps/' . $app->id . '/database/row/password?' . http_build_query(['table' => $table, 'key' => $key, 'column' => $name]);
+            }
+        }
+
+        return $urls;
+    }
+
+    /**
+     * Hash $password the $choice way for the cell's current value and store it.
+     * Run by _logged(), which returns the hash.
+     *
+     * @param array<string, string> $key
+     * @param array{name: string, column_type: string} $column
+     * @return array{0: string, 1: int} the new hash, rows changed
+     * @throws RuntimeException when the row is gone or the hash cannot be made or does not fit
+     */
+    function _write_password_hash(App_database $database, string $table, array $key, array $column, #[\SensitiveParameter] string $password, string $choice): array {
+        $row = $database->row($table, $key);
+
+        if ($row === null) {
+            throw new RuntimeException('That row is gone.');
+        }
+
+        $hash = App_password::hash($password, $row[$column['name']], $choice);
+        $too_long = App_password::too_long($hash, $column['column_type']);
+
+        if ($too_long !== null) {
+            throw new RuntimeException($too_long);
+        }
+
+        $changed = $database->update($table, $key, [$column['name'] => $hash]);
+
+        return [$hash, $changed];
+    }
+
+    /**
+     * Answer the Change password form with why it was refused: the same 422 JSON as
+     * validation_errors(422), which MX shows under the password field
+     */
+    function _password_refused(string $message): void {
+        http_response_code(422);
+        header('Content-Type: application/json');
+        echo json_encode(['password' => [$message]], JSON_INVALID_UTF8_SUBSTITUTE);
+    }
+
+    /**
+     * The app's database and one cell's column, by primary key, or back to the table
+     *
+     * @param array<string, string> $key
+     * @return array{0: App_database, 1: array{name: string, type: string, column_type: string, editable: bool}}
+     */
+    function _password_cell_or_redirect(object $app, string $table, array $key, string $name): array {
+        [$database, $columns] = $this->_database_table_or_redirect($app, $table);
+        $back_url = $this->_database_url($app, ['table' => $table]);
+
+        if (!$this->_is_primary_key($key, $columns)) {
+            redirect($back_url);
+        }
+
+        foreach ($columns as $column) {
+            if ($column['name'] === $name && App_password::can_hold_hash($column)) {
+                return [$database, $column];
+            }
+        }
+
+        redirect($back_url);
+    }
+
+    /**
+     * Render the Change password form (views/_password_form.php) on its own, for the modal
+     *
+     * @param array<string, string> $key
+     * @param array{name: string, column_type: string} $column
+     * @param array<string, string|null>|null $row
+     */
+    function _password_form(object $app, string $table, array $key, array $column, ?array $row): void {
+        $this->view('_password_form', [
+            'base' => 'apps/' . $app->id . '/database',
+            'table' => $table,
+            'key' => $key,
+            'column' => $column['name'],
+            'choices' => App_password::choices($row[$column['name']] ?? null, $column['column_type']),
+        ]);
     }
 
     /**

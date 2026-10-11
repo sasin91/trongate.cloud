@@ -2,7 +2,7 @@
 /**
  * apps/{id}/database/row (Database::row): edit one row ($key set) or add one ($key empty).
  * Expects: $app, $table, $columns (App_database::columns), $foreign_keys (App_database::foreign_keys),
- * $key, $row (values, or null for a new row), $error, $back_url.
+ * $key, $row (values, or null for a new row), $password_urls (column => Change password form URL), $error, $back_url.
  */
 $e = fn($value) => htmlspecialchars((string) $value);
 $is_new = $key === [];
@@ -45,6 +45,9 @@ foreach ($foreign_keys as $foreign_key) {
                 <span class="ov-mono"><?= $e($name) ?></span>
                 <span class="db-type"><?= $e($column['column_type']) ?><?= $column['key'] ? ', key' : '' ?></span>
             </label>
+            <?php if (isset($password_urls[$name])): ?>
+                <button type="button" class="btn-secondary db-password-button" mx-get="<?= $e($password_urls[$name]) ?>" mx-build-modal="<?= $e(Database::PASSWORD_MODAL) ?>">Change password…</button>
+            <?php endif; ?>
             <?php foreach ($references[$name] ?? [] as $foreign_key):
                 $reference = $is_new ? null : App_database::reference($foreign_key, $row ?? []);
             ?>

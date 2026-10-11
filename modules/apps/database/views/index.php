@@ -5,7 +5,7 @@
  * $where (the column => value filter on $rows), $rows, $more, $page,
  * $sql, $results (App_database::run or null), $query_error, $error (the database cannot be opened),
  * $recent_actions (Database_model::recent_actions), $backups (Database_model::backups), $backup_id (the
- * backup taken before $sql ran, or null).
+ * backup taken before $sql ran, or null), $password_columns and $password_urls (Database::_password_urls).
  */
 $e = fn($value) => htmlspecialchars((string) $value);
 $base = 'apps/' . (int) $app->id . '/database';
@@ -59,6 +59,7 @@ $row_key = fn(array $row) => array_combine($primary_key, array_map(fn($c) => (st
     <?php $active_tab = 'database'; require APPPATH . 'modules/apps/views/_app_header.php'; ?>
 
     <?= flashdata('<p class="flash">', '</p>') ?>
+    <?= validation_errors() ?>
 
     <?php if ($error !== null): ?>
         <section class="ov-card">
@@ -168,6 +169,9 @@ $row_key = fn(array $row) => array_combine($primary_key, array_map(fn($c) => (st
                         <a href="<?= $e($table_url($table['name'])) ?>">Show all rows</a>
                     </p>
                 <?php endif; ?>
+                <?php if ($password_columns !== []): ?>
+                    <p class="db-note">Right-click a value in <?= implode(', ', array_map(fn($name) => '<span class="ov-mono">' . $e($name) . '</span>', $password_columns)) ?> to change the password, or use the button in the row's form.</p>
+                <?php endif; ?>
                 <?php if (!$table['view'] && $primary_key === []): ?>
                     <p class="db-note">This table has no primary key, so its rows can only be changed with SQL.</p>
                 <?php endif; ?>
@@ -175,7 +179,7 @@ $row_key = fn(array $row) => array_combine($primary_key, array_map(fn($c) => (st
                     <p class="ov-empty muted"><?= $page > 1 ? 'No more rows.' : ($where !== [] ? 'No matching rows.' : 'No rows yet.') ?></p>
                 <?php else: ?>
                 <div class="db-grid-wrap">
-                    <table class="db-grid">
+                    <table class="db-grid"<?= $password_columns !== [] ? ' data-password-modal="' . $e(Database::PASSWORD_MODAL) . '"' : '' ?>>
                         <thead>
                             <tr>
                                 <?php if ($primary_key !== []): ?><th aria-label="Actions"></th><?php endif; ?>
@@ -185,14 +189,15 @@ $row_key = fn(array $row) => array_combine($primary_key, array_map(fn($c) => (st
                             </tr>
                         </thead>
                         <tbody>
-                            <?php foreach ($rows as $row): ?>
+                            <?php foreach ($rows as $i => $row): ?>
                             <tr>
                                 <?php if ($primary_key !== []): ?>
-                                <td><a href="<?= $e($base . '/row?' . http_build_query(['table' => $table['name'], 'key' => $row_key($row)])) ?>">Edit</a></td>
+                                <td><a href="<?= $e($base . '/row?' . http_build_query(['table' => $table['name'], 'key' => $row_key($row)])) ?>" data-edit-row>Edit</a></td>
                                 <?php endif; ?>
                                 <?php foreach ($columns as $column): ?>
                                 <?php $reference = isset($references[$column['name']]) ? App_database::reference($references[$column['name']][0], $row) : null; ?>
-                                <td><?php if ($reference !== null): ?><a href="<?= $e($reference_url($reference)) ?>" class="db-ref" title="Open in <?= $e($reference['table']) ?>"><?= $cell($row[$column['name']]) ?></a><?php else: ?><?= App_database::is_binary($column) && !$column['key'] && $row[$column['name']] !== null ? '<span class="db-null">' . (int) $row[$column['name']] . ' bytes</span>' : $cell($row[$column['name']] ?? null) ?><?php endif; ?></td>
+                                <?php $password_url = $password_urls[$i][$column['name']] ?? null; ?>
+                                <td<?php if ($password_url !== null): ?> class="db-password-cell" data-password-form="<?= $e($password_url) ?>" title="Right-click to change the password"<?php endif; ?>><?php if ($reference !== null): ?><a href="<?= $e($reference_url($reference)) ?>" class="db-ref" title="Open in <?= $e($reference['table']) ?>"><?= $cell($row[$column['name']]) ?></a><?php else: ?><?= App_database::is_binary($column) && !$column['key'] && $row[$column['name']] !== null ? '<span class="db-null">' . (int) $row[$column['name']] . ' bytes</span>' : $cell($row[$column['name']] ?? null) ?><?php endif; ?></td>
                                 <?php endforeach; ?>
                             </tr>
                             <?php endforeach; ?>
