@@ -54,11 +54,16 @@ foreach ($foreign_keys as $foreign_key) {
 $page_url = fn(int $to) => $table_url($table['name'] ?? '', ['page' => $to] + ($where === [] ? [] : ['where' => $where]));
 $primary_key = $table !== null ? App_database::primary_key($columns) : [];
 $row_key = fn(array $row) => array_combine($primary_key, array_map(fn($c) => (string) $row[$c], $primary_key));
+// Columns whose cells offer Change password: named like one, or holding a password hash
+$password_columns = $primary_key === [] ? [] : array_column(array_filter($columns, fn($column) => App_password::is_password_column($column)
+    || (App_password::can_hold_hash($column) && array_filter(array_column($rows, $column['name']), [App_password::class, 'is_hash']) !== [])), 'name');
+$json = fn($value) => json_encode($value, JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR);
 ?>
 <div class="ov">
     <?php $active_tab = 'database'; require APPPATH . 'modules/apps/views/_app_header.php'; ?>
 
     <?= flashdata('<p class="flash">', '</p>') ?>
+    <?= validation_errors() ?>
 
     <?php if ($error !== null): ?>
         <section class="ov-card">
@@ -168,6 +173,9 @@ $row_key = fn(array $row) => array_combine($primary_key, array_map(fn($c) => (st
                         <a href="<?= $e($table_url($table['name'])) ?>">Show all rows</a>
                     </p>
                 <?php endif; ?>
+                <?php if ($password_columns !== []): ?>
+                    <p class="db-note">Right-click a value in <?= implode(', ', array_map(fn($name) => '<span class="ov-mono">' . $e($name) . '</span>', $password_columns)) ?> to change the password, or use the button in the row's form.</p>
+                <?php endif; ?>
                 <?php if (!$table['view'] && $primary_key === []): ?>
                     <p class="db-note">This table has no primary key, so its rows can only be changed with SQL.</p>
                 <?php endif; ?>
@@ -188,17 +196,20 @@ $row_key = fn(array $row) => array_combine($primary_key, array_map(fn($c) => (st
                             <?php foreach ($rows as $row): ?>
                             <tr>
                                 <?php if ($primary_key !== []): ?>
-                                <td><a href="<?= $e($base . '/row?' . http_build_query(['table' => $table['name'], 'key' => $row_key($row)])) ?>">Edit</a></td>
+                                <td><a href="<?= $e($base . '/row?' . http_build_query(['table' => $table['name'], 'key' => $row_key($row)])) ?>" data-edit-row>Edit</a></td>
                                 <?php endif; ?>
                                 <?php foreach ($columns as $column): ?>
                                 <?php $reference = isset($references[$column['name']]) ? App_database::reference($references[$column['name']][0], $row) : null; ?>
-                                <td><?php if ($reference !== null): ?><a href="<?= $e($reference_url($reference)) ?>" class="db-ref" title="Open in <?= $e($reference['table']) ?>"><?= $cell($row[$column['name']]) ?></a><?php else: ?><?= App_database::is_binary($column) && !$column['key'] && $row[$column['name']] !== null ? '<span class="db-null">' . (int) $row[$column['name']] . ' bytes</span>' : $cell($row[$column['name']] ?? null) ?><?php endif; ?></td>
+                                <td<?php if (in_array($column['name'], $password_columns, true)): ?> class="db-password-cell" data-password-column="<?= $e($column['name']) ?>" data-key="<?= $e($json($row_key($row))) ?>" data-hash="<?= $e($json(App_password::choices($row[$column['name']], $column['column_type']))) ?>" title="Right-click to change the password"<?php endif; ?>><?php if ($reference !== null): ?><a href="<?= $e($reference_url($reference)) ?>" class="db-ref" title="Open in <?= $e($reference['table']) ?>"><?= $cell($row[$column['name']]) ?></a><?php else: ?><?= App_database::is_binary($column) && !$column['key'] && $row[$column['name']] !== null ? '<span class="db-null">' . (int) $row[$column['name']] . ' bytes</span>' : $cell($row[$column['name']] ?? null) ?><?php endif; ?></td>
                                 <?php endforeach; ?>
                             </tr>
                             <?php endforeach; ?>
                         </tbody>
                     </table>
                 </div>
+                <?php endif; ?>
+                <?php if ($password_columns !== []): ?>
+                    <?php $table_name = $table['name']; require __DIR__ . '/_password_dialog.php'; ?>
                 <?php endif; ?>
                 <?php if ($page > 1 || $more): ?>
                 <nav class="db-pages" aria-label="Pages">

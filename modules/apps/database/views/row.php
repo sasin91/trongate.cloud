@@ -2,7 +2,7 @@
 /**
  * apps/{id}/database/row (Database::row): edit one row ($key set) or add one ($key empty).
  * Expects: $app, $table, $columns (App_database::columns), $foreign_keys (App_database::foreign_keys),
- * $key, $row (values, or null for a new row), $error, $back_url.
+ * $key, $row (values, or null for a new row), $stored_row (the row as saved, or null), $error, $back_url.
  */
 $e = fn($value) => htmlspecialchars((string) $value);
 $is_new = $key === [];
@@ -13,6 +13,11 @@ foreach ($foreign_keys as $foreign_key) {
         $references[$name][] = $foreign_key;
     }
 }
+// Fields that offer Change password (a saved row only): named like one, or holding a password hash
+$stored = $is_new ? [] : $stored_row;
+$password_column = fn(array $column) => !$is_new && (App_password::is_password_column($column) || (App_password::can_hold_hash($column) && App_password::is_hash($stored[$column['name']] ?? null)));
+$json = fn($value) => json_encode($value, JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR);
+$table_name = $table;
 ?>
 <div class="content narrow">
     <div class="back-link">
@@ -45,6 +50,9 @@ foreach ($foreign_keys as $foreign_key) {
                 <span class="ov-mono"><?= $e($name) ?></span>
                 <span class="db-type"><?= $e($column['column_type']) ?><?= $column['key'] ? ', key' : '' ?></span>
             </label>
+            <?php if ($password_column($column)): ?>
+                <button type="button" class="btn-secondary db-password-button" data-password-column="<?= $e($name) ?>" data-key="<?= $e($json($key)) ?>" data-hash="<?= $e($json(App_password::choices($stored[$name] ?? null, $column['column_type']))) ?>">Change password…</button>
+            <?php endif; ?>
             <?php foreach ($references[$name] ?? [] as $foreign_key):
                 $reference = $is_new ? null : App_database::reference($foreign_key, $row ?? []);
             ?>
@@ -97,6 +105,10 @@ foreach ($foreign_keys as $foreign_key) {
         </div>
         <?= form_close() ?>
     </div>
+
+    <?php if (array_filter($columns, $password_column) !== []): ?>
+        <?php require __DIR__ . '/_password_dialog.php'; ?>
+    <?php endif; ?>
 
     <?php if (!$is_new): ?>
     <div class="card danger-card">
