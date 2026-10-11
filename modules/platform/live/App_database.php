@@ -218,6 +218,72 @@ class App_database {
     }
 
     /**
+     * Every base table with its columns, for the Diagram view (Schema_diagram).
+     * Two queries for the whole database, however many tables it has.
+     *
+     * @param array<string, array{name: string, view: bool, rows: int|null}> $tables from tables()
+     * @return array<string, array{rows: int|null, columns: list<array{name: string, column_type: string, key: bool}>}>
+     */
+    function schema_tables(array $tables): array {
+        $schema = [];
+
+        foreach ($tables as $name => $table) {
+            if (!$table['view']) {
+                $schema[$name] = ['rows' => $table['rows'], 'columns' => []];
+            }
+        }
+
+        $stmt = $this->pdo->query(<<<SQL
+            SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, COLUMN_KEY
+            FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+            ORDER BY TABLE_NAME, ORDINAL_POSITION
+        SQL);
+
+        foreach ($stmt->fetchAll() as $row) {
+            $name = (string) $row['TABLE_NAME'];
+
+            if (isset($schema[$name])) {
+                $schema[$name]['columns'][] = [
+                    'name' => (string) $row['COLUMN_NAME'],
+                    'column_type' => (string) $row['COLUMN_TYPE'],
+                    'key' => $row['COLUMN_KEY'] === 'PRI',
+                ];
+            }
+        }
+
+        return $schema;
+    }
+
+    /**
+     * Every foreign key column in the database, one row per column
+     *
+     * @return list<array{table: string, column: string, parent: string, parent_column: string}>
+     */
+    function schema_foreign_keys(): array {
+        $stmt = $this->pdo->query(<<<SQL
+            SELECT TABLE_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+            FROM information_schema.KEY_COLUMN_USAGE
+            WHERE TABLE_SCHEMA = DATABASE()
+                AND REFERENCED_TABLE_SCHEMA = DATABASE() AND REFERENCED_TABLE_NAME IS NOT NULL
+            ORDER BY TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION
+        SQL);
+
+        $keys = [];
+
+        foreach ($stmt->fetchAll() as $row) {
+            $keys[] = [
+                'table' => (string) $row['TABLE_NAME'],
+                'column' => (string) $row['COLUMN_NAME'],
+                'parent' => (string) $row['REFERENCED_TABLE_NAME'],
+                'parent_column' => (string) $row['REFERENCED_COLUMN_NAME'],
+            ];
+        }
+
+        return $keys;
+    }
+
+    /**
      * Where a row's foreign key leads, as the query of a Database tab URL:
      * the referenced row (table, key) when the key points at a primary key,
      * else the matching rows (table, where). Null when a value is NULL.

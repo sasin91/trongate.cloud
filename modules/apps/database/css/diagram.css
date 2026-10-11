@@ -1,0 +1,244 @@
+/* apps-database: views/_diagram.php. Card sizes match Schema_diagram's constants (230px wide, 34px head, 24px rows). */
+.db-diagram {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+}
+
+.db-diagram-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.45rem 0.625rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.8125rem;
+}
+
+.db-seg {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    overflow: hidden;
+    background: var(--white);
+}
+
+.db-seg a {
+    padding: 0.2rem 0.65rem;
+    color: var(--text-main);
+    text-decoration: none;
+}
+
+.db-seg a[aria-current="page"] {
+    background: var(--primary);
+    color: var(--white);
+}
+
+.db-diagram-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    color: var(--text-main);
+    text-decoration: none;
+}
+
+.db-diagram-box {
+    width: 14px;
+    height: 14px;
+    border: 1px solid #b8bbd0;
+    border-radius: 4px;
+}
+
+.db-diagram-check[aria-checked="true"] .db-diagram-box {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+
+.db-diagram-faint {
+    color: #8a8ea8;
+}
+
+.db-diagram-legend {
+    margin-left: auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.875rem;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+}
+
+.db-diagram-legend svg {
+    width: 28px;
+    height: 8px;
+    margin-right: 0.25rem;
+    vertical-align: middle;
+    stroke: var(--accent);
+    stroke-width: 1.5;
+}
+
+.db-diagram-legend code {
+    font-family: var(--font-mono);
+}
+
+.db-diagram-canvas {
+    flex: 1;
+    min-height: 24rem;
+    overflow: auto;
+    background: var(--bg-subtle);
+}
+
+.db-diagram-empty {
+    margin: 2rem;
+    color: var(--text-muted);
+}
+
+.db-diagram-plane {
+    position: relative;
+}
+
+.db-diagram-wires {
+    position: absolute;
+    inset: 0;
+    overflow: visible;
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 1.5;
+}
+
+.db-diagram-wires .db-diagram-inferred .db-diagram-line,
+.db-diagram-legend .db-diagram-inferred {
+    stroke-dasharray: 5 4;
+}
+
+.db-diagram-wires .db-diagram-dim {
+    stroke: #c9cbe0;
+}
+
+.db-diagram-heading {
+    position: absolute;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #8a8ea8;
+}
+
+.db-diagram-card {
+    position: absolute;
+    width: 230px;
+    display: flex;
+    flex-direction: column;
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    box-shadow: 0 1px 2px rgba(29, 30, 110, 0.05), 0 4px 12px -4px rgba(29, 30, 110, 0.1);
+    overflow: hidden;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-main);
+    text-decoration: none;
+}
+
+.db-diagram-card:hover {
+    border-color: var(--accent);
+}
+
+.db-diagram-card[aria-current="page"] {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft), 0 6px 16px -6px rgba(29, 30, 110, 0.2);
+}
+
+.db-diagram-name {
+    box-sizing: border-box;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0 0.625rem;
+    background: #f4f5fa;
+    border-bottom: 1px solid var(--border);
+    font-weight: 500;
+    font-size: 0.78rem;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.db-diagram-card[aria-current="page"] .db-diagram-name {
+    background: var(--accent);
+    color: var(--white);
+}
+
+.db-diagram-name span {
+    margin-left: auto;
+    font-family: 'Geist', system-ui, sans-serif;
+    font-size: 0.6875rem;
+    font-weight: 400;
+    color: #8a8ea8;
+}
+
+.db-diagram-card[aria-current="page"] .db-diagram-name span {
+    color: #e5e4ff;
+}
+
+.db-diagram-column {
+    box-sizing: border-box;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0 0.625rem 0 1.5rem;
+    border-bottom: 1px solid #f1f2f7;
+    white-space: nowrap;
+    position: relative;
+}
+
+.db-diagram-column:last-child {
+    border-bottom: 0;
+}
+
+.db-diagram-column b {
+    flex: none;
+    max-width: 150px;
+    font-weight: 400;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.db-diagram-column span {
+    min-width: 0;
+    margin-left: auto;
+    font-size: 0.65rem;
+    color: #8a8ea8;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.db-diagram-key::before,
+.db-diagram-link::before {
+    position: absolute;
+    left: 0.55rem;
+}
+
+.db-diagram-key::before {
+    content: '⚿';
+    color: #b08a10;
+}
+
+.db-diagram-link::before {
+    content: '↗';
+    color: var(--accent-ink);
+}
+
+.db-diagram-link b {
+    color: var(--accent-ink);
+}
+
+.db-diagram-summary {
+    margin: 0;
+    padding: 0.5rem 0.625rem;
+    border-top: 1px solid var(--border);
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+}
