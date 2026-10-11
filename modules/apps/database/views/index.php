@@ -2,7 +2,7 @@
 /**
  * apps/{id}/database (Database::index): the workspace, laid out like TablePlus.
  * A sidebar of tables, tabs along the top, and one view in the middle:
- * data (views/_data.php), structure (views/_structure.php), or SQL with its
+ * data (views/_data.php), structure (views/_structure.php), diagram (views/_diagram.php), or SQL with its
  * result, history and backups (views/_sql.php).
  *
  * Expects plain values from Database::_workspace_data: $app, $urls, $live_state,
@@ -103,6 +103,8 @@ $is_sql_view = in_array($view, ['sql', 'history', 'backups'], true);
                 </div>
             <?php elseif ($view === 'structure'): ?>
                 <?php require __DIR__ . '/_structure.php'; ?>
+            <?php elseif ($view === 'diagram' && $diagram !== null): ?>
+                <?php require __DIR__ . '/_diagram.php'; ?>
             <?php else: ?>
                 <?php require __DIR__ . '/_data.php'; ?>
             <?php endif; ?>
