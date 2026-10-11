@@ -343,6 +343,8 @@ class Database extends Trongate {
             'where' => [],
             'rows' => [],
             'more' => false,
+            'password_columns' => [],
+            'password_urls' => [],
             'page' => max(1, (int) ($_GET['page'] ?? 1)),
             'sql' => '',
             'results' => null,
@@ -375,6 +377,8 @@ class Database extends Trongate {
                     $browse = $database->rows($table, $data['columns'], $data['page'], $data['where']);
                     $data['rows'] = $browse['rows'];
                     $data['more'] = $browse['more'];
+                    $data['password_columns'] = $this->_password_columns($data['columns'], $data['rows']);
+                    $data['password_urls'] = $this->_password_urls($app, $table, $data['columns'], $data['rows'], $data['password_columns']);
                 }
             } catch (PDOException $e) {
                 $data['error'] = $this->_database_error($e);
@@ -409,6 +413,13 @@ class Database extends Trongate {
             redirect($this->_database_url($app, ['table' => $table]));
         }
 
+        $password_urls = [];
+
+        if ($row !== null) {
+            $password_columns = $this->_password_columns($columns, [$row]);
+            $password_urls = $this->_password_urls($app, $table, $columns, [$row], $password_columns)[0] ?? [];
+        }
+
         $data = [
             'view_module' => 'apps/database',
             'view_file' => 'row',
@@ -418,7 +429,7 @@ class Database extends Trongate {
             'foreign_keys' => $database->foreign_keys($table, $columns),
             'key' => $key,
             'row' => $extra['posted'] ?? $row,
-            'stored_row' => $row,
+            'password_urls' => $password_urls,
             'error' => $extra['error'] ?? null,
             'back_url' => $this->_database_url($app, ['table' => $table]),
             'crumbs' => [
@@ -430,6 +441,80 @@ class Database extends Trongate {
         ];
         $this->module('templates');
         $this->templates->customer($data);
+    }
+
+    /**
+     * Columns whose cells offer Change password: text columns named like a
+     * password column, or holding a password hash in one of $rows. None when
+     * the table has no primary key, since a cell is picked by it.
+     *
+     * @param list<array{name: string, type: string, editable: bool, key: bool}> $columns
+     * @param list<array<string, string|null>> $rows
+     * @return list<string>
+     */
+    function _password_columns(array $columns, array $rows): array {
+        if (App_database::primary_key($columns) === []) {
+            return [];
+        }
+
+        $names = [];
+
+        foreach ($columns as $column) {
+            if ($this->_offers_password_change($column, array_column($rows, $column['name']))) {
+                $names[] = $column['name'];
+            }
+        }
+
+        return $names;
+    }
+
+    /**
+     * @param array{name: string, type: string, editable: bool} $column
+     * @param list<string|null> $values
+     */
+    function _offers_password_change(array $column, array $values): bool {
+        if (!App_password::can_hold_hash($column)) {
+            return false;
+        }
+
+        if (App_password::is_password_column($column)) {
+            return true;
+        }
+
+        foreach ($values as $value) {
+            if (App_password::is_hash($value)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The Change password form's URL for each password cell of $rows, by row index then column
+     *
+     * @param list<array{name: string, key: bool}> $columns
+     * @param list<array<string, string|null>> $rows
+     * @param list<string> $password_columns
+     * @return array<int, array<string, string>>
+     */
+    function _password_urls(object $app, string $table, array $columns, array $rows, array $password_columns): array {
+        $primary_key = App_database::primary_key($columns);
+        $urls = [];
+
+        foreach ($rows as $i => $row) {
+            $key = [];
+
+            foreach ($primary_key as $name) {
+                $key[$name] = (string) $row[$name];
+            }
+
+            foreach ($password_columns as $name) {
+                $urls[$i][$name] = 'apps/' . $app->id . '/database/row/password?' . http_build_query(['table' => $table, 'key' => $key, 'column' => $name]);
+            }
+        }
+
+        return $urls;
     }
 
     /**

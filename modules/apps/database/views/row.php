@@ -2,7 +2,7 @@
 /**
  * apps/{id}/database/row (Database::row): edit one row ($key set) or add one ($key empty).
  * Expects: $app, $table, $columns (App_database::columns), $foreign_keys (App_database::foreign_keys),
- * $key, $row (values, or null for a new row), $stored_row (the row as saved, or null), $error, $back_url.
+ * $key, $row (values, or null for a new row), $password_urls (column => Change password form URL), $error, $back_url.
  */
 $e = fn($value) => htmlspecialchars((string) $value);
 $is_new = $key === [];
@@ -13,9 +13,6 @@ foreach ($foreign_keys as $foreign_key) {
         $references[$name][] = $foreign_key;
     }
 }
-// Fields that offer Change password (a saved row only): named like one, or holding a password hash
-$stored = $is_new ? [] : $stored_row;
-$password_column = fn(array $column) => !$is_new && (App_password::is_password_column($column) || (App_password::can_hold_hash($column) && App_password::is_hash($stored[$column['name']] ?? null)));
 ?>
 <div class="content narrow">
     <div class="back-link">
@@ -48,8 +45,8 @@ $password_column = fn(array $column) => !$is_new && (App_password::is_password_c
                 <span class="ov-mono"><?= $e($name) ?></span>
                 <span class="db-type"><?= $e($column['column_type']) ?><?= $column['key'] ? ', key' : '' ?></span>
             </label>
-            <?php if ($password_column($column)): ?>
-                <button type="button" class="btn-secondary db-password-button" mx-get="<?= $e($base . '/row/password?' . http_build_query(['table' => $table, 'key' => $key, 'column' => $name])) ?>" mx-build-modal="<?= $e(Database::PASSWORD_MODAL) ?>">Change password…</button>
+            <?php if (isset($password_urls[$name])): ?>
+                <button type="button" class="btn-secondary db-password-button" mx-get="<?= $e($password_urls[$name]) ?>" mx-build-modal="<?= $e(Database::PASSWORD_MODAL) ?>">Change password…</button>
             <?php endif; ?>
             <?php foreach ($references[$name] ?? [] as $foreign_key):
                 $reference = $is_new ? null : App_database::reference($foreign_key, $row ?? []);

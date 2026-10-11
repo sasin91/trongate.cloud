@@ -5,7 +5,7 @@
  * $where (the column => value filter on $rows), $rows, $more, $page,
  * $sql, $results (App_database::run or null), $query_error, $error (the database cannot be opened),
  * $recent_actions (Database_model::recent_actions), $backups (Database_model::backups), $backup_id (the
- * backup taken before $sql ran, or null).
+ * backup taken before $sql ran, or null), $password_columns and $password_urls (Database::_password_urls).
  */
 $e = fn($value) => htmlspecialchars((string) $value);
 $base = 'apps/' . (int) $app->id . '/database';
@@ -54,10 +54,6 @@ foreach ($foreign_keys as $foreign_key) {
 $page_url = fn(int $to) => $table_url($table['name'] ?? '', ['page' => $to] + ($where === [] ? [] : ['where' => $where]));
 $primary_key = $table !== null ? App_database::primary_key($columns) : [];
 $row_key = fn(array $row) => array_combine($primary_key, array_map(fn($c) => (string) $row[$c], $primary_key));
-// Columns whose cells offer Change password: named like one, or holding a password hash
-$password_columns = $primary_key === [] ? [] : array_column(array_filter($columns, fn($column) => App_password::is_password_column($column)
-    || (App_password::can_hold_hash($column) && array_filter(array_column($rows, $column['name']), [App_password::class, 'is_hash']) !== [])), 'name');
-$password_url = fn(array $row, string $column) => $base . '/row/password?' . http_build_query(['table' => $table['name'], 'key' => $row_key($row), 'column' => $column]);
 ?>
 <div class="ov">
     <?php $active_tab = 'database'; require APPPATH . 'modules/apps/views/_app_header.php'; ?>
@@ -193,14 +189,15 @@ $password_url = fn(array $row, string $column) => $base . '/row/password?' . htt
                             </tr>
                         </thead>
                         <tbody>
-                            <?php foreach ($rows as $row): ?>
+                            <?php foreach ($rows as $i => $row): ?>
                             <tr>
                                 <?php if ($primary_key !== []): ?>
                                 <td><a href="<?= $e($base . '/row?' . http_build_query(['table' => $table['name'], 'key' => $row_key($row)])) ?>" data-edit-row>Edit</a></td>
                                 <?php endif; ?>
                                 <?php foreach ($columns as $column): ?>
                                 <?php $reference = isset($references[$column['name']]) ? App_database::reference($references[$column['name']][0], $row) : null; ?>
-                                <td<?php if (in_array($column['name'], $password_columns, true)): ?> class="db-password-cell" data-password-form="<?= $e($password_url($row, $column['name'])) ?>" title="Right-click to change the password"<?php endif; ?>><?php if ($reference !== null): ?><a href="<?= $e($reference_url($reference)) ?>" class="db-ref" title="Open in <?= $e($reference['table']) ?>"><?= $cell($row[$column['name']]) ?></a><?php else: ?><?= App_database::is_binary($column) && !$column['key'] && $row[$column['name']] !== null ? '<span class="db-null">' . (int) $row[$column['name']] . ' bytes</span>' : $cell($row[$column['name']] ?? null) ?><?php endif; ?></td>
+                                <?php $password_url = $password_urls[$i][$column['name']] ?? null; ?>
+                                <td<?php if ($password_url !== null): ?> class="db-password-cell" data-password-form="<?= $e($password_url) ?>" title="Right-click to change the password"<?php endif; ?>><?php if ($reference !== null): ?><a href="<?= $e($reference_url($reference)) ?>" class="db-ref" title="Open in <?= $e($reference['table']) ?>"><?= $cell($row[$column['name']]) ?></a><?php else: ?><?= App_database::is_binary($column) && !$column['key'] && $row[$column['name']] !== null ? '<span class="db-null">' . (int) $row[$column['name']] . ' bytes</span>' : $cell($row[$column['name']] ?? null) ?><?php endif; ?></td>
                                 <?php endforeach; ?>
                             </tr>
                             <?php endforeach; ?>
