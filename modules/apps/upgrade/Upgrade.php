@@ -34,7 +34,7 @@ class Upgrade extends Trongate {
             'additional_includes_top' => ['apps_module/css/apps.css'],
         ];
         $this->module('templates');
-        $this->templates->customer($data);
+        $this->templates->customer_wide($data);
     }
 
     /**

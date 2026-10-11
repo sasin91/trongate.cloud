@@ -40,7 +40,7 @@ class Mail extends Trongate {
             'additional_includes_top' => ['apps_module/css/apps.css', 'apps-mail_module/css/mail.css'],
         ];
         $this->module('templates');
-        $this->templates->customer($data);
+        $this->templates->customer_wide($data);
     }
 
     /**

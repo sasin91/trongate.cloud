@@ -155,6 +155,21 @@ main {
     box-sizing: border-box;
 }
 
+/* Project and app pages use the full width (Templates::customer_wide) */
+main.wide {
+    max-width: none;
+}
+
+main.wide .content {
+    max-width: none;
+}
+
+/* Settings forms keep a readable width but line up with the page, not the centre */
+main.wide .content.narrow {
+    max-width: 760px;
+    margin-left: 0;
+}
+
 .container {
     max-width: 1200px;
     margin: 0 auto;

@@ -34,7 +34,7 @@ class Deployments extends Trongate {
         ];
 
         $this->module('templates');
-        $this->templates->customer($data);
+        $this->templates->customer_wide($data);
     }
 
     /**

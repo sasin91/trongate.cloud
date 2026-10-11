@@ -99,7 +99,7 @@ class Projects extends Trongate {
             ],
         ];
         $this->module('templates');
-        $this->templates->customer($data);
+        $this->templates->customer_wide($data);
     }
 
     /**
@@ -128,7 +128,7 @@ class Projects extends Trongate {
             'additional_includes_btm' => ['apps_module/js/app_traffic.js'],
         ];
         $this->module('templates');
-        $this->templates->customer($data);
+        $this->templates->customer_wide($data);
     }
 
     /**
@@ -165,7 +165,7 @@ class Projects extends Trongate {
             'additional_includes_top' => ['apps_module/css/apps.css'],
         ];
         $this->module('templates');
-        $this->templates->customer($data);
+        $this->templates->customer_wide($data);
     }
 
     function submit_settings(): void {

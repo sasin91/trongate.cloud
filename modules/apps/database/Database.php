@@ -367,7 +367,7 @@ class Database extends Trongate {
         }
 
         $this->module('templates');
-        $this->templates->customer($data);
+        $this->templates->customer_wide($data);
     }
 
     /**
@@ -422,7 +422,7 @@ class Database extends Trongate {
             'additional_includes_top' => ['apps_module/css/apps.css', 'apps-database_module/css/database.css'],
         ];
         $this->module('templates');
-        $this->templates->customer($data);
+        $this->templates->customer_wide($data);
     }
 
     /**
