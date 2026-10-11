@@ -16,8 +16,6 @@ foreach ($foreign_keys as $foreign_key) {
 // Fields that offer Change password (a saved row only): named like one, or holding a password hash
 $stored = $is_new ? [] : $stored_row;
 $password_column = fn(array $column) => !$is_new && (App_password::is_password_column($column) || (App_password::can_hold_hash($column) && App_password::is_hash($stored[$column['name']] ?? null)));
-$json = fn($value) => json_encode($value, JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR);
-$table_name = $table;
 ?>
 <div class="content narrow">
     <div class="back-link">
@@ -51,7 +49,7 @@ $table_name = $table;
                 <span class="db-type"><?= $e($column['column_type']) ?><?= $column['key'] ? ', key' : '' ?></span>
             </label>
             <?php if ($password_column($column)): ?>
-                <button type="button" class="btn-secondary db-password-button" data-password-column="<?= $e($name) ?>" data-key="<?= $e($json($key)) ?>" data-hash="<?= $e($json(App_password::choices($stored[$name] ?? null, $column['column_type']))) ?>">Change password…</button>
+                <button type="button" class="btn-secondary db-password-button" mx-get="<?= $e($base . '/row/password?' . http_build_query(['table' => $table, 'key' => $key, 'column' => $name])) ?>" mx-build-modal="<?= $e(Database::PASSWORD_MODAL) ?>">Change password…</button>
             <?php endif; ?>
             <?php foreach ($references[$name] ?? [] as $foreign_key):
                 $reference = $is_new ? null : App_database::reference($foreign_key, $row ?? []);
@@ -105,10 +103,6 @@ $table_name = $table;
         </div>
         <?= form_close() ?>
     </div>
-
-    <?php if (array_filter($columns, $password_column) !== []): ?>
-        <?php require __DIR__ . '/_password_dialog.php'; ?>
-    <?php endif; ?>
 
     <?php if (!$is_new): ?>
     <div class="card danger-card">

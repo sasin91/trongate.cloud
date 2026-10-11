@@ -21,6 +21,9 @@ class Database extends Trongate {
     use App_page;
     use App_database_guard;
 
+    /** mx-build-modal for the Change password form (views/_password_form.php) */
+    const PASSWORD_MODAL = '{"id":"db-password-modal","modalHeading":"Change password","width":"32rem","marginTop":"8vh"}';
+
     /**
      * apps/{id}/database: the tables, one table's rows (?table=, ?page=) and the SQL box.
      */
@@ -167,10 +170,27 @@ class Database extends Trongate {
     }
 
     /**
-     * POST apps/{id}/database/row/password: hash a new password into one cell
+     * apps/{id}/database/row/password?table=&key[col]=&column=: the Change password
+     * form, for a Trongate MX modal (mx-build-modal). The choices come from the
+     * cell's value as stored (App_password::choices).
+     */
+    function password_form(): void {
+        $this->_make_sure_allowed();
+        $app = $this->_member_app_or_redirect(segment(3, 'int'));
+
+        $table = (string) ($_GET['table'] ?? '');
+        $key = $this->_posted_key($_GET['key'] ?? null);
+        [$database, $column] = $this->_password_cell_or_redirect($app, $table, $key, (string) ($_GET['column'] ?? ''));
+
+        $this->_password_form($app, $table, $key, $column, $database->row($table, $key));
+    }
+
+    /**
+     * POST apps/{id}/database/row/password/submit: hash a new password into one cell
      * (table, key[], column, password, password_confirm, algorithm, backup).
-     * The hash is made from the cell's current value (App_password::choices);
-     * the log names the column, never the password or the hash.
+     * Answers with the table's URL, which the modal's form follows
+     * (mx-redirect-on-success), or the form again with why it was refused.
+     * The log names the column, never the password or the hash.
      */
     function change_password(): void {
         $this->_make_sure_allowed();
@@ -179,39 +199,36 @@ class Database extends Trongate {
 
         $table = (string) post('table');
         $key = $this->_posted_key(post('key'));
-        $name = (string) post('column');
-        $back_url = $this->_database_url($app, ['table' => $table]);
-
-        [$database, $columns] = $this->_database_table_or_redirect($app, $table);
-        $column = array_values(array_filter($columns, fn($c) => $c['name'] === $name))[0] ?? null;
-
-        if ($column === null || !App_password::can_hold_hash($column) || !$this->_is_primary_key($key, $columns)) {
-            redirect($back_url);
-        }
+        [$database, $column] = $this->_password_cell_or_redirect($app, $table, $key, (string) post('column'));
+        $name = $column['name'];
 
         $this->validation->set_rules('password', 'new password', 'required');
         $this->validation->set_rules('password_confirm', 'password confirmation', 'required|matches[password]');
 
         if ($this->validation->run() !== true) {
-            redirect($back_url); // the table page shows validation_errors()
+            $this->_password_form($app, $table, $key, $column, $database->row($table, $key)); // shows validation_errors()
+            return;
         }
 
         $password = (string) post('password');
         $choice = (string) post('algorithm');
         $backup = !post('backup') ? null : fn() => $this->_save_backup($app, $this->_describe_row($table, $key), $database->back_up_row($table, $key));
         $hashed_with = null;
+        $current = null;
 
         try {
             // Hashing inside _logged() keeps it under the customer's rate limit and lock
-            $this->_logged($app, 'update', $this->_describe_row_change('update', $table, $key, [$name]) . ' -- new password hash', true, function () use ($database, $table, $key, $column, $password, $choice, &$hashed_with) {
+            $this->_logged($app, 'update', $this->_describe_row_change('update', $table, $key, [$name]) . ' -- new password hash', true, function () use ($database, $table, $key, $column, $password, $choice, &$hashed_with, &$current) {
                 $row = $database->row($table, $key);
 
                 if ($row === null) {
                     throw new RuntimeException('That row is gone.');
                 }
 
+                $current = $row[$column['name']];
+
                 try {
-                    $hash = App_password::hash($password, $row[$column['name']], $choice);
+                    $hash = App_password::hash($password, $current, $choice);
                 } catch (InvalidArgumentException $e) {
                     throw new RuntimeException($e->getMessage());
                 }
@@ -228,12 +245,20 @@ class Database extends Trongate {
                 return [$changed, $changed];
             }, $backup, $backup_id);
         } catch (PDOException | RuntimeException $e) {
-            set_flashdata(htmlspecialchars('Password not changed: ' . ($e instanceof PDOException ? $this->_database_error($e) : $e->getMessage())));
-            redirect($back_url);
+            if ($current === null) {
+                try {
+                    $current = $database->row($table, $key); // refused before it was read: rate limit, lock or backup
+                } catch (PDOException) {
+                    // the form then offers PHP's defaults only
+                }
+            }
+
+            $this->_password_form($app, $table, $key, $column, $current, $e instanceof PDOException ? $this->_database_error($e) : $e->getMessage());
+            return;
         }
 
         set_flashdata(htmlspecialchars('New password saved in ' . $this->_describe_row($table, $key) . ', column ' . $name . ' (' . $hashed_with . ').' . ($backup_id !== null ? ' The old hash is under Backups.' : '')));
-        redirect($back_url);
+        echo BASE_URL . $this->_database_url($app, ['table' => $table]);
     }
 
     /**
@@ -402,10 +427,46 @@ class Database extends Trongate {
                 [$this->_database_url($app, ['table' => $table]), $table],
             ],
             'additional_includes_top' => ['apps_module/css/apps.css', 'apps-database_module/css/database.css'],
-            'additional_includes_btm' => ['apps-database_module/js/password.js'],
         ];
         $this->module('templates');
         $this->templates->customer($data);
+    }
+
+    /**
+     * The app's database and one cell's column, by primary key, or back to the table
+     *
+     * @param array<string, string> $key
+     * @return array{0: App_database, 1: array{name: string, type: string, column_type: string, editable: bool}}
+     */
+    function _password_cell_or_redirect(object $app, string $table, array $key, string $name): array {
+        [$database, $columns] = $this->_database_table_or_redirect($app, $table);
+        $column = array_values(array_filter($columns, fn($c) => $c['name'] === $name))[0] ?? null;
+
+        if ($column === null || !App_password::can_hold_hash($column) || !$this->_is_primary_key($key, $columns)) {
+            redirect($this->_database_url($app, ['table' => $table]));
+        }
+
+        return [$database, $column];
+    }
+
+    /**
+     * Render the Change password form (views/_password_form.php) on its own, for the modal
+     *
+     * @param array<string, string> $key
+     * @param array{name: string, column_type: string} $column
+     * @param array<string, string|null>|string|null $current the row, or the cell's value
+     */
+    function _password_form(object $app, string $table, array $key, array $column, array|string|null $current, ?string $error = null): void {
+        $value = is_array($current) ? ($current[$column['name']] ?? null) : $current;
+
+        $this->view('_password_form', [
+            'base' => 'apps/' . $app->id . '/database',
+            'table' => $table,
+            'key' => $key,
+            'column' => $column['name'],
+            'choices' => App_password::choices($value, $column['column_type']),
+            'error' => $error,
+        ]);
     }
 
     /**
