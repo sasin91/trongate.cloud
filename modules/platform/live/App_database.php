@@ -340,6 +340,32 @@ class App_database {
     }
 
     /**
+     * Delete several rows in one transaction: all of them, or none when one fails
+     *
+     * @param list<array<string, string>> $keys primary keys (column => value)
+     * @return int rows deleted (rows already gone count as none)
+     * @throws PDOException when MariaDB refuses one, after rolling back
+     */
+    function delete_rows(string $table, array $keys): int {
+        $this->pdo->exec('SET SESSION TRANSACTION READ WRITE');
+        $this->pdo->beginTransaction();
+        $deleted = 0;
+
+        try {
+            foreach ($keys as $key) {
+                $deleted += $this->delete($table, $key);
+            }
+
+            $this->pdo->commit();
+        } catch (PDOException $e) {
+            $this->pdo->rollBack();
+            throw $e;
+        }
+
+        return $deleted;
+    }
+
+    /**
      * Why the SQL may not run here, or null when it may (see run()). It may
      * hold several statements separated by ";". Anything but the
      * statements in READ_STATEMENTS and WRITE_STATEMENTS is refused: SET (which
@@ -641,6 +667,16 @@ class App_database {
     }
 
     /**
+     * Back up several rows of one table, for restore() to put back
+     *
+     * @param list<array<string, string>> $keys
+     * @return Backup
+     */
+    function back_up_rows(string $table, array $keys): array {
+        return $this->back_up([$table => $keys]);
+    }
+
+    /**
      * Put tables back as a backup holds them. A row backup replaces only its
      * rows. A whole table without triggers whose structure is unchanged gets its
      * rows replaced in one transaction; any other is dropped and created again
@@ -710,8 +746,9 @@ class App_database {
     }
 
     /**
-     * Back up tables, whole (null) or only the row of their first key; the
-     * other keys are rows restore() removes.
+     * Back up tables, whole (null) or only the rows of their keys. restore()
+     * removes the row of every key before putting the backed-up rows back, so a
+     * key with no row yet (the key a change gives a row) is removed on restore.
      *
      * Rows are stored as records (table index, length, serialize()d row) in one
      * deflate stream, read unbuffered so a large table never sits in memory twice.
@@ -738,34 +775,40 @@ class App_database {
                 'keys' => $keys,
             ];
 
-            $sql = 'SELECT ' . implode(', ', array_map([self::class, 'quote_name'], $columns)) . ' FROM ' . self::quote_name($table);
-            $params = [];
+            $select = 'SELECT ' . implode(', ', array_map([self::class, 'quote_name'], $columns)) . ' FROM ' . self::quote_name($table);
+            $queries = [];
 
-            if ($keys !== null) {
-                [$where, $params] = self::where($keys[0]);
-                $sql .= $where . ' LIMIT 1';
+            if ($keys === null) {
+                $queries[] = [$select, []];
+            }
+
+            foreach ($keys ?? [] as $key) {
+                [$where, $params] = self::where($key);
+                $queries[] = [$select . $where . ' LIMIT 1', $params];
             }
 
             $this->pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, false);
 
             try {
-                $stmt = $this->pdo->prepare($sql);
-                $stmt->execute($params);
+                foreach ($queries as [$sql, $params]) {
+                    $stmt = $this->pdo->prepare($sql);
+                    $stmt->execute($params);
 
-                while (($row = $stmt->fetch(PDO::FETCH_NUM)) !== false) {
-                    $record = serialize($row);
-                    $bytes += strlen($record);
+                    while (($row = $stmt->fetch(PDO::FETCH_NUM)) !== false) {
+                        $record = serialize($row);
+                        $bytes += strlen($record);
 
-                    if ($bytes > self::MAX_BACKUP_BYTES) {
-                        $stmt->closeCursor();
-                        throw new RuntimeException(self::too_large($table));
+                        if ($bytes > self::MAX_BACKUP_BYTES) {
+                            $stmt->closeCursor();
+                            throw new RuntimeException(self::too_large($table));
+                        }
+
+                        $data .= deflate_add($deflate, pack('nN', $index, strlen($record)) . $record, ZLIB_NO_FLUSH);
+                        $tables[$index]['rows']++;
                     }
 
-                    $data .= deflate_add($deflate, pack('nN', $index, strlen($record)) . $record, ZLIB_NO_FLUSH);
-                    $tables[$index]['rows']++;
+                    $stmt->closeCursor();
                 }
-
-                $stmt->closeCursor();
             } finally {
                 $this->pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, true);
             }
