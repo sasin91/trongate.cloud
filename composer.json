@@ -40,7 +40,8 @@
             "php tests/Schema_diagram_test.php",
             "php tests/Schema_diff_test.php",
             "php tests/App_env_suggestions_test.php",
-            "php tests/Domain_dns_test.php"
+            "php tests/Domain_dns_test.php",
+            "php tests/Starting_sql_test.php"
         ],
         "qa": [
             "@lint",

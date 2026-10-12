@@ -3,6 +3,7 @@
 require_once APPPATH . 'modules/platform/manifests/Manifests.php';
 require_once APPPATH . 'modules/platform/manifests/App_env_suggestions.php';
 require_once __DIR__ . '/App_rules.php';
+require_once __DIR__ . '/App_starting_sql.php';
 
 /**
  * New-app form shared by onboarding and the apps module:
@@ -17,6 +18,7 @@ require_once __DIR__ . '/App_rules.php';
  */
 trait App_form {
     use App_rules;
+    use App_starting_sql;
 
     /**
      * View data for the repository picker, or false when the customer has not
@@ -55,6 +57,7 @@ trait App_form {
             'env_fields' => $this->_env_fields($this->_posted_env_suggestions()),
             'env_loaded_for' => $this->_posted_env_loaded_for(),
             'settings' => $this->_new_app_settings_form(),
+            'starting_sql' => $this->_starting_sql_form(),
         ];
     }
 
@@ -101,6 +104,7 @@ trait App_form {
         $this->validation->set_rules('domain', 'Custom Domain', 'max_length[253]|callback__validate_domain');
         $this->validation->set_rules('type', 'App Type', 'required|callback__validate_app_type');
         $this->validation->set_rules('env', 'Environment variables', 'callback__validate_suggested_env');
+        $this->validation->set_rules('starting_sql', 'Database', 'callback__validate_starting_sql');
         $this->validation->set_rules('trongate_env', 'Environment', 'required|callback__validate_trongate_env');
         $this->validation->set_rules('health_path', 'Health Check Path', 'max_length[200]|callback__validate_health_path');
         $this->validation->set_rules('php_extensions', 'PHP Extensions', 'max_length[255]|callback__validate_php_extensions');
@@ -136,6 +140,7 @@ trait App_form {
 
         $this->_save_new_app_settings($project_id, $app_id, $domain);
         $this->_save_suggested_env($app_id);
+        $this->_save_starting_sql($app_id);
 
         return $app_id;
     }
