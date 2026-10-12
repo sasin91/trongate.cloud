@@ -203,9 +203,11 @@ CREATE TABLE app (
   project_id INT NOT NULL,
   label VARCHAR(255) NOT NULL,
   slug VARCHAR(40) NOT NULL,
+  -- Serves {slug}.PLATFORM_APPS_DOMAIN; 0 for a production app whose staging app took it
+  platform_host TINYINT(1) NOT NULL DEFAULT 1,
   type ENUM('trongate_v1', 'trongate_v2') NOT NULL,
-  -- A staging app is a copy of its production app (production_app_id) that
-  -- deploys from its own branch, on {slug}-staging (create_staging_app)
+  -- A staging app is a copy of its production app (production_app_id) with
+  -- the same slug that deploys its own branch (tasks/split_staging.php)
   environment ENUM('production', 'staging') NOT NULL DEFAULT 'production',
   production_app_id INT NULL,
 
@@ -241,7 +243,7 @@ CREATE TABLE app (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   deleted_at TIMESTAMP NULL DEFAULT NULL,
 
-  UNIQUE KEY unique_slug (slug),
+  UNIQUE KEY unique_slug_environment (slug, environment),
   UNIQUE KEY unique_verified_domain (verified_domain),
   KEY idx_project_deleted (project_id, deleted_at),
   KEY idx_production_app (production_app_id),

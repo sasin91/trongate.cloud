@@ -31,7 +31,7 @@ trait App_page {
      * $environment ('production' or 'staging'), $environments (the
      * Production/Staging switch, empty while it has no staging app),
      * $go_live_hint (its {slug} host is still its staging) and
-     * $can_add_staging (a production app with a domain but no staging app).
+     * $can_add_staging (a production app live on its domain, with no staging app).
      *
      * @return array{environment: string, environments: list<array{0: string, 1: string, 2: bool}>, go_live_hint: bool, can_add_staging: bool}
      */
@@ -65,7 +65,7 @@ trait App_page {
             'environment' => $environment,
             'environments' => $environments,
             'go_live_hint' => $app->environment === 'production' && $environment === 'staging',
-            'can_add_staging' => $app->environment === 'production' && $staging_id === 0 && $has_domain,
+            'can_add_staging' => $app->environment === 'production' && $staging_id === 0 && Manifests::secured_domains((array) $app) !== [],
         ];
     }
 

@@ -43,6 +43,7 @@ class Domain extends Trongate {
             'app' => $app,
             'domain_input' => $domain_input,
             'platform_host' => $app->slug . '.' . PLATFORM_APPS_DOMAIN,
+            'serves_platform_host' => Manifests::serves_platform_host((array) $app),
             ...$this->_app_header_data($app),
             ...$this->_domain_progress($app),
             'records' => $this->_unchecked_records($app),
@@ -113,21 +114,16 @@ class Domain extends Trongate {
 
     /**
      * POST apps/{id}/domain/verify: check the domain's TXT record, then (in
-     * the worker) whether its DNS points here yet. The first verified domain
-     * also gives a production app its staging app (create_staging_app).
+     * the worker) whether its DNS points here yet.
      */
     function verify(): void {
         $this->_make_sure_allowed();
         $app = $this->_member_app_or_redirect(segment(3, 'int'));
         $this->_require_post_with_csrf();
 
-        $had_staging = $this->model->find_staging_app((int) $app->id) !== false;
         $result = $this->model->verify_app_domain((int) $app->project_id, (int) $app->id);
-        $staging = $this->model->find_staging_app((int) $app->id);
 
-        if ($result === true && !$had_staging && $staging !== false) {
-            set_flashdata('Domain verified. It goes live by itself once its DNS points here; checking now. Your app also has a staging environment now: pushes to ' . htmlspecialchars((string) $staging->source_branch) . ' deploy it.');
-        } elseif ($result === true) {
+        if ($result === true) {
             set_flashdata('Domain verified. It goes live by itself once its DNS points here; checking now.');
         } else {
             set_flashdata('Could not verify the domain: ' . htmlspecialchars((string) $result));

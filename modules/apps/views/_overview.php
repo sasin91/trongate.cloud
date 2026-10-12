@@ -33,7 +33,9 @@ if ($domain !== '') {
         $domain_state = ['label' => 'HTTPS', 'class' => 'ok', 'hint' => ''];
     }
 }
-$domain_count = $domain === '' ? 1 : 2;
+// A production app whose staging app took {slug}.PLATFORM_APPS_DOMAIN answers only on its domain
+$serves_platform_host = Manifests::serves_platform_host((array) $app);
+$domain_count = ($serves_platform_host ? 1 : 0) + ($domain === '' ? 0 : 1);
 // {slug}.PLATFORM_APPS_DOMAIN is for trying things out; adding a domain is going live
 $environment ??= $domain === '' ? 'staging' : 'production';
 $go_live_hint ??= $domain === '';
@@ -195,10 +197,12 @@ $platform_host = $app->slug . '.' . PLATFORM_APPS_DOMAIN;
                     <h2 id="dom-h">Domains</h2>
                     <a href="apps/<?= (int) $app->id ?>/domain"><?= $domain === '' ? 'Add domain' : 'Manage' ?></a>
                 </div>
-                <div class="ov-domain">
-                    <span class="ov-mono"><?= $e($platform_host) ?></span>
-                    <span class="ov-badge ok">HTTPS</span>
-                </div>
+                <?php if ($serves_platform_host): ?>
+                    <div class="ov-domain">
+                        <span class="ov-mono"><?= $e($platform_host) ?></span>
+                        <span class="ov-badge ok">HTTPS</span>
+                    </div>
+                <?php endif; ?>
                 <?php if ($domain_state === null && $go_live_hint): ?>
                     <p class="ov-domain-hint muted">Your staging address. Add your own domain when you're ready to go live.</p>
                 <?php elseif ($domain_state !== null): ?>

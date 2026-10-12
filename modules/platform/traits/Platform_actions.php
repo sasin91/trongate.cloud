@@ -22,9 +22,6 @@ trait Platform_actions {
     /** Subdomains an app slug may not take */
     const RESERVED_SLUGS = ['www', 'api', 'app', 'admin', 'mail', 'mcp', 'oauth', 'status', 'docs', 'registry'];
 
-    /** The branch a new staging app deploys from; its Settings change it */
-    const STAGING_BRANCH = 'staging';
-
     /**
      * Queue a deployment of the app's configured source.
      *
@@ -265,7 +262,7 @@ trait Platform_actions {
 
     /**
      * The project's production apps with their current deployment's state and
-     * staging_app_id (create_staging_app), NULL when they have none.
+     * staging_app_id (tasks/split_staging.php), NULL when they have none.
      * Lists columns explicitly so the rows are safe to return to API clients.
      */
     function project_apps(int $project_id): array {
@@ -477,73 +474,44 @@ trait Platform_actions {
 
         $this->queue_domain_recheck($project_id, $app_id);
 
-        // Going live: {slug}.PLATFORM_APPS_DOMAIN was its staging, now it gets one of its own
-        if ($app->environment === 'production' && $this->find_staging_app($app_id) === false) {
-            $this->create_staging_app($project_id, $app_id);
-        }
-
         return true;
     }
 
     /**
-     * Give a production app a staging app: a copy with its settings and
-     * environment variables (copied once, separate after that) on
-     * {slug}-staging.PLATFORM_APPS_DOMAIN, deploying pushes to STAGING_BRANCH.
-     * It gets its own database, empty, and never production's processes or
-     * custom domain. It sleeps when idle and captures mail, so it stays cheap
-     * and never mails real people. Nothing is deployed until the branch gets
-     * a push or someone presses Deploy.
+     * Queue split_staging for a production app: its {slug} host moves to a
+     * new staging app (a copy deploying its own branch) and production keeps
+     * only its domain. recheck_domains does this by itself when a domain first
+     * goes live; this is for apps that went live earlier or lost their
+     * staging app. A split already waiting is not queued again.
      *
-     * @return int The staging app's id (the existing one, if it has one)
-     * @throws RuntimeException when the app is not the project's or is itself a staging app
+     * @throws RuntimeException when the app is not a production app with a secured domain, or already has a staging app
      */
-    function create_staging_app(int $project_id, int $app_id): int {
+    function queue_staging_split(int $project_id, int $app_id): void {
         $app = $this->_app_or_fail($project_id, $app_id);
 
-        if ($app->environment !== 'production') {
-            throw new RuntimeException('A staging app cannot have a staging app of its own.');
+        if ($app->environment !== 'production' || Manifests::secured_domains((array) $app) === []) {
+            throw new RuntimeException('Staging is set up once the custom domain is live with HTTPS.');
         }
 
-        return $this->db->transaction(function () use ($app) {
-            // Row lock: a second, concurrent call waits here, then finds the first one's staging app
-            $this->db->query_bind('SELECT id FROM app WHERE id = :app_id FOR UPDATE', ['app_id' => (int) $app->id], 'column');
+        if ($this->find_staging_app($app_id) !== false) {
+            throw new RuntimeException('This app already has a staging app.');
+        }
 
-            $existing = $this->find_staging_app((int) $app->id);
+        $sql = <<<SQL
+            SELECT COUNT(*)
+            FROM tasks
+            WHERE app_id = :app_id
+              AND script = 'split_staging'
+              AND completed_at IS NULL
+              AND failed_at IS NULL
+        SQL;
 
-            if ($existing !== false) {
-                return (int) $existing->id;
-            }
-
-            $staging_id = (int) $this->db->insert([
-                'project_id' => (int) $app->project_id,
-                'label' => $app->label,
-                'slug' => $this->generate_app_slug($app->slug . '-staging'),
-                'type' => $app->type,
-                'environment' => 'staging',
-                'production_app_id' => (int) $app->id,
-                'source_url' => $app->source_url,
-                'source_provider' => $app->source_provider,
-                'source_branch' => self::STAGING_BRANCH,
-                'auto_deploy' => (int) $app->auto_deploy,
-                'persistent_paths' => (string) ($app->persistent_paths ?? '[]'),
-                'php_extensions' => (string) $app->php_extensions,
-                'always_on' => 0,
-                'trongate_env' => (string) $app->trongate_env,
-                'mail_capture' => 1,
-                'health_path' => (string) $app->health_path,
-            ], 'app');
-
-            // App_env: still encrypted, so the values never pass through here
-            $this->db->query_bind(
-                "INSERT INTO secrets (module, module_id, service, variables)
-                 SELECT module, :staging_id, service, variables
-                 FROM secrets
-                 WHERE module = 'app' AND module_id = :app_id AND service = 'env'",
-                ['staging_id' => $staging_id, 'app_id' => (int) $app->id]
-            );
-
-            return $staging_id;
-        });
+        if ((int) $this->db->query_bind($sql, ['app_id' => $app_id], 'column') === 0) {
+            $this->_queue_task($project_id, $app_id, null, 'split_staging', [
+                'project_id' => $project_id,
+                'app_id' => $app_id,
+            ]);
+        }
     }
 
     /**
