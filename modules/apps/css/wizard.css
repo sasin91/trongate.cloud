@@ -279,6 +279,29 @@
     font-weight: 400;
 }
 
+/* Settings question: the app's Settings page, in short */
+.wz-settings {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.wz-settings textarea.wz-in {
+    resize: vertical;
+}
+
+.wz-process {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 8px;
+}
+
+@media (max-width: 640px) {
+    .wz-process {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* Choice cards (radio buttons) */
 .wz-choices {
     display: flex;

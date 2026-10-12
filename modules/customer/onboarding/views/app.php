@@ -10,7 +10,7 @@
 </head>
 
 <body class="wz-body">
-    <?php $q_current = 2; $q_total = 6; require APPPATH . 'modules/apps/views/_wizard_top.php'; ?>
+    <?php $q_current = 2; $q_total = 7; require APPPATH . 'modules/apps/views/_wizard_top.php'; ?>
 
     <?php
     $form_action = 'onboarding/submit_app';

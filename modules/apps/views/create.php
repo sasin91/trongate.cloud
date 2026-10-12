@@ -1,5 +1,5 @@
 <div class="wz-embedded">
-    <?php $q_current = 1; $q_total = $form === false ? 1 : 5; require __DIR__ . '/_wizard_top.php'; ?>
+    <?php $q_current = 1; $q_total = $form === false ? 1 : 6; require __DIR__ . '/_wizard_top.php'; ?>
 
     <?= flashdata('<p class="flash">', '</p>') ?>
 

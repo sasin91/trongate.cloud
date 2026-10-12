@@ -54,6 +54,42 @@ trait App_form {
             'app_types' => self::APP_TYPES,
             'env_fields' => $this->_env_fields($this->_posted_env_suggestions()),
             'env_loaded_for' => $this->_posted_env_loaded_for(),
+            'settings' => $this->_new_app_settings_form(),
+        ];
+    }
+
+    /**
+     * The last question's settings: the defaults a new app gets, or what was
+     * posted when the form is shown again after a failed submit
+     *
+     * @return array{trongate_env: string, health_path: string, php_extensions: string, persistent_paths: string, process_name: string, process_command: string, always_on: bool, mail_capture: bool}
+     */
+    function _new_app_settings_form(): array {
+        if (REQUEST_TYPE !== 'POST') {
+            return [
+                'trongate_env' => Trongate_config::DEFAULT_ENV,
+                'health_path' => '',
+                'php_extensions' => '',
+                'persistent_paths' => '',
+                'process_name' => '',
+                'process_command' => '',
+                'always_on' => false,
+                'mail_capture' => true,
+            ];
+        }
+
+        $process_names = (array) post('process_name');
+        $process_commands = (array) post('process_command');
+
+        return [
+            'trongate_env' => (string) post('trongate_env', true),
+            'health_path' => (string) post('health_path', true),
+            'php_extensions' => (string) post('php_extensions', true),
+            'persistent_paths' => (string) post('persistent_paths'),
+            'process_name' => (string) ($process_names[0] ?? ''),
+            'process_command' => (string) ($process_commands[0] ?? ''),
+            'always_on' => post('always_on') === '1',
+            'mail_capture' => post('mail_capture') !== '0',
         ];
     }
 
@@ -65,6 +101,11 @@ trait App_form {
         $this->validation->set_rules('domain', 'Custom Domain', 'max_length[253]|callback__validate_domain');
         $this->validation->set_rules('type', 'App Type', 'required|callback__validate_app_type');
         $this->validation->set_rules('env', 'Environment variables', 'callback__validate_suggested_env');
+        $this->validation->set_rules('trongate_env', 'Environment', 'required|callback__validate_trongate_env');
+        $this->validation->set_rules('health_path', 'Health Check Path', 'max_length[200]|callback__validate_health_path');
+        $this->validation->set_rules('php_extensions', 'PHP Extensions', 'max_length[255]|callback__validate_php_extensions');
+        $this->validation->set_rules('persistent_paths', 'Persistent Paths', 'max_length[4000]|callback__validate_persistent_paths');
+        $this->validation->set_rules('processes', 'Processes', 'callback__validate_processes');
     }
 
     /**
@@ -73,6 +114,7 @@ trait App_form {
      */
     function _create_app_from_post(int $project_id, int $customer_id): int|false {
         $provider = post('provider', true);
+        $domain = $this->_normalise_domain(post('domain', true));
 
         $client = $this->_provider_client($customer_id, $provider);
 
@@ -83,16 +125,38 @@ trait App_form {
             source_url: $client->url(post('repository', true)),
             source_provider: $provider,
             source_branch: post('repository_branch', true),
-            domain: $this->_normalise_domain(post('domain', true)),
+            domain: $domain,
             // The switch posts a hidden 0 then the checkbox's 1; older forms leave it out
             auto_deploy: post('auto_deploy') !== '0',
         );
 
-        if ($app_id !== false) {
-            $this->_save_suggested_env($app_id);
+        if ($app_id === false) {
+            return false;
         }
 
+        $this->_save_new_app_settings($project_id, $app_id, $domain);
+        $this->_save_suggested_env($app_id);
+
         return $app_id;
+    }
+
+    /**
+     * Save the last question's settings, the same ones the app's Settings page
+     * changes. Its form posts the auto_deploy switch as a hidden 0 then a 1.
+     */
+    function _save_new_app_settings(int $project_id, int $app_id, ?string $domain): void {
+        $this->model->update_app_settings($project_id, $app_id, [
+            'domain' => $domain,
+            'persistent_paths' => $this->_parse_persistent_paths((string) post('persistent_paths')),
+            'php_extensions' => implode(',', $this->_parse_php_extensions((string) post('php_extensions', true))),
+            'always_on' => post('always_on') === '1',
+            'auto_deploy' => post('auto_deploy') !== '0',
+            'trongate_env' => trim((string) post('trongate_env', true)),
+            'mail_capture' => post('mail_capture') !== '0',
+            'health_path' => $this->_parse_health_path((string) post('health_path', true)),
+        ]);
+
+        $this->model->add_app_processes($app_id, $this->_processes_from_post());
     }
 
     /**

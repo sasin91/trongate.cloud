@@ -67,6 +67,22 @@ trait App_records {
     }
 
     /**
+     * Give a new app, which has none yet, its processes (checked by
+     * _processes_error). No transaction of its own, so app creation can run
+     * it inside one.
+     *
+     * @param list<array{name: string, command: string, replicas: int}> $processes
+     */
+    function add_app_processes(int $app_id, array $processes): void {
+        foreach ($processes as $process) {
+            $this->db->query_bind(
+                'INSERT INTO app_process (app_id, name, command, replicas) VALUES (:app_id, :name, :command, :replicas)',
+                ['app_id' => $app_id, 'name' => $process['name'], 'command' => $process['command'], 'replicas' => $process['replicas']]
+            );
+        }
+    }
+
+    /**
      * Update an app's platform settings (the app must be in the project).
      * The custom domain goes through update_app_domain().
      *
