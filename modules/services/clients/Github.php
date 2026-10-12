@@ -134,6 +134,37 @@ class Github extends Client {
         return $files;
     }
 
+    /**
+     * One file's content at a commit or branch, or null when there is no
+     * file at that path. Files over 1 MB come back as null too: GitHub's
+     * contents API leaves their content out.
+     */
+    function file_at(string $repo, string $ref, string $path): ?string {
+        $url = "/repos/{$repo}/contents/" . str_replace('%2F', '/', rawurlencode($path)) . '?ref=' . rawurlencode($ref);
+
+        try {
+            $file = $this->request('GET', $url);
+        } catch (Client_Error $e) {
+            if ($e->getCode() === 404) {
+                return null;
+            }
+
+            throw $e;
+        }
+
+        if (($file['type'] ?? '') !== 'file' || ($file['encoding'] ?? '') !== 'base64') {
+            return null;
+        }
+
+        $content = base64_decode((string) ($file['content'] ?? ''), true);
+
+        if ($content === false) {
+            throw new RuntimeException("GitHub returned an unreadable {$path} of {$repo}");
+        }
+
+        return $content;
+    }
+
     // --- Git data and pull requests (Trongate upgrades) ------------------------
 
     /**

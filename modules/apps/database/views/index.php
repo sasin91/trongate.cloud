@@ -2,8 +2,8 @@
 /**
  * apps/{id}/database (Database::index): the workspace, laid out like TablePlus.
  * A sidebar of tables, tabs along the top, and one view in the middle:
- * data (views/_data.php), structure (views/_structure.php), diagram (views/_diagram.php), or SQL with its
- * result, history and backups (views/_sql.php).
+ * data (views/_data.php), structure (views/_structure.php), diagram (views/_diagram.php), SQL with its
+ * result, history and backups (views/_sql.php), or how the database differs from schema.sql (views/_schema.php).
  *
  * Expects plain values from Database::_workspace_data: $app, $urls, $live_state,
  * $can_rollback, $base, $database_name, $view, $error, $table_name,
@@ -29,6 +29,7 @@ $is_sql_view = in_array($view, ['sql', 'history', 'backups'], true);
         <symbol id="db-icon-table" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="2" fill="none" stroke="currentColor"/><path d="M1.5 6.5h13M6 6.5v7" stroke="currentColor"/></symbol>
         <symbol id="db-icon-view" viewBox="0 0 16 16"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z" fill="none" stroke="currentColor"/><circle cx="8" cy="8" r="2" fill="currentColor"/></symbol>
         <symbol id="db-icon-sql" viewBox="0 0 16 16"><path d="M5 4 1.5 8 5 12M11 4l3.5 4L11 12" fill="none" stroke="currentColor" stroke-width="1.4"/></symbol>
+        <symbol id="db-icon-schema" viewBox="0 0 16 16"><path d="M2 4.5h7M2 8h12M2 11.5h7M12 2.5v4M10 4.5h4M10 11.5h4" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
     </svg>
 
     <div class="db-ws">
@@ -96,6 +97,8 @@ $is_sql_view = in_array($view, ['sql', 'history', 'backups'], true);
         <section class="db-body">
             <?php if ($is_sql_view): ?>
                 <?php require __DIR__ . '/_sql.php'; ?>
+            <?php elseif ($view === 'schema'): ?>
+                <?php require __DIR__ . '/_schema.php'; ?>
             <?php elseif ($table_name === null): ?>
                 <div class="db-empty">
                     <p>Pick a table on the left to see its rows, or run SQL.</p>

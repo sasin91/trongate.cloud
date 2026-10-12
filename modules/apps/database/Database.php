@@ -6,6 +6,7 @@ require_once APPPATH . 'modules/platform/live/App_database.php';
 require_once APPPATH . 'modules/platform/live/App_password.php';
 require_once __DIR__ . '/traits/App_database_guard.php';
 require_once __DIR__ . '/traits/App_database_diagram.php';
+require_once __DIR__ . '/traits/App_database_schema.php';
 
 /**
  * Child module of apps: apps/{id}/database, browse and edit an app's own
@@ -22,6 +23,7 @@ class Database extends Trongate {
     use App_page;
     use App_database_guard;
     use App_database_diagram;
+    use App_database_schema;
 
     /** mx-build-modal for the Change password form (views/_password_form.php) */
     const PASSWORD_MODAL = '{"id":"db-password-modal","modalHeading":"Change password","width":"32rem","marginTop":"8vh"}';
@@ -36,7 +38,7 @@ class Database extends Trongate {
     const ADD_ROW_MODAL = '{"id":"db-row-modal","modalHeading":"Add row","width":"44rem","marginTop":"6vh"}';
 
     /** What the workspace shows (?view=); data is the default */
-    const VIEWS = ['data', 'structure', 'diagram', 'sql', 'history', 'backups'];
+    const VIEWS = ['data', 'structure', 'diagram', 'sql', 'history', 'backups', 'schema'];
 
     /** Tables kept open as tabs along the top of the workspace, per app */
     const OPEN_TABS = 6;
@@ -46,7 +48,7 @@ class Database extends Trongate {
 
     /**
      * apps/{id}/database: the workspace. ?table= opens a table, ?view= picks
-     * data, structure, sql, history or backups, ?close= closes a table's tab,
+     * data, structure, sql, history, backups or schema, ?close= closes a table's tab,
      * and the filter bar's ?filter_column=&filter_value= becomes ?where[col]=.
      */
     function index(): void {
@@ -544,6 +546,12 @@ class Database extends Trongate {
             'error' => null,
             'backup_id' => null,
             'diagram' => null,
+            'schema_message' => null,
+            'schema_source' => null,
+            'schema_source_href' => null,
+            'schema_differences' => [],
+            'schema_summary' => '',
+            'schema_skipped' => null,
             'crumbs' => [...$this->_app_crumbs($app), ['apps/' . $app->id . '/database', 'Database']],
             'additional_includes_top' => ['apps_module/css/apps.css', 'apps-database_module/css/database.css', 'apps-database_module/css/diagram.css'],
             'additional_includes_btm' => [
@@ -563,6 +571,7 @@ class Database extends Trongate {
             try {
                 $data = $this->_load_table($app, $database, $data);
                 $data = $this->_load_diagram($app, $database, $data);
+                $data = $this->_load_schema($app, $database, $data);
             } catch (PDOException $e) {
                 $data['error'] = $this->_database_error($e);
             }
@@ -626,6 +635,20 @@ class Database extends Trongate {
         $diagram = $this->_diagram_data($app, $database, $data['tables'], $data['table']['name']);
 
         return $diagram + $data;
+    }
+
+    /**
+     * The Schema view's values (App_database_schema) when it is the view asked for
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    function _load_schema(object $app, App_database $database, array $data): array {
+        if ($data['view'] !== 'schema') {
+            return $data;
+        }
+
+        return $this->_schema_data($app, $database) + $data;
     }
 
     /**
@@ -727,7 +750,7 @@ class Database extends Trongate {
     }
 
     /**
-     * The tabs along the top: the tables opened lately, then SQL
+     * The tabs along the top: the tables opened lately, then SQL and Schema
      *
      * @param array<string, array{name: string, view: bool}> $tables
      * @return list<array{href: string, label: string, icon: string, is_current: bool, close_href: string|null}>
@@ -735,6 +758,7 @@ class Database extends Trongate {
     function _workspace_tabs(object $app, array $tables, ?string $table_name, string $view): array {
         $tabs = [];
         $is_sql = in_array($view, ['sql', 'history', 'backups'], true);
+        $is_table = !$is_sql && $view !== 'schema';
 
         foreach ($this->_open_tables($app) as $name) {
             if (!isset($tables[$name])) {
@@ -751,7 +775,7 @@ class Database extends Trongate {
                 'href' => $this->_database_url($app, ['table' => $name]),
                 'label' => $name,
                 'icon' => $tables[$name]['view'] ? 'view' : 'table',
-                'is_current' => !$is_sql && $name === $table_name,
+                'is_current' => $is_table && $name === $table_name,
                 'close_href' => $this->_database_url($app, $close),
             ];
         }
@@ -761,6 +785,14 @@ class Database extends Trongate {
             'label' => 'SQL',
             'icon' => 'sql',
             'is_current' => $is_sql,
+            'close_href' => null,
+        ];
+
+        $tabs[] = [
+            'href' => $this->_database_url($app, $this->_with_table(['view' => 'schema'], $table_name)),
+            'label' => 'Schema',
+            'icon' => 'schema',
+            'is_current' => $view === 'schema',
             'close_href' => null,
         ];
 

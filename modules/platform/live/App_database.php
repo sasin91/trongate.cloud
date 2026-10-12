@@ -284,6 +284,84 @@ class App_database {
     }
 
     /**
+     * Every base table's columns, keys and foreign keys, for the Schema view
+     * (Schema_diff::from_database), plus whether the server has
+     * explicit_defaults_for_timestamp on (it changes what a TIMESTAMP column
+     * in schema.sql becomes)
+     *
+     * @return array{columns: list<array{table: string, name: string, column_type: string, nullable: bool, default: string|null, extra: string}>, keys: list<array{table: string, name: string, non_unique: bool, index_type: string, column: string, sub_part: string|null}>, foreign_keys: list<array{table: string, name: string, column: string, parent: string, parent_column: string, on_delete: string, on_update: string}>, explicit_timestamps: bool}
+     */
+    function schema_definition(): array {
+        $columns = $this->pdo->query(<<<SQL
+            SELECT c.TABLE_NAME, c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, c.EXTRA
+            FROM information_schema.COLUMNS c
+            JOIN information_schema.TABLES t ON t.TABLE_SCHEMA = c.TABLE_SCHEMA AND t.TABLE_NAME = c.TABLE_NAME
+            WHERE c.TABLE_SCHEMA = DATABASE() AND t.TABLE_TYPE = 'BASE TABLE'
+            ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION
+        SQL)->fetchAll();
+
+        $keys = $this->pdo->query(<<<SQL
+            SELECT TABLE_NAME, INDEX_NAME, NON_UNIQUE, INDEX_TYPE, COLUMN_NAME, SUB_PART
+            FROM information_schema.STATISTICS
+            WHERE TABLE_SCHEMA = DATABASE()
+            ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX
+        SQL)->fetchAll();
+
+        $foreign_keys = $this->pdo->query(<<<SQL
+            SELECT k.TABLE_NAME, k.CONSTRAINT_NAME, k.COLUMN_NAME, k.REFERENCED_TABLE_NAME, k.REFERENCED_COLUMN_NAME, r.DELETE_RULE, r.UPDATE_RULE
+            FROM information_schema.KEY_COLUMN_USAGE k
+            JOIN information_schema.REFERENTIAL_CONSTRAINTS r ON r.CONSTRAINT_SCHEMA = k.CONSTRAINT_SCHEMA AND r.CONSTRAINT_NAME = k.CONSTRAINT_NAME AND r.TABLE_NAME = k.TABLE_NAME
+            WHERE k.TABLE_SCHEMA = DATABASE() AND k.REFERENCED_TABLE_NAME IS NOT NULL
+            ORDER BY k.TABLE_NAME, k.CONSTRAINT_NAME, k.ORDINAL_POSITION
+        SQL)->fetchAll();
+
+        $explicit_timestamps = (string) $this->pdo->query('SELECT @@explicit_defaults_for_timestamp')->fetchColumn();
+
+        $definition = [
+            'columns' => [],
+            'keys' => [],
+            'foreign_keys' => [],
+            'explicit_timestamps' => $explicit_timestamps === '1' || strtoupper($explicit_timestamps) === 'ON',
+        ];
+
+        foreach ($columns as $row) {
+            $definition['columns'][] = [
+                'table' => (string) $row['TABLE_NAME'],
+                'name' => (string) $row['COLUMN_NAME'],
+                'column_type' => (string) $row['COLUMN_TYPE'],
+                'nullable' => $row['IS_NULLABLE'] === 'YES',
+                'default' => $row['COLUMN_DEFAULT'] === null ? null : (string) $row['COLUMN_DEFAULT'],
+                'extra' => (string) $row['EXTRA'],
+            ];
+        }
+
+        foreach ($keys as $row) {
+            $definition['keys'][] = [
+                'table' => (string) $row['TABLE_NAME'],
+                'name' => (string) $row['INDEX_NAME'],
+                'non_unique' => (string) $row['NON_UNIQUE'] !== '0',
+                'index_type' => (string) $row['INDEX_TYPE'],
+                'column' => (string) $row['COLUMN_NAME'],
+                'sub_part' => $row['SUB_PART'] === null ? null : (string) $row['SUB_PART'],
+            ];
+        }
+
+        foreach ($foreign_keys as $row) {
+            $definition['foreign_keys'][] = [
+                'table' => (string) $row['TABLE_NAME'],
+                'name' => (string) $row['CONSTRAINT_NAME'],
+                'column' => (string) $row['COLUMN_NAME'],
+                'parent' => (string) $row['REFERENCED_TABLE_NAME'],
+                'parent_column' => (string) $row['REFERENCED_COLUMN_NAME'],
+                'on_delete' => (string) $row['DELETE_RULE'],
+                'on_update' => (string) $row['UPDATE_RULE'],
+            ];
+        }
+
+        return $definition;
+    }
+
+    /**
      * Where a row's foreign key leads, as the query of a Database tab URL:
      * the referenced row (table, key) when the key points at a primary key,
      * else the matching rows (table, where). Null when a value is NULL.
