@@ -36,11 +36,15 @@ final class Setup_sql {
         '#^modules/[^/]+/[^/]+/[^/]+\.sql$#i',
     ];
 
+    /** The platform database's max_allowed_packet (deploy/k8s/platform/mariadb.yaml) */
+    const PLATFORM_PACKET_BYTES = 64 * 1024 * 1024;
+
     /**
-     * All of it together. Stored encrypted, a third larger, it must fit in
-     * one write to the platform database (max_allowed_packet 64M)
+     * All of it together. Stored encrypted (base64, so 4 bytes per 3) it
+     * must fit in one write to the platform database, with 1 MB to spare
+     * for the rest of the UPDATE and the nonce
      */
-    const MAX_BYTES = 45 * 1024 * 1024;
+    const MAX_BYTES = self::PLATFORM_PACKET_BYTES / 4 * 3 - 1024 * 1024;
 
     /** Statements a dump wraps itself in; each statement runs on its own, so they are left out */
     const SKIPPED = '/^(START\s+TRANSACTION|BEGIN|COMMIT|ROLLBACK|(UN)?LOCK\s+TABLES?)\b/i';
@@ -114,7 +118,7 @@ final class Setup_sql {
         $plan = ['statements' => [], 'skipped' => 0, 'refusal' => null];
 
         if (strlen($sql) > self::MAX_BYTES) {
-            $plan['refusal'] = 'That is more than 45 MB of SQL. Import it from the Database tab in parts.';
+            $plan['refusal'] = 'That is more than ' . self::max_megabytes() . ' MB of SQL. Import it from the Database tab in parts.';
 
             return $plan;
         }
@@ -176,6 +180,10 @@ final class Setup_sql {
         }
 
         return null;
+    }
+
+    static function max_megabytes(): int {
+        return intdiv(self::MAX_BYTES, 1024 * 1024);
     }
 
     /**

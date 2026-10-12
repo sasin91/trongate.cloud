@@ -125,7 +125,7 @@ trait App_setup_sql {
         $sql = Setup_sql::join($statements);
 
         if (strlen($sql) > Setup_sql::MAX_BYTES) {
-            return 'That is more than 45 MB of SQL. Pick fewer files and import the rest from the Database tab.';
+            return 'That is more than ' . Setup_sql::max_megabytes() . ' MB of SQL. Pick fewer files and import the rest from the Database tab.';
         }
 
         $this->setup_sql = $sql;
