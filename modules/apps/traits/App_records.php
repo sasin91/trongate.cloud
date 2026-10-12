@@ -83,11 +83,11 @@ trait App_records {
     }
 
     /**
-     * The SQL the app's database starts with (Starting_sql); its first
+     * The SQL the app's database starts with (Setup_sql); its first
      * deploy runs it
      */
-    function set_starting_sql(int $app_id, string $sql): void {
-        $this->db->query_bind('UPDATE app SET starting_sql = :sql WHERE id = :app_id', ['app_id' => $app_id, 'sql' => $sql]);
+    function set_setup_sql(int $app_id, string $sql): void {
+        $this->db->query_bind("UPDATE app SET setup_sql = :sql, setup_sql_status = 'pending' WHERE id = :app_id", ['app_id' => $app_id, 'sql' => $sql]);
     }
 
     /**

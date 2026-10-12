@@ -238,11 +238,13 @@ CREATE TABLE app (
   mail_capture TINYINT(1) NOT NULL DEFAULT 1,
   -- Requested by the rollout gate and smoke test; '' is the home page (Manifests::health_path)
   health_path VARCHAR(200) NOT NULL DEFAULT '',
-  -- From the new-app wizard (Starting_sql): run and cleared by the first deploy,
-  -- or, when a statement failed, the statements from that one on
-  starting_sql MEDIUMTEXT NULL,
-  -- Why the starting SQL stopped; it is not run again
-  starting_sql_error TEXT NULL,
+  -- From the new-app wizard (Setup_sql), run by the first deploy. Once it
+  -- failed, only the statements from the failed one on.
+  setup_sql MEDIUMTEXT NULL,
+  -- NULL when the wizard had none
+  setup_sql_status ENUM('pending', 'done', 'failed') NULL,
+  -- Why it stopped; it is not run again
+  setup_sql_error TEXT NULL,
   database_server_id INT NULL,
   current_deployment_id INT NULL,
 
@@ -490,4 +492,4 @@ INSERT INTO schema_migrations (name) VALUES
   ('0007_drop_php_session'),
   ('0008_app_health_path'),
   ('0009_app_environments'),
-  ('0010_app_starting_sql');
+  ('0010_app_setup_sql');

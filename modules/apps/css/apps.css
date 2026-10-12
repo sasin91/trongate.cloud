@@ -14,8 +14,8 @@
     border-radius: 8px;
 }
 
-/* Overview: the starting SQL from the new-app wizard stopped (views/_overview.php) */
-.ov-starting-sql {
+/* Overview: the setup SQL from the new-app wizard stopped (views/_overview.php) */
+.ov-setup-sql {
     background: #fffbeb;
     border: 1px solid #fde68a;
     color: #78350f;
@@ -24,15 +24,15 @@
     margin-bottom: 1rem;
 }
 
-.ov-starting-sql p {
+.ov-setup-sql p {
     margin: 0;
 }
 
-.ov-starting-sql details {
+.ov-setup-sql details {
     margin: 0.5rem 0;
 }
 
-.ov-starting-sql pre {
+.ov-setup-sql pre {
     max-height: 240px;
     overflow: auto;
     background: var(--white);

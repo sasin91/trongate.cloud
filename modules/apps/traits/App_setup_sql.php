@@ -1,25 +1,25 @@
 <?php
 
-require_once APPPATH . 'modules/platform/live/Starting_sql.php';
+require_once APPPATH . 'modules/platform/live/Setup_sql.php';
 
 /**
  * The new-app wizard's optional Database question: .sql files from the
- * repository (Starting_sql::candidates, the likely ones ticked), another
+ * repository (Setup_sql::candidates, the likely ones ticked), another
  * file by path, and SQL typed in. They are read and checked when the form
- * is submitted, stored in app.starting_sql, and run once by the first
- * deploy, right after it creates the database (Platform_task::run_starting_sql).
+ * is submitted, stored in app.setup_sql, and run once by the first
+ * deploy, right after it creates the database (Platform_task::run_setup_sql).
  *
  * Used by App_form. The using controller must also use Customer_guard and
  * Provider_clients.
  */
-trait App_starting_sql {
+trait App_setup_sql {
 
     /**
-     * What _validate_starting_sql read and checked, for _save_starting_sql
+     * What _validate_setup_sql read and checked, for _save_setup_sql
      *
      * @var string|null
      */
-    private ?string $starting_sql = null;
+    private ?string $setup_sql = null;
 
     /**
      * The Database question as posted, when the form is shown again after a
@@ -28,7 +28,7 @@ trait App_starting_sql {
      *
      * @return array{sql_files: list<array{path: string, checked: bool}>, sql_files_loaded_for: string, sql_path: string, sql: string, has_error: bool}
      */
-    function _starting_sql_form(): array {
+    function _setup_sql_form(): array {
         $offered = post('sql_offered');
         $checked = $this->_posted_list('sql_files');
         $files = [];
@@ -43,9 +43,9 @@ trait App_starting_sql {
             'sql_files' => $files,
             'sql_files_loaded_for' => is_array($offered) ? (string) post('repository') . '@' . (string) post('repository_branch') : '',
             'sql_path' => (string) post('sql_path', true),
-            'sql' => (string) post('starting_sql'),
+            'sql' => (string) post('setup_sql'),
             // The form opens on this question when its check failed
-            'has_error' => isset($_SESSION['form_submission_errors']['starting_sql']),
+            'has_error' => isset($_SESSION['form_submission_errors']['setup_sql']),
         ];
     }
 
@@ -70,7 +70,7 @@ trait App_starting_sql {
         $read_failed = false;
 
         try {
-            $sql_files = Starting_sql::candidates(array_keys($client->tree($repository, $branch)));
+            $sql_files = Setup_sql::candidates(array_keys($client->tree($repository, $branch)));
         } catch (Client_Error | RuntimeException $e) {
             error_log("New app: could not list the .sql files of {$repository}@{$branch}: {$e->getMessage()}");
             $sql_files = [];
@@ -84,13 +84,13 @@ trait App_starting_sql {
     /**
      * Validation callback for the Database question: reads the ticked files
      * and the typed path from the branch, and checks them and the typed SQL
-     * the way they will run (Starting_sql::plan). Keeps the result for
-     * _save_starting_sql.
+     * the way they will run (Setup_sql::plan). Keeps the result for
+     * _save_setup_sql.
      */
-    function _validate_starting_sql(string $value): bool|string {
-        $this->starting_sql = null;
+    function _validate_setup_sql(string $value): bool|string {
+        $this->setup_sql = null;
         $paths = $this->_posted_sql_paths();
-        $typed = trim((string) post('starting_sql'));
+        $typed = trim((string) post('setup_sql'));
 
         if ($paths === [] && $typed === '') {
             return true;
@@ -109,7 +109,7 @@ trait App_starting_sql {
         $statements = [];
 
         foreach ($sources as $name => $sql) {
-            $plan = Starting_sql::plan($sql);
+            $plan = Setup_sql::plan($sql);
 
             if ($plan['refusal'] !== null) {
                 return $name . ', ' . lcfirst($plan['refusal']);
@@ -122,13 +122,13 @@ trait App_starting_sql {
             return 'The chosen SQL has no statements to run.';
         }
 
-        $sql = Starting_sql::join($statements);
+        $sql = Setup_sql::join($statements);
 
-        if (strlen($sql) > Starting_sql::MAX_BYTES) {
+        if (strlen($sql) > Setup_sql::MAX_BYTES) {
             return 'That is more than 16 MB of SQL. Pick fewer files and import the rest from the Database tab.';
         }
 
-        $this->starting_sql = $sql;
+        $this->setup_sql = $sql;
 
         return true;
     }
@@ -225,13 +225,13 @@ trait App_starting_sql {
     }
 
     /**
-     * Store what _validate_starting_sql read, for the first deploy to run
+     * Store what _validate_setup_sql read, for the first deploy to run
      */
-    function _save_starting_sql(int $app_id): void {
-        if ($this->starting_sql === null) {
+    function _save_setup_sql(int $app_id): void {
+        if ($this->setup_sql === null) {
             return;
         }
 
-        $this->model->set_starting_sql($app_id, $this->starting_sql);
+        $this->model->set_setup_sql($app_id, $this->setup_sql);
     }
 }

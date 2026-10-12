@@ -5,8 +5,8 @@ require_once __DIR__ . '/App_database.php';
 /**
  * The SQL a new app's database starts with: .sql files from its repository
  * and SQL typed into the new-app wizard. The wizard stores it in
- * app.starting_sql, and the first deploy runs it once, right after the
- * database is created (Platform_task::run_starting_sql).
+ * app.setup_sql, and the first deploy runs it once, right after the
+ * database is created (Platform_task::run_setup_sql).
  *
  * Statements are checked like the Database tab's SQL box, with changes
  * allowed and without its size limit. The transaction and lock statements a
@@ -15,7 +15,7 @@ require_once __DIR__ . '/App_database.php';
  *
  * Framework-free: the panel plans it, the worker runs it.
  */
-final class Starting_sql {
+final class Setup_sql {
 
     /** Where schema.sql is looked for, in this order (also the Database tab's Schema view) */
     const SCHEMA_PATHS = ['schema.sql', 'database/schema.sql', 'db/schema.sql', 'sql/schema.sql'];

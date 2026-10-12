@@ -1,6 +1,6 @@
 <?php
 
-require_once __DIR__ . '/../../live/Starting_sql.php';
+require_once __DIR__ . '/../../live/Setup_sql.php';
 
 /**
  * Helpers shared by the platform task scripts (deploy, rollback, destroy_app,
@@ -34,7 +34,7 @@ class Platform_task {
     const FALLBACK_BODIES = ['404 page not found', 'no available server'];
 
     /**
-     * Attempts, 2 s apart, to open a new app's database for its starting SQL:
+     * Attempts, 2 s apart, to open a new app's database for its setup SQL:
      * mariadb-operator creates the database, user and grant after the deploy
      * applies them
      */
@@ -465,7 +465,7 @@ class Platform_task {
         $current_id = (int) ($app['current_deployment_id'] ?? 0);
 
         self::apply($runtime, $log, $app, $deployment, $database);
-        self::run_starting_sql($runtime, $log, (int) $app['id'], $database);
+        self::run_setup_sql($runtime, $log, (int) $app['id'], $database);
 
         if (self::wait_for_rollout($runtime, $log, $app) && self::smoke_test($runtime, $log, $app)) {
             return true;
@@ -477,16 +477,16 @@ class Platform_task {
     }
 
     /**
-     * Run the SQL the app's database starts with (app.starting_sql), once:
+     * Run the SQL the app's database is set up with (app.setup_sql), once:
      * on the first deploy that reaches the rollout, right after apply()
      * created the database, so the app's tables are there before the smoke
      * test. A failure is recorded for the app page and logged, and the
      * deploy carries on.
      */
-    static function run_starting_sql(Runtime $runtime, Task_log $log, int $app_id, array $database): void {
+    static function run_setup_sql(Runtime $runtime, Task_log $log, int $app_id, array $database): void {
         $pending = self::row(
             $runtime->db(),
-            'SELECT starting_sql FROM app WHERE id = ? AND starting_sql IS NOT NULL AND starting_sql_error IS NULL',
+            "SELECT setup_sql FROM app WHERE id = ? AND setup_sql_status = 'pending'",
             [$app_id],
         );
 
@@ -494,12 +494,12 @@ class Platform_task {
             return;
         }
 
-        $statements = Starting_sql::plan((string) $pending['starting_sql'])['statements'];
-        $log->info('Running the starting SQL: ' . count($statements) . (count($statements) === 1 ? ' statement' : ' statements'));
+        $statements = Setup_sql::plan((string) $pending['setup_sql'])['statements'];
+        $log->info('Running the setup SQL: ' . count($statements) . (count($statements) === 1 ? ' statement' : ' statements'));
         $app_database = self::open_new_database($log, $database, $app_id);
 
         if ($app_database === null) {
-            self::starting_sql_failed($runtime, $log, $app_id, 'The database was not ready, so none of it ran.', Starting_sql::join($statements));
+            self::setup_sql_failed($runtime, $log, $app_id, 'The database was not ready, so none of it ran.', Setup_sql::join($statements));
             return;
         }
 
@@ -509,12 +509,12 @@ class Platform_task {
             $number = $failure['index'] + 1;
             $ran = $failure['index'] === 0 ? 'None of it ran.' : 'Statements 1 to ' . $failure['index'] . ' ran.';
             $message = "Statement {$number} of " . count($statements) . " failed: {$failure['error']} {$ran}";
-            self::starting_sql_failed($runtime, $log, $app_id, $message, Starting_sql::join(array_slice($statements, $failure['index'])));
+            self::setup_sql_failed($runtime, $log, $app_id, $message, Setup_sql::join(array_slice($statements, $failure['index'])));
             return;
         }
 
-        self::execute($runtime->db(), 'UPDATE app SET starting_sql = NULL WHERE id = ?', [$app_id]);
-        $log->info('Ran the starting SQL');
+        self::execute($runtime->db(), "UPDATE app SET setup_sql_status = 'done' WHERE id = ?", [$app_id]);
+        $log->info('Ran the setup SQL');
     }
 
     /**
@@ -541,13 +541,13 @@ class Platform_task {
         return null;
     }
 
-    static function starting_sql_failed(Runtime $runtime, Task_log $log, int $app_id, string $message, string $remaining_sql): void {
+    static function setup_sql_failed(Runtime $runtime, Task_log $log, int $app_id, string $message, string $remaining_sql): void {
         self::execute(
             $runtime->db(),
-            'UPDATE app SET starting_sql = ?, starting_sql_error = ? WHERE id = ?',
+            "UPDATE app SET setup_sql = ?, setup_sql_status = 'failed', setup_sql_error = ? WHERE id = ?",
             [$remaining_sql, $message, $app_id],
         );
-        $log->warn("The starting SQL stopped. {$message} The deploy carries on; the app page shows the SQL that did not run.");
+        $log->warn("The setup SQL stopped. {$message} The deploy carries on; the app page shows the SQL that did not run.");
     }
 
     /**

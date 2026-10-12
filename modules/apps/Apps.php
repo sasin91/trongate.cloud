@@ -102,7 +102,7 @@ class Apps extends Trongate {
             'live_state' => $this->_live_app_state($app),
             'log_rates' => $this->_log_rates($app),
             'database_name' => Manifests::database_name((int) $app->id),
-            'starting_sql_failure' => $this->_starting_sql_failure($app),
+            'setup_sql_failure' => $this->_setup_sql_failure($app),
             'services' => $this->model->project_services($project_id),
             'crumbs' => $this->_app_crumbs($app),
             'additional_includes_top' => [
@@ -115,19 +115,19 @@ class Apps extends Trongate {
     }
 
     /**
-     * Why the app's starting SQL stopped and the SQL that did not run, or
+     * Why the app's setup SQL stopped and the SQL that did not run, or
      * null when it ran (or there was none)
      *
      * @return array{message: string, remaining_sql: string}|null
      */
-    function _starting_sql_failure(object $app): ?array {
-        if (empty($app->starting_sql_error)) {
+    function _setup_sql_failure(object $app): ?array {
+        if (($app->setup_sql_status ?? null) !== 'failed') {
             return null;
         }
 
         return [
-            'message' => (string) $app->starting_sql_error,
-            'remaining_sql' => (string) $app->starting_sql,
+            'message' => (string) $app->setup_sql_error,
+            'remaining_sql' => (string) $app->setup_sql,
         ];
     }
 

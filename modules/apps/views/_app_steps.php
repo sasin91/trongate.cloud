@@ -5,7 +5,7 @@
  *
  * Expects: $provider, $repositories, $install_url, $app_types, $branches_url (returns <option>s),
  * $env_url (returns the Environment inputs), $sql_url (returns the Database question's files), $env_fields,
- * $env_loaded_for, $settings and $starting_sql (App_form::_app_form_data),
+ * $env_loaded_for, $settings and $setup_sql (App_form::_app_form_data),
  * $form_action, $q_offset (questions answered before this page), $q_total,
  * $back_href (optional link for the first question's Back).
  */
@@ -20,7 +20,7 @@ $errors = validation_errors('<p>', '</p>');
 ?>
 <div class="wz-wrap">
     <main class="wz-main">
-        <?= form_open($form_action, ['class' => 'wz-stage', 'data-steps' => '', 'data-offset' => (string) (int) $q_offset, 'data-total' => (string) (int) $q_total, 'data-branches' => $branches_url, 'data-env' => $env_url, 'data-sql' => $sql_url, 'data-provider' => $provider, 'data-error-step' => $starting_sql['has_error'] ? 'database' : '', 'data-apps-domain' => PLATFORM_APPS_DOMAIN]) ?>
+        <?= form_open($form_action, ['class' => 'wz-stage', 'data-steps' => '', 'data-offset' => (string) (int) $q_offset, 'data-total' => (string) (int) $q_total, 'data-branches' => $branches_url, 'data-env' => $env_url, 'data-sql' => $sql_url, 'data-provider' => $provider, 'data-error-step' => $setup_sql['has_error'] ? 'database' : '', 'data-apps-domain' => PLATFORM_APPS_DOMAIN]) ?>
             <?= form_hidden('provider', $provider) ?>
 
             <button type="button" class="wz-back" data-back hidden>
@@ -140,20 +140,20 @@ $errors = validation_errors('<p>', '</p>');
                     <legend>Set up its database? (optional)</legend>
                 </div>
                 <p class="wz-hint">Your app gets its own MariaDB database, already set up in <code>config/database.php</code>. This SQL runs once, on the first deploy. Later deploys never change its tables; run SQL from the app's Database tab.</p>
-                <div data-sql-files data-loaded-for="<?= $e($starting_sql['sql_files_loaded_for']) ?>">
-                    <?php if ($starting_sql['sql_files_loaded_for'] !== ''): ?>
-                        <?php $sql_files = $starting_sql['sql_files']; require __DIR__ . '/_sql_file_options.php'; ?>
+                <div data-sql-files data-loaded-for="<?= $e($setup_sql['sql_files_loaded_for']) ?>">
+                    <?php if ($setup_sql['sql_files_loaded_for'] !== ''): ?>
+                        <?php $sql_files = $setup_sql['sql_files']; require __DIR__ . '/_sql_file_options.php'; ?>
                     <?php else: ?>
                         <p class="wz-hint">Pick a repository and branch first.</p>
                     <?php endif; ?>
                 </div>
                 <label class="wz-field">
                     <span class="wz-label">Another file in the repository</span>
-                    <input type="text" name="sql_path" class="wz-in mono" placeholder="modules/shop/tables.sql" value="<?= $e($starting_sql['sql_path']) ?>" maxlength="500">
+                    <input type="text" name="sql_path" class="wz-in mono" placeholder="modules/shop/tables.sql" value="<?= $e($setup_sql['sql_path']) ?>" maxlength="500">
                 </label>
                 <label class="wz-field">
                     <span class="wz-label">Or type SQL</span>
-                    <textarea name="starting_sql" class="wz-in mono wz-sql" rows="5" spellcheck="false" placeholder="CREATE TABLE posts (id INT PRIMARY KEY AUTO_INCREMENT, title VARCHAR(255));"><?= $e($starting_sql['sql']) ?></textarea>
+                    <textarea name="setup_sql" class="wz-in mono wz-sql" rows="5" spellcheck="false" placeholder="CREATE TABLE posts (id INT PRIMARY KEY AUTO_INCREMENT, title VARCHAR(255));"><?= $e($setup_sql['sql']) ?></textarea>
                     <span class="wz-hint">Runs after the files. If a statement fails, the deploy carries on and the app page shows what did not run.</span>
                 </label>
             </fieldset>

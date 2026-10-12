@@ -723,7 +723,7 @@ class App_database {
     }
 
     /**
-     * Run statements Starting_sql::plan() allowed, one after another, each on
+     * Run statements Setup_sql::plan() allowed, one after another, each on
      * its own with STATEMENT_SECONDS: nothing is rolled back, as an import
      * into an empty database is mostly CREATE TABLE, which MariaDB commits at
      * once anyway. Stops at the first one that fails.

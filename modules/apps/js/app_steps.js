@@ -235,7 +235,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const files = sqlFiles.querySelectorAll('input[type=checkbox]:checked').length + (form.querySelector('[name="sql_path"]').value.trim() === '' ? 0 : 1);
             const parts = [];
             if (files > 0) parts.push(files + (files === 1 ? ' SQL file' : ' SQL files'));
-            if (form.querySelector('[name="starting_sql"]').value.trim() !== '') parts.push('typed SQL');
+            if (form.querySelector('[name="setup_sql"]').value.trim() !== '') parts.push('typed SQL');
             sheet.database.textContent = parts.join(' + ');
         }
         if (sheet.address) sheet.address.textContent = slug ? slug + '.' + form.dataset.appsDomain : '';
