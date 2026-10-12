@@ -1,9 +1,10 @@
 <?php
 /**
- * New-app questions, one at a time: repository, branch, name, Trongate version.
+ * New-app questions, one at a time: repository, branch, environment, name, Trongate version, settings.
  * Shared by onboarding/app and projects/{id}/apps/new.
  *
  * Expects: $provider, $repositories, $install_url, $app_types, $branches_url (returns <option>s),
+ * $env_url (returns the Environment inputs), $env_fields, $env_loaded_for and $settings (App_form::_app_form_data),
  * $form_action, $q_offset (questions answered before this page), $q_total,
  * $back_href (optional link for the first question's Back).
  */
@@ -18,7 +19,7 @@ $errors = validation_errors('<p>', '</p>');
 ?>
 <div class="wz-wrap">
     <main class="wz-main">
-        <?= form_open($form_action, ['class' => 'wz-stage', 'data-steps' => '', 'data-offset' => (string) (int) $q_offset, 'data-total' => (string) (int) $q_total, 'data-branches' => $branches_url, 'data-provider' => $provider, 'data-apps-domain' => PLATFORM_APPS_DOMAIN]) ?>
+        <?= form_open($form_action, ['class' => 'wz-stage', 'data-steps' => '', 'data-offset' => (string) (int) $q_offset, 'data-total' => (string) (int) $q_total, 'data-branches' => $branches_url, 'data-env' => $env_url, 'data-provider' => $provider, 'data-apps-domain' => PLATFORM_APPS_DOMAIN]) ?>
             <?= form_hidden('provider', $provider) ?>
 
             <button type="button" class="wz-back" data-back hidden>
@@ -81,9 +82,23 @@ $errors = validation_errors('<p>', '</p>');
                 </label>
             </fieldset>
 
-            <fieldset class="wz-step" data-step="name" data-label="Name">
+            <fieldset class="wz-step" data-step="env" data-label="Environment">
                 <div class="wz-q">
                     <span class="wz-num"><?= $q_offset + 3 ?> &rarr;</span>
+                    <legend>Fill in its environment variables.</legend>
+                </div>
+                <div data-env-fields data-loaded-for="<?= $e($env_loaded_for) ?>">
+                    <?php if ($env_loaded_for !== ''): ?>
+                        <?php require __DIR__ . '/_env_suggestion_fields.php'; ?>
+                    <?php else: ?>
+                        <p class="wz-hint">Pick a repository and branch first.</p>
+                    <?php endif; ?>
+                </div>
+            </fieldset>
+
+            <fieldset class="wz-step" data-step="name" data-label="Name">
+                <div class="wz-q">
+                    <span class="wz-num"><?= $q_offset + 4 ?> &rarr;</span>
                     <legend>Name it. That's your address.</legend>
                 </div>
                 <label class="wz-field">
@@ -101,7 +116,7 @@ $errors = validation_errors('<p>', '</p>');
 
             <fieldset class="wz-step" data-step="type" data-label="Trongate version">
                 <div class="wz-q">
-                    <span class="wz-num"><?= $q_offset + 4 ?> &rarr;</span>
+                    <span class="wz-num"><?= $q_offset + 5 ?> &rarr;</span>
                     <legend>Which Trongate is it built on?</legend>
                 </div>
                 <div class="wz-choices row">
@@ -117,6 +132,64 @@ $errors = validation_errors('<p>', '</p>');
                     <?php endforeach; ?>
                 </div>
                 <p class="wz-hint wz-tip"><strong>Tip:</strong> your app gets its own MariaDB database, already set up in <code>config/database.php</code>. Deploys never change its tables, so run your modules' <code>.sql</code> files from the app's Database tab.</p>
+            </fieldset>
+
+            <fieldset class="wz-step" data-step="settings" data-label="Settings">
+                <div class="wz-q">
+                    <span class="wz-num"><?= $q_offset + 6 ?> &rarr;</span>
+                    <legend>Anything else before launch?</legend>
+                </div>
+                <div class="wz-settings">
+                    <label class="wz-field">
+                        <span class="wz-label">Trongate ENV</span>
+                        <input type="text" name="trongate_env" class="wz-in mono" list="wz-trongate-envs" value="<?= $e($settings['trongate_env']) ?>" required>
+                        <datalist id="wz-trongate-envs">
+                            <?php foreach (Trongate_config::ENV_SUGGESTIONS as $option): ?>
+                                <option value="<?= $e($option) ?>">
+                            <?php endforeach; ?>
+                        </datalist>
+                        <span class="wz-hint">In <code>dev</code>, Trongate shows error details. Use <code>prod</code> to hide them from visitors.</span>
+                    </label>
+                    <label class="wz-field">
+                        <span class="wz-label">Health check path</span>
+                        <input type="text" name="health_path" class="wz-in mono" placeholder="/" value="<?= $e($settings['health_path']) ?>">
+                        <span class="wz-hint">A deploy goes live once this path answers with a 2xx or 3xx. The home page by default.</span>
+                    </label>
+                    <label class="wz-field">
+                        <span class="wz-label">Extra PHP extensions</span>
+                        <input type="text" name="php_extensions" class="wz-in mono" placeholder="gd, intl" value="<?= $e($settings['php_extensions']) ?>">
+                    </label>
+                    <label class="wz-field">
+                        <span class="wz-label">Persistent paths</span>
+                        <textarea name="persistent_paths" class="wz-in mono" rows="2" placeholder="modules/blog/uploads"><?= $e($settings['persistent_paths']) ?></textarea>
+                        <span class="wz-hint">One folder per line. Files written there survive deploys.</span>
+                    </label>
+                    <div class="wz-field">
+                        <span class="wz-label">Background process</span>
+                        <div class="wz-process">
+                            <input type="text" name="process_name[]" class="wz-in mono" placeholder="worker" aria-label="Process name" value="<?= $e($settings['process_name']) ?>">
+                            <input type="text" name="process_command[]" class="wz-in mono" placeholder="php bin/queue.php work" aria-label="Process command" value="<?= $e($settings['process_command']) ?>">
+                            <input type="hidden" name="process_replicas[]" value="1">
+                        </div>
+                        <span class="wz-hint">Runs next to your app and never sleeps, such as a queue worker. Add more in Settings.</span>
+                    </div>
+                    <label class="wz-toggle-row">
+                        <span>
+                            <strong>Always on</strong>
+                            <small>Skip the few seconds an idle app takes to wake up.</small>
+                        </span>
+                        <input type="hidden" name="always_on" value="0">
+                        <input type="checkbox" name="always_on" value="1" class="wz-switch" <?= $settings['always_on'] ? 'checked' : '' ?>>
+                    </label>
+                    <label class="wz-toggle-row">
+                        <span>
+                            <strong>Capture mail</strong>
+                            <small>Mail your app sends shows up on its Mail tab instead of being delivered.</small>
+                        </span>
+                        <input type="hidden" name="mail_capture" value="0">
+                        <input type="checkbox" name="mail_capture" value="1" class="wz-switch" <?= $settings['mail_capture'] ? 'checked' : '' ?>>
+                    </label>
+                </div>
             </fieldset>
 
             <div class="wz-nav">
@@ -135,6 +208,7 @@ $errors = validation_errors('<p>', '</p>');
             <dl>
                 <div><dt>repository</dt><dd data-show="repository"></dd></div>
                 <div><dt>branch</dt><dd data-show="branch"></dd></div>
+                <div><dt>env</dt><dd data-show="env"></dd></div>
                 <div><dt>address</dt><dd data-show="address"></dd></div>
                 <div><dt>domain</dt><dd data-show="domain"></dd></div>
                 <div><dt>trongate</dt><dd data-show="type"></dd></div>

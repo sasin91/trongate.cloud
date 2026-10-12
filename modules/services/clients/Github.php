@@ -94,6 +94,46 @@ class Github extends Client {
         return $this->request('GET', "/repos/{$repo}/branches?per_page={$per_page}");
     }
 
+    /**
+     * The PHP files directly in config/ at a branch: file name => source.
+     * No config/ folder gives none; files over $max_bytes and any past
+     * $max_files are left out.
+     *
+     * @return array<string, string>
+     */
+    function config_php_files(string $repo, string $branch, int $max_files, int $max_bytes): array {
+        try {
+            $entries = $this->request('GET', "/repos/{$repo}/contents/config?ref=" . rawurlencode($branch));
+        } catch (Client_Error $e) {
+            if ($e->getCode() === 404) {
+                return [];
+            }
+
+            throw $e;
+        }
+
+        // config is a file, not a folder
+        if (!array_is_list($entries)) {
+            return [];
+        }
+
+        $files = [];
+
+        foreach ($entries as $entry) {
+            if (count($files) >= $max_files) {
+                break;
+            }
+
+            $is_php_file = ($entry['type'] ?? '') === 'file' && str_ends_with((string) ($entry['name'] ?? ''), '.php');
+
+            if ($is_php_file && (int) ($entry['size'] ?? 0) <= $max_bytes) {
+                $files[(string) $entry['name']] = $this->blob($repo, (string) $entry['sha']);
+            }
+        }
+
+        return $files;
+    }
+
     // --- Git data and pull requests (Trongate upgrades) ------------------------
 
     /**

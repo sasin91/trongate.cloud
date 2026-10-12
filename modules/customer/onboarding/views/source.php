@@ -10,7 +10,7 @@
 </head>
 
 <body class="wz-body">
-    <?php $q_current = 1; $q_total = 5; require APPPATH . 'modules/apps/views/_wizard_top.php'; ?>
+    <?php $q_current = 1; $q_total = 7; require APPPATH . 'modules/apps/views/_wizard_top.php'; ?>
 
     <div class="wz-wrap">
         <main class="wz-main">

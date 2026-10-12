@@ -253,6 +253,55 @@
     border-radius: 4px;
 }
 
+/* Environment question: one input per variable config/ reads */
+.wz-env {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    max-height: 50vh;
+    overflow-y: auto;
+    padding: 2px;
+}
+
+.wz-env .wz-label {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.wz-env .wz-label code {
+    font-family: var(--wz-mono);
+}
+
+.wz-env .wz-label small {
+    color: var(--wz-muted);
+    font-weight: 400;
+}
+
+/* Settings question: the app's Settings page, in short */
+.wz-settings {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.wz-settings textarea.wz-in {
+    resize: vertical;
+}
+
+.wz-process {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 8px;
+}
+
+@media (max-width: 640px) {
+    .wz-process {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* Choice cards (radio buttons) */
 .wz-choices {
     display: flex;
