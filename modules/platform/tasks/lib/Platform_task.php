@@ -444,7 +444,7 @@ class Platform_task {
 
     /**
      * Roll $deployment out and keep it only when it passes: the rollout must
-     * finish (a new pod is ready only once its home page answers, see
+     * finish (a new pod is ready only once its home page, or health check path, answers, see
      * Manifests::_deployment) and the smoke test must pass. Until the new pod
      * is ready the old one keeps serving. On failure the app's current
      * deployment, the last one that passed, is applied again (restore()), so
@@ -526,7 +526,8 @@ class Platform_task {
     }
 
     /**
-     * Request the app's public URL until it answers 200 with a page of its own.
+     * Request the app's public URL (at its health check path, Manifests::health_path)
+     * until it answers 200 with a page of its own.
      *
      * A 200 that is only the router's fallback text (FALLBACK_BODIES) does not
      * count, nor does Sablier's "starting" page: a sleeping app is woken by
@@ -536,7 +537,7 @@ class Platform_task {
      * go to the deploy log.
      */
     static function smoke_test(Runtime $runtime, Task_log $log, array $app): bool {
-        $url = Trongate_config::base_url($app);
+        $url = rtrim(Trongate_config::base_url($app), '/') . Manifests::health_path($app);
         $kube = $runtime->kube();
         $namespace = Manifests::namespace_name($app);
         $name = Manifests::app_name((int) $app['id']);

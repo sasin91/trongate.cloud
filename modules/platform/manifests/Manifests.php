@@ -63,13 +63,16 @@ class Manifests {
     ];
 
     // Rollout gate (see _deployment()): a new pod takes no traffic until its
-    // home page answers 2xx/3xx, for up to STARTUP_PROBE_PERIOD *
+    // home page (or health_path()) answers 2xx/3xx, for up to STARTUP_PROBE_PERIOD *
     // STARTUP_PROBE_FAILURES seconds (about 2 minutes, like the smoke test).
     // The old pod keeps serving meanwhile; a rollout that makes no progress
     // for PROGRESS_DEADLINE_SECONDS fails and the deploy restores the old one.
     const STARTUP_PROBE_PERIOD = 3;
     const STARTUP_PROBE_FAILURES = 40;
     const PROGRESS_DEADLINE_SECONDS = 180;
+
+    /** An app's health check path (health_path()): absolute, no query, no dot or empty segments */
+    const HEALTH_PATH_PATTERN = '#^(?!.*//)(?!.*/\.{1,2}(?:/|$))/[A-Za-z0-9._~/-]{0,199}$#';
 
     const INIT_RESOURCES = [
         'requests' => ['cpu' => '10m', 'memory' => '32Mi', 'ephemeral-storage' => '64Mi'],
@@ -357,6 +360,17 @@ class Manifests {
         }
 
         return array_values($clean);
+    }
+
+    /**
+     * The path the rollout gate and the smoke test request (app.health_path):
+     * the home page unless the app names another, e.g. /health for an API
+     * whose home page is a 404. Anything not HEALTH_PATH_PATTERN is the home page.
+     */
+    static function health_path(array $app): string {
+        $path = trim((string) ($app['health_path'] ?? ''));
+
+        return preg_match(self::HEALTH_PATH_PATTERN, $path) ? $path : '/';
     }
 
     /**
@@ -1138,15 +1152,15 @@ class Manifests {
                             ['name' => 'XDG_DATA_HOME', 'value' => '/tmp/caddy/data'],
                         ],
                         'volumeMounts' => $mounts,
-                        // The gate: until the home page answers (any 2xx or
-                        // 3xx), the pod is not ready, takes no traffic and the
-                        // old pod is not removed. A startup probe runs only
-                        // until it first passes, so the app is not polled for
-                        // as long as it runs; the TCP readiness probe takes
-                        // over after it.
+                        // The gate: until the home page (or the app's health
+                        // check path) answers (any 2xx or 3xx), the pod is not
+                        // ready, takes no traffic and the old pod is not
+                        // removed. A startup probe runs only until it first
+                        // passes, so the app is not polled for as long as it
+                        // runs; the TCP readiness probe takes over after it.
                         'startupProbe' => [
                             'httpGet' => [
-                                'path' => '/',
+                                'path' => self::health_path($app),
                                 'port' => 'http',
                                 'httpHeaders' => [['name' => 'Host', 'value' => (string) parse_url($o['base_url'], PHP_URL_HOST)]],
                             ],
