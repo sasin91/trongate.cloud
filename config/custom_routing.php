@@ -24,6 +24,7 @@ $routes = [
     'onboarding' => 'customer-onboarding',
     'onboarding/branches' => 'customer-onboarding/repository_branch_options',
     'onboarding/env-suggestions' => 'customer-onboarding/env_suggestion_fields',
+    'onboarding/sql-files' => 'customer-onboarding/sql_file_options',
     'onboarding/(:any)' => 'customer-onboarding/$1',
 
     // Projects (apps grouped in one namespace, with members)
@@ -46,6 +47,7 @@ $routes = [
     // Apps (each in one project; ids are global, membership is checked per request)
     'apps/branches' => 'apps/repository_branch_options',
     'apps/env-suggestions' => 'apps/env_suggestion_fields',
+    'apps/sql-files' => 'apps/sql_file_options',
     'apps/(:num)/deploy' => 'apps/deploy/$1',
     'apps/(:num)/rollback' => 'apps/rollback/$1',
     'apps/(:num)/settings' => 'apps/settings/$1',

@@ -102,6 +102,7 @@ class Apps extends Trongate {
             'live_state' => $this->_live_app_state($app),
             'log_rates' => $this->_log_rates($app),
             'database_name' => Manifests::database_name((int) $app->id),
+            'setup_sql_failure' => $this->_setup_sql_failure($app),
             'services' => $this->model->project_services($project_id),
             'crumbs' => $this->_app_crumbs($app),
             'additional_includes_top' => [
@@ -111,6 +112,29 @@ class Apps extends Trongate {
         ];
         $this->module('templates');
         $this->templates->customer($data);
+    }
+
+    /**
+     * Why the app's setup SQL stopped and the SQL that did not run, or
+     * null when it ran (or there was none)
+     *
+     * @return array{message: string, remaining_sql: string}|null
+     */
+    function _setup_sql_failure(object $app): ?array {
+        if (($app->setup_sql_status ?? null) !== 'failed') {
+            return null;
+        }
+
+        $remaining_sql = Setup_sql::decrypt((string) $app->setup_sql);
+
+        if ($remaining_sql === null) {
+            $remaining_sql = '-- It could not be decrypted (APP_KEY changed).';
+        }
+
+        return [
+            'message' => (string) $app->setup_sql_error,
+            'remaining_sql' => $remaining_sql,
+        ];
     }
 
     /**

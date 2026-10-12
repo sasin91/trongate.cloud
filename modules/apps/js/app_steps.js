@@ -125,6 +125,37 @@ document.addEventListener('DOMContentLoaded', function () {
 
     branch.addEventListener('change', loadEnv);
 
+    // Database: the branch's .sql files, read again only when the branch changes
+    const sqlFiles = form.querySelector('[data-sql-files]');
+
+    const loadSqlFiles = function () {
+        const repository = checked('repository');
+        if (!repository || !branch.value) return;
+
+        const loadedFor = repository + '@' + branch.value;
+        if (sqlFiles.dataset.loadedFor === loadedFor) return;
+        sqlFiles.dataset.loadedFor = loadedFor;
+
+        const url = form.dataset.sql + '?repository=' + encodeURIComponent(repository) + '&branch=' + encodeURIComponent(branch.value) + '&provider=' + encodeURIComponent(form.dataset.provider);
+        sqlFiles.innerHTML = '<p class="wz-hint">Looking for .sql files...</p>';
+        fetch(url, { credentials: 'same-origin' })
+            .then(function (response) {
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                return response.text();
+            })
+            .then(function (html) {
+                if (sqlFiles.dataset.loadedFor !== loadedFor) return;
+                sqlFiles.innerHTML = html;
+                updateSheet();
+            })
+            .catch(function () {
+                sqlFiles.dataset.loadedFor = '';
+                sqlFiles.innerHTML = '<p class="wz-hint">Could not list the repository\'s files. Type a path below instead.</p>';
+            });
+    };
+
+    branch.addEventListener('change', loadSqlFiles);
+
     // Repository: load its branches, suggest a name, move on
     const loadBranches = function (repository) {
         const url = form.dataset.branches + '?repository=' + encodeURIComponent(repository) + '&provider=' + encodeURIComponent(form.dataset.provider);
@@ -140,6 +171,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 const preferred = ['main', 'master'].find(function (name) { return names.includes(name); });
                 if (preferred) branch.value = preferred;
                 loadEnv();
+                loadSqlFiles();
                 updateSheet();
             })
             .catch(function () {
@@ -199,6 +231,13 @@ document.addEventListener('DOMContentLoaded', function () {
             const filled = Array.from(envFields.querySelectorAll('input')).filter(function (input) { return input.value !== ''; }).length;
             sheet.env.textContent = filled === 0 ? '' : filled + (filled === 1 ? ' variable' : ' variables');
         }
+        if (sheet.database) {
+            const files = sqlFiles.querySelectorAll('input[type=checkbox]:checked').length + (form.querySelector('[name="sql_path"]').value.trim() === '' ? 0 : 1);
+            const parts = [];
+            if (files > 0) parts.push(files + (files === 1 ? ' SQL file' : ' SQL files'));
+            if (form.querySelector('[name="setup_sql"]').value.trim() !== '') parts.push('typed SQL');
+            sheet.database.textContent = parts.join(' + ');
+        }
         if (sheet.address) sheet.address.textContent = slug ? slug + '.' + form.dataset.appsDomain : '';
         if (sheet.domain) sheet.domain.textContent = domain;
         if (sheet.type) sheet.type.textContent = typeInput ? typeInput.closest('.wz-choice').querySelector('strong').textContent : '';
@@ -214,7 +253,9 @@ document.addEventListener('DOMContentLoaded', function () {
     updateSheet();
 
     let start = 0;
-    if (form.querySelector('.wz-errors')) {
+    if (form.querySelector('.wz-errors') && form.dataset.errorStep) {
+        start = steps.findIndex(function (step) { return step.dataset.step === form.dataset.errorStep; });
+    } else if (form.querySelector('.wz-errors')) {
         start = steps.findIndex(function (step) {
             return Array.from(step.querySelectorAll('input, select')).some(function (field) {
                 return field.type !== 'hidden' && !field.checkValidity();

@@ -83,6 +83,14 @@ trait App_records {
     }
 
     /**
+     * The SQL the app's database starts with (Setup_sql); its first
+     * deploy runs it
+     */
+    function set_setup_sql(int $app_id, string $sql): void {
+        $this->db->query_bind("UPDATE app SET setup_sql = :sql, setup_sql_status = 'pending' WHERE id = :app_id", ['app_id' => $app_id, 'sql' => $sql]);
+    }
+
+    /**
      * Update an app's platform settings (the app must be in the project).
      * The custom domain goes through update_app_domain().
      *

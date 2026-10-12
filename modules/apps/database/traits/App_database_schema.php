@@ -2,6 +2,7 @@
 
 require_once APPPATH . 'modules/platform/live/App_database.php';
 require_once APPPATH . 'modules/platform/live/Schema_diff.php';
+require_once APPPATH . 'modules/platform/live/Setup_sql.php';
 require_once APPPATH . 'modules/platform/tasks/lib/Platform_task.php';
 require_once APPPATH . 'modules/services/clients/Github_app.php';
 require_once APPPATH . 'modules/services/clients/Github.php';
@@ -16,8 +17,8 @@ require_once APPPATH . 'modules/services/clients/Github.php';
  */
 trait App_database_schema {
 
-    /** Where schema.sql is looked for, in this order */
-    const SCHEMA_PATHS = ['schema.sql', 'database/schema.sql', 'db/schema.sql', 'sql/schema.sql'];
+    /** Where schema.sql is looked for, in this order; the new-app wizard ticks these too */
+    const SCHEMA_PATHS = Setup_sql::SCHEMA_PATHS;
 
     /**
      * Values for views/_schema.php

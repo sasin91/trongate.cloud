@@ -521,14 +521,10 @@ class App_database {
             return 'That SQL is longer than ' . (self::MAX_STATEMENT_BYTES / 1024) . ' KB.';
         }
 
-        // Executable comments (/*! ... */, /*M! ... */) run their contents as SQL
-        if (preg_match('#/\*M?!#', $sql)) {
-            return 'Executable comments (/*! ... */) are not allowed here.';
-        }
+        $content_refusal = self::content_refusal($sql);
 
-        // Files on the database server; the app's user lacks the FILE privilege anyway
-        if (preg_match('/\bINTO\s+(OUT|DUMP)FILE\b|\bLOAD_FILE\s*\(/i', $sql)) {
-            return 'Reading or writing files on the database server is not allowed.';
+        if ($content_refusal !== null) {
+            return $content_refusal;
         }
 
         $statements = self::statements($sql);
@@ -547,6 +543,24 @@ class App_database {
         }
 
         return $statements === [] ? 'There is no statement to run.' : null;
+    }
+
+    /**
+     * Why SQL may not run anywhere in the panel, whatever its statements:
+     * executable comments and files on the database server
+     */
+    static function content_refusal(string $sql): ?string {
+        // Executable comments (/*! ... */, /*M! ... */) run their contents as SQL
+        if (preg_match('#/\*M?!#', $sql)) {
+            return 'Executable comments (/*! ... */) are not allowed here.';
+        }
+
+        // Files on the database server; the app's user lacks the FILE privilege anyway
+        if (preg_match('/\bINTO\s+(OUT|DUMP)FILE\b|\bLOAD_FILE\s*\(/i', $sql)) {
+            return 'Reading or writing files on the database server is not allowed.';
+        }
+
+        return null;
     }
 
     /**
@@ -610,7 +624,7 @@ class App_database {
     /**
      * 'read' or 'write' by one statement's first keyword (after comments), or null when it is neither
      */
-    private static function keyword_kind(string $statement): ?string {
+    static function keyword_kind(string $statement): ?string {
         $keyword = strtoupper((string) preg_replace('/^([A-Za-z]+).*$/s', '$1', self::without_comments($statement)));
 
         return match (true) {
@@ -623,7 +637,7 @@ class App_database {
     /**
      * A statement without its leading whitespace and comments
      */
-    private static function without_comments(string $statement): string {
+    static function without_comments(string $statement): string {
         return (string) preg_replace('#^(\s+|--(\s[^\n]*)?(\n|$)|\#[^\n]*(\n|$)|/\*.*?\*/)*#s', '', $statement);
     }
 
@@ -706,6 +720,29 @@ class App_database {
         }
 
         return $results;
+    }
+
+    /**
+     * Run statements Setup_sql::plan() allowed, one after another, each on
+     * its own with STATEMENT_SECONDS: nothing is rolled back, as an import
+     * into an empty database is mostly CREATE TABLE, which MariaDB commits at
+     * once anyway. Stops at the first one that fails.
+     *
+     * @param list<string> $statements
+     * @return array{index: int, error: string}|null the failed statement (0-based) and MariaDB's message, or null when all ran
+     */
+    function import(array $statements): ?array {
+        $this->pdo->exec('SET SESSION TRANSACTION READ WRITE');
+
+        foreach ($statements as $index => $statement) {
+            try {
+                $this->pdo->exec($statement);
+            } catch (PDOException $e) {
+                return ['index' => $index, 'error' => self::error_message($e)];
+            }
+        }
+
+        return null;
     }
 
     /**

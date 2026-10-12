@@ -7,12 +7,14 @@
  * $live_state (array|null), $database_name, and optionally $processes and
  * $process_states (see _processes.php), $services (the project's services,
  * Platform_actions::project_services), $environment, $environments, $go_live_hint
- * and $can_add_staging (App_page::_environment_data) and $preview (true: no forms, no polling).
+ * and $can_add_staging (App_page::_environment_data), $setup_sql_failure (Apps::_setup_sql_failure)
+ * and $preview (true: no forms, no polling).
  */
 $preview = $preview ?? false;
 $processes = $processes ?? [];
 $process_states = $process_states ?? null;
 $services = $services ?? [];
+$setup_sql_failure = $setup_sql_failure ?? null;
 $e = fn($value) => htmlspecialchars((string) $value);
 $short_sha = fn(?string $sha) => $sha ? substr($sha, 0, 7) : '';
 $is_finished = fn(object $d) => in_array($d->status, ['success', 'failed', 'rolled_back'], true);
@@ -47,6 +49,17 @@ $platform_host = $app->slug . '.' . PLATFORM_APPS_DOMAIN;
 
     <?php if (!$preview): ?>
         <?= flashdata('<p class="flash">', '</p>') ?>
+    <?php endif; ?>
+
+    <?php if ($setup_sql_failure !== null): ?>
+        <div class="ov-setup-sql" role="alert">
+            <p><strong>The setup SQL did not finish.</strong> <?= $e($setup_sql_failure['message']) ?></p>
+            <details>
+                <summary>The SQL that did not run</summary>
+                <pre><?= $e($setup_sql_failure['remaining_sql']) ?></pre>
+            </details>
+            <p class="muted">Fix it and run it from the <a href="apps/<?= (int) $app->id ?>/database?view=sql">Database tab</a>.</p>
+        </div>
     <?php endif; ?>
 
     <div class="ov-main">
