@@ -530,6 +530,7 @@ trait Platform_actions {
                 'always_on' => 0,
                 'trongate_env' => (string) $app->trongate_env,
                 'mail_capture' => 1,
+                'health_path' => (string) $app->health_path,
             ], 'app');
 
             // App_env: still encrypted, so the values never pass through here

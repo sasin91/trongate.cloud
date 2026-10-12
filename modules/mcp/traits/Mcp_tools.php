@@ -168,6 +168,7 @@ trait Mcp_tools {
                     'source_branch' => ['type' => 'string', 'description' => 'The branch it deploys from (a staging app: staging by default)'],
                     'trongate_env' => ['type' => 'string', 'description' => "Trongate's ENV constant in config/config.php, e.g. " . implode(', ', Trongate_config::ENV_SUGGESTIONS) . ' (dev shows errors)'],
                     'mail_capture' => ['type' => 'boolean', 'description' => "Catch mail sent with Trongate's email module on the app's Mail tab instead of delivering it (on by default); off sends with the app's own config/trongate_email.php"],
+                    'health_path' => ['type' => 'string', 'description' => 'Path a deploy must answer 2xx/3xx on before it goes live, e.g. /health for an API whose home page is a 404; "" or "/" is the home page'],
                 ], ['app_id']),
                 'annotations' => $this->_hints(false, true, true),
                 'scopes' => ['customer'],
@@ -385,6 +386,7 @@ trait Mcp_tools {
             'auto_deploy' => (bool) ($app->auto_deploy ?? false),
             'trongate_env' => Trongate_config::env((array) $app),
             'mail_capture' => Mail_capture::enabled((array) $app),
+            'health_path' => Manifests::health_path((array) $app),
             'database' => empty($app->database_server_id) ? null : Manifests::database_name((int) $app->id),
             'current_deployment' => $current,
             'trongate_upgrade' => $this->_upgrade_summary($this->model->latest_upgrade((int) $app->id)),
@@ -496,6 +498,7 @@ trait Mcp_tools {
             'source_branch' => (string) $app->source_branch,
             'trongate_env' => Trongate_config::env((array) $app),
             'mail_capture' => Mail_capture::enabled((array) $app),
+            'health_path' => Manifests::health_path((array) $app),
         ];
         $processes = null;
         $changed = [];
@@ -561,6 +564,13 @@ trait Mcp_tools {
             $changed[] = 'trongate_env';
         }
 
+        if (array_key_exists('health_path', $args)) {
+            $path = $this->_string_arg($args, 'health_path', false);
+            $this->_check($this->_validate_health_path($path));
+            $settings['health_path'] = $this->_parse_health_path($path);
+            $changed[] = 'health_path';
+        }
+
         if ($changed === []) {
             throw new InvalidArgumentException('Pass at least one setting to change');
         }
@@ -582,6 +592,7 @@ trait Mcp_tools {
                 'auto_deploy' => (bool) $app->auto_deploy,
                 'trongate_env' => Trongate_config::env((array) $app),
                 'mail_capture' => Mail_capture::enabled((array) $app),
+            'health_path' => Manifests::health_path((array) $app),
             ],
             'next' => 'Settings take effect on the next deploy: deploy_app {"app_id": ' . $app->id . '}',
         ];

@@ -35,6 +35,12 @@
         </div>
 
         <div class="form-group">
+            <label for="health_path" class="form-label">Health Check Path</label>
+            <input type="text" name="health_path" id="health_path" class="form-input mono" placeholder="/" value="<?= htmlspecialchars($health_path) ?>">
+            <p class="form-hint">Each deploy goes live only once this path answers with a 2xx or 3xx. The home page by default; an API whose home page is a 404 can use a health endpoint such as <code>/health</code>.</p>
+        </div>
+
+        <div class="form-group">
             <label for="php_extensions" class="form-label">Extra PHP Extensions</label>
             <input type="text" name="php_extensions" id="php_extensions" class="form-input mono" placeholder="e.g. gd, intl" value="<?= htmlspecialchars($php_extensions) ?>">
             <p class="form-hint">Comma-separated. Installed at build time.</p>

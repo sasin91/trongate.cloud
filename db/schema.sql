@@ -233,6 +233,8 @@ CREATE TABLE app (
   trongate_env VARCHAR(20) NOT NULL DEFAULT 'dev',
   -- Mail from config/trongate_email.php goes to the platform's inbox (Mail_capture)
   mail_capture TINYINT(1) NOT NULL DEFAULT 1,
+  -- Requested by the rollout gate and smoke test; '' is the home page (Manifests::health_path)
+  health_path VARCHAR(200) NOT NULL DEFAULT '',
   database_server_id INT NULL,
   current_deployment_id INT NULL,
 
@@ -478,4 +480,5 @@ INSERT INTO schema_migrations (name) VALUES
   ('0005_deployment_config_version'),
   ('0006_app_process'),
   ('0007_drop_php_session'),
-  ('0008_app_environments');
+  ('0008_app_health_path'),
+  ('0009_app_environments');

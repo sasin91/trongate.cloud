@@ -267,6 +267,7 @@ class Apps extends Trongate {
             'auto_deploy' => $is_resubmit ? (bool) post('auto_deploy') : (bool) $app->auto_deploy,
             'source_branch' => $is_resubmit ? (string) post('source_branch', true) : (string) $app->source_branch,
             'mail_capture' => $is_resubmit ? (bool) post('mail_capture') : Mail_capture::enabled((array) $app),
+            'health_path' => $is_resubmit ? (string) post('health_path', true) : Manifests::health_path((array) $app),
             'env_names' => array_keys($this->_app_env($app)),
             'env_name' => $this->env_form_posted ? (string) post('env_name', true) : '',
             'can_delete' => $this->_is_owner($app),
@@ -336,6 +337,7 @@ class Apps extends Trongate {
         $this->validation->set_rules('processes', 'Processes', 'callback__validate_processes');
         $this->validation->set_rules('trongate_env', 'Environment', 'required|callback__validate_trongate_env');
         $this->validation->set_rules('source_branch', 'Branch', 'required|max_length[100]|callback__validate_branch');
+        $this->validation->set_rules('health_path', 'Health Check Path', 'max_length[200]|callback__validate_health_path');
 
         if ($this->validation->run() !== true) {
             $this->settings();
@@ -352,6 +354,7 @@ class Apps extends Trongate {
             'source_branch' => trim((string) post('source_branch', true)),
             'trongate_env' => trim((string) post('trongate_env', true)),
             'mail_capture' => (bool) post('mail_capture'),
+            'health_path' => $this->_parse_health_path((string) post('health_path', true)),
         ]);
 
         $this->model->save_app_processes((int) $app->id, $this->_processes_from_post());
