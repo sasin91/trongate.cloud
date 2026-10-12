@@ -30,7 +30,6 @@ $admin_nav = [
         'app_process/manage' => 'Processes',
         'service/manage' => 'Services',
         'app_upgrade/manage' => 'Upgrades',
-        'app_starting_sql/manage' => 'Starting SQL',
         'app_mail/manage' => 'Captured mail',
         'app_log_rate/manage' => 'Log rates',
         'app_log_cursor/manage' => 'Log cursors',

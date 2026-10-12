@@ -5,7 +5,7 @@ require_once __DIR__ . '/App_database.php';
 /**
  * The SQL a new app's database starts with: .sql files from its repository
  * and SQL typed into the new-app wizard. The wizard stores it in
- * app_starting_sql, and the first deploy runs it once, right after the
+ * app.starting_sql, and the first deploy runs it once, right after the
  * database is created (Platform_task::run_starting_sql).
  *
  * Statements are checked like the Database tab's SQL box, with changes

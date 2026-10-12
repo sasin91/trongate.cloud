@@ -6,7 +6,7 @@ require_once APPPATH . 'modules/platform/live/Starting_sql.php';
  * The new-app wizard's optional Database question: .sql files from the
  * repository (Starting_sql::candidates, the likely ones ticked), another
  * file by path, and SQL typed in. They are read and checked when the form
- * is submitted, stored in app_starting_sql, and run once by the first
+ * is submitted, stored in app.starting_sql, and run once by the first
  * deploy, right after it creates the database (Platform_task::run_starting_sql).
  *
  * Used by App_form. The using controller must also use Customer_guard and
@@ -17,9 +17,9 @@ trait App_starting_sql {
     /**
      * What _validate_starting_sql read and checked, for _save_starting_sql
      *
-     * @var array{sources: string, sql: string}|null
+     * @var string|null
      */
-    private ?array $starting_sql = null;
+    private ?string $starting_sql = null;
 
     /**
      * The Database question as posted, when the form is shown again after a
@@ -128,7 +128,7 @@ trait App_starting_sql {
             return 'That is more than 16 MB of SQL. Pick fewer files and import the rest from the Database tab.';
         }
 
-        $this->starting_sql = ['sources' => implode(', ', array_keys($sources)), 'sql' => $sql];
+        $this->starting_sql = $sql;
 
         return true;
     }
@@ -232,6 +232,6 @@ trait App_starting_sql {
             return;
         }
 
-        $this->model->add_starting_sql($app_id, $this->starting_sql['sources'], $this->starting_sql['sql']);
+        $this->model->set_starting_sql($app_id, $this->starting_sql);
     }
 }

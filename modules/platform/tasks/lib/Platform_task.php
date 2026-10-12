@@ -477,7 +477,7 @@ class Platform_task {
     }
 
     /**
-     * Run the SQL the app's database starts with (app_starting_sql), once:
+     * Run the SQL the app's database starts with (app.starting_sql), once:
      * on the first deploy that reaches the rollout, right after apply()
      * created the database, so the app's tables are there before the smoke
      * test. A failure is recorded for the app page and logged, and the
@@ -486,7 +486,7 @@ class Platform_task {
     static function run_starting_sql(Runtime $runtime, Task_log $log, int $app_id, array $database): void {
         $pending = self::row(
             $runtime->db(),
-            "SELECT sources, sql_text FROM app_starting_sql WHERE app_id = ? AND status = 'pending'",
+            'SELECT starting_sql FROM app WHERE id = ? AND starting_sql IS NOT NULL AND starting_sql_error IS NULL',
             [$app_id],
         );
 
@@ -494,8 +494,8 @@ class Platform_task {
             return;
         }
 
-        $log->info("Running the starting SQL ({$pending['sources']})");
-        $statements = Starting_sql::plan((string) $pending['sql_text'])['statements'];
+        $statements = Starting_sql::plan((string) $pending['starting_sql'])['statements'];
+        $log->info('Running the starting SQL: ' . count($statements) . (count($statements) === 1 ? ' statement' : ' statements'));
         $app_database = self::open_new_database($log, $database, $app_id);
 
         if ($app_database === null) {
@@ -513,8 +513,8 @@ class Platform_task {
             return;
         }
 
-        self::execute($runtime->db(), "UPDATE app_starting_sql SET status = 'done', ran_at = NOW() WHERE app_id = ?", [$app_id]);
-        $log->info('Ran the starting SQL: ' . count($statements) . (count($statements) === 1 ? ' statement' : ' statements'));
+        self::execute($runtime->db(), 'UPDATE app SET starting_sql = NULL WHERE id = ?', [$app_id]);
+        $log->info('Ran the starting SQL');
     }
 
     /**
@@ -544,8 +544,8 @@ class Platform_task {
     static function starting_sql_failed(Runtime $runtime, Task_log $log, int $app_id, string $message, string $remaining_sql): void {
         self::execute(
             $runtime->db(),
-            "UPDATE app_starting_sql SET status = 'failed', message = ?, remaining_sql = ?, ran_at = NOW() WHERE app_id = ?",
-            [$message, $remaining_sql, $app_id],
+            'UPDATE app SET starting_sql = ?, starting_sql_error = ? WHERE id = ?',
+            [$remaining_sql, $message, $app_id],
         );
         $log->warn("The starting SQL stopped. {$message} The deploy carries on; the app page shows the SQL that did not run.");
     }

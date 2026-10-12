@@ -86,24 +86,8 @@ trait App_records {
      * The SQL the app's database starts with (Starting_sql); its first
      * deploy runs it
      */
-    function add_starting_sql(int $app_id, string $sources, string $sql): void {
-        $this->db->query_bind(
-            'INSERT INTO app_starting_sql (app_id, sources, sql_text) VALUES (:app_id, :sources, :sql_text)',
-            ['app_id' => $app_id, 'sources' => $sources, 'sql_text' => $sql]
-        );
-    }
-
-    /**
-     * How the app's starting SQL went, or false when it has none
-     */
-    function starting_sql(int $app_id): object|false {
-        $rows = $this->db->query_bind(
-            'SELECT sources, status, message, remaining_sql, ran_at FROM app_starting_sql WHERE app_id = :app_id',
-            ['app_id' => $app_id],
-            'object'
-        );
-
-        return $rows[0] ?? false;
+    function set_starting_sql(int $app_id, string $sql): void {
+        $this->db->query_bind('UPDATE app SET starting_sql = :sql WHERE id = :app_id', ['app_id' => $app_id, 'sql' => $sql]);
     }
 
     /**

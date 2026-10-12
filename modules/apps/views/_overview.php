@@ -53,7 +53,7 @@ $platform_host = $app->slug . '.' . PLATFORM_APPS_DOMAIN;
 
     <?php if ($starting_sql_failure !== null): ?>
         <div class="ov-starting-sql" role="alert">
-            <p><strong>The starting SQL did not finish</strong> (<?= $e($starting_sql_failure['sources']) ?>). <?= $e($starting_sql_failure['message']) ?></p>
+            <p><strong>The starting SQL did not finish.</strong> <?= $e($starting_sql_failure['message']) ?></p>
             <details>
                 <summary>The SQL that did not run</summary>
                 <pre><?= $e($starting_sql_failure['remaining_sql']) ?></pre>
