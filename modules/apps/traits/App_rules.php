@@ -278,6 +278,26 @@ trait App_rules {
     }
 
     /**
+     * The health check path as entered; empty is the home page
+     */
+    function _parse_health_path(string $value): string {
+        $path = trim($value);
+
+        return $path === '' ? '/' : $path;
+    }
+
+    /**
+     * A health check path the rollout gate can request (Manifests::HEALTH_PATH_PATTERN)
+     */
+    function _validate_health_path(string $value): bool|string {
+        if (!preg_match(Manifests::HEALTH_PATH_PATTERN, $this->_parse_health_path($value))) {
+            return 'The health check path must start with / and may only contain letters, numbers and . _ ~ - / (at most 200, no query string).';
+        }
+
+        return true;
+    }
+
+    /**
      * A variable name that may be set on the app being edited ($editing_app_id):
      * not reserved, and within App_env::MAX_VARIABLES.
      */
