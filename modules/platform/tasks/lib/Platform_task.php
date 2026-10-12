@@ -494,7 +494,15 @@ class Platform_task {
             return;
         }
 
-        $statements = Setup_sql::plan((string) $pending['setup_sql'])['statements'];
+        $sql = Setup_sql::decrypt((string) $pending['setup_sql']);
+
+        if ($sql === null) {
+            self::execute($runtime->db(), "UPDATE app SET setup_sql = NULL, setup_sql_status = 'failed', setup_sql_error = ? WHERE id = ?", ['It could not be decrypted (APP_KEY changed), so none of it ran.', $app_id]);
+            $log->warn('The setup SQL could not be decrypted (APP_KEY changed), so none of it ran. The deploy carries on.');
+            return;
+        }
+
+        $statements = Setup_sql::plan($sql)['statements'];
         $log->info('Running the setup SQL: ' . count($statements) . (count($statements) === 1 ? ' statement' : ' statements'));
         $app_database = self::open_new_database($log, $database, $app_id);
 
@@ -513,7 +521,7 @@ class Platform_task {
             return;
         }
 
-        self::execute($runtime->db(), "UPDATE app SET setup_sql_status = 'done' WHERE id = ?", [$app_id]);
+        self::execute($runtime->db(), "UPDATE app SET setup_sql = NULL, setup_sql_status = 'done' WHERE id = ?", [$app_id]);
         $log->info('Ran the setup SQL');
     }
 
@@ -545,7 +553,7 @@ class Platform_task {
         self::execute(
             $runtime->db(),
             "UPDATE app SET setup_sql = ?, setup_sql_status = 'failed', setup_sql_error = ? WHERE id = ?",
-            [$remaining_sql, $message, $app_id],
+            [Setup_sql::encrypt($remaining_sql), $message, $app_id],
         );
         $log->warn("The setup SQL stopped. {$message} The deploy carries on; the app page shows the SQL that did not run.");
     }

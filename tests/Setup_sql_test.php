@@ -140,6 +140,18 @@ $test('Trongate v2\'s setup.sql plans without a refusal', function () use ($same
     $same(2, count($plan['statements']));
 });
 
+$test('the stored SQL is encrypted with APP_KEY and comes back the same', function () use ($same) {
+    putenv('APP_KEY=' . Encryptor::generate_key());
+    $sql = "INSERT INTO users (email, password) VALUES ('a@example.com', 'secret');\n";
+    $stored = Setup_sql::encrypt($sql);
+
+    $same(false, str_contains($stored, 'secret'));
+    $same($sql, Setup_sql::decrypt($stored));
+
+    putenv('APP_KEY=' . Encryptor::generate_key());
+    $same(null, Setup_sql::decrypt($stored));
+});
+
 if ($failures > 0) {
     echo "{$failures} failed\n";
     exit(1);

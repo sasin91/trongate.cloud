@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/App_database.php';
+require_once __DIR__ . '/../../encryption/Encryptor.php';
 
 /**
  * The SQL a new app's database starts with: .sql files from its repository
@@ -35,8 +36,11 @@ final class Setup_sql {
         '#^modules/[^/]+/[^/]+/[^/]+\.sql$#i',
     ];
 
-    /** All of it together: a MEDIUMTEXT */
-    const MAX_BYTES = 16 * 1024 * 1024 - 1;
+    /**
+     * All of it together. Stored encrypted, a third larger, it must fit in
+     * one write to the platform database (max_allowed_packet 64M)
+     */
+    const MAX_BYTES = 45 * 1024 * 1024;
 
     /** Statements a dump wraps itself in; each statement runs on its own, so they are left out */
     const SKIPPED = '/^(START\s+TRANSACTION|BEGIN|COMMIT|ROLLBACK|(UN)?LOCK\s+TABLES?)\b/i';
@@ -110,7 +114,7 @@ final class Setup_sql {
         $plan = ['statements' => [], 'skipped' => 0, 'refusal' => null];
 
         if (strlen($sql) > self::MAX_BYTES) {
-            $plan['refusal'] = 'That is more than 16 MB of SQL. Import it from the Database tab in parts.';
+            $plan['refusal'] = 'That is more than 45 MB of SQL. Import it from the Database tab in parts.';
 
             return $plan;
         }
@@ -172,6 +176,27 @@ final class Setup_sql {
         }
 
         return null;
+    }
+
+    /**
+     * The SQL as stored in app.setup_sql: it may hold passwords and keys, so
+     * encrypted with APP_KEY like the app's secrets
+     */
+    static function encrypt(string $sql): string {
+        return Encryptor::encrypt($sql, self::key());
+    }
+
+    /**
+     * app.setup_sql as SQL again, or null when it cannot be decrypted (APP_KEY changed)
+     */
+    static function decrypt(string $stored): ?string {
+        $sql = Encryptor::decrypt($stored, self::key());
+
+        return $sql === false ? null : $sql;
+    }
+
+    static function key(): string {
+        return defined('APP_KEY') ? (string) constant('APP_KEY') : (string) getenv('APP_KEY');
     }
 
     /**

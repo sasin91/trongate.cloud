@@ -125,7 +125,7 @@ trait App_setup_sql {
         $sql = Setup_sql::join($statements);
 
         if (strlen($sql) > Setup_sql::MAX_BYTES) {
-            return 'That is more than 16 MB of SQL. Pick fewer files and import the rest from the Database tab.';
+            return 'That is more than 45 MB of SQL. Pick fewer files and import the rest from the Database tab.';
         }
 
         $this->setup_sql = $sql;
@@ -232,6 +232,6 @@ trait App_setup_sql {
             return;
         }
 
-        $this->model->set_setup_sql($app_id, $this->setup_sql);
+        $this->model->set_setup_sql($app_id, Setup_sql::encrypt($this->setup_sql));
     }
 }

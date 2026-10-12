@@ -125,9 +125,15 @@ class Apps extends Trongate {
             return null;
         }
 
+        $remaining_sql = Setup_sql::decrypt((string) $app->setup_sql);
+
+        if ($remaining_sql === null) {
+            $remaining_sql = '-- It could not be decrypted (APP_KEY changed).';
+        }
+
         return [
             'message' => (string) $app->setup_sql_error,
-            'remaining_sql' => (string) $app->setup_sql,
+            'remaining_sql' => $remaining_sql,
         ];
     }
 

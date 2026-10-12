@@ -238,9 +238,10 @@ CREATE TABLE app (
   mail_capture TINYINT(1) NOT NULL DEFAULT 1,
   -- Requested by the rollout gate and smoke test; '' is the home page (Manifests::health_path)
   health_path VARCHAR(200) NOT NULL DEFAULT '',
-  -- From the new-app wizard (Setup_sql), run by the first deploy. Once it
-  -- failed, only the statements from the failed one on.
-  setup_sql MEDIUMTEXT NULL,
+  -- From the new-app wizard (Setup_sql), encrypted with APP_KEY, run by the
+  -- first deploy and then cleared; when it failed, the statements from the
+  -- failed one on
+  setup_sql LONGTEXT NULL,
   -- NULL when the wizard had none
   setup_sql_status ENUM('pending', 'done', 'failed') NULL,
   -- Why it stopped; it is not run again
