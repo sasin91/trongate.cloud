@@ -18,7 +18,11 @@
             <div class="form-group">
                 <label for="domain" class="form-label">Domain</label>
                 <input type="text" name="domain" id="domain" class="form-input mono" placeholder="app.example.com" autocomplete="off" value="<?= htmlspecialchars($domain_input) ?>">
+                <?php if ($domain === ''): ?>
+                <p class="form-hint"><code><?= htmlspecialchars($platform_host) ?></code> is your staging address. Add your own domain when you're ready to go live.</p>
+                <?php else: ?>
                 <p class="form-hint">Your app also stays on <code><?= htmlspecialchars($platform_host) ?></code>. Clear the field and save to remove the domain.</p>
+                <?php endif; ?>
             </div>
             <div class="form-actions">
                 <button type="submit" class="btn-primary">Save domain</button>

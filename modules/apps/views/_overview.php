@@ -33,6 +33,8 @@ if ($domain !== '') {
     }
 }
 $domain_count = $domain === '' ? 1 : 2;
+// {slug}.PLATFORM_APPS_DOMAIN is for trying things out; adding a domain is going live
+$environment = $domain === '' ? 'staging' : 'production';
 $platform_host = $app->slug . '.' . PLATFORM_APPS_DOMAIN;
 ?>
 <div class="ov">
@@ -47,7 +49,7 @@ $platform_host = $app->slug . '.' . PLATFORM_APPS_DOMAIN;
             <section class="ov-card" aria-labelledby="env-h">
                 <div class="ov-card-head">
                     <h2 id="env-h">Environment</h2>
-                    <span class="muted">production</span>
+                    <span class="muted"><?= $environment ?></span>
                 </div>
                 <div class="ov-canvas">
                     <div class="ov-env">
@@ -188,7 +190,9 @@ $platform_host = $app->slug . '.' . PLATFORM_APPS_DOMAIN;
                     <span class="ov-mono"><?= $e($platform_host) ?></span>
                     <span class="ov-badge ok">HTTPS</span>
                 </div>
-                <?php if ($domain_state !== null): ?>
+                <?php if ($domain_state === null): ?>
+                    <p class="ov-domain-hint muted">Your staging address. Add your own domain when you're ready to go live.</p>
+                <?php else: ?>
                     <div class="ov-domain">
                         <span class="ov-mono"><?= $e($domain) ?></span>
                         <span class="ov-badge <?= $domain_state['class'] ?>"><?= $e($domain_state['label']) ?></span>
