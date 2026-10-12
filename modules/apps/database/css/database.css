@@ -1068,3 +1068,54 @@ button.db-rownum:focus {
         gap: 0.125rem;
     }
 }
+
+/* Schema view: each difference is a pair of rows, schema.sql over the database (views/_schema.php) */
+.db-diff td[rowspan] {
+    vertical-align: top;
+    padding-top: 0.4rem;
+    background: var(--white);
+}
+
+.db-diff .db-diff-pair tr:last-child td,
+.db-diff .db-diff-pair td[rowspan] {
+    border-bottom: 1px solid var(--border);
+}
+
+.db-diff td:last-child {
+    min-width: 16rem;
+    max-width: none;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.db-diff .db-diff-side {
+    width: 1%;
+    color: #8a8ea8;
+}
+
+.db-diff-change {
+    display: inline-block;
+    padding: 0.05rem 0.45rem;
+    font-family: 'Geist', system-ui, sans-serif;
+    font-size: 0.7rem;
+    border-radius: 999px;
+}
+
+.db-diff-missing {
+    color: #a3361f;
+    background: #fbeae5;
+}
+
+.db-diff-extra {
+    color: #8a6a00;
+    background: #fbf3d9;
+}
+
+.db-diff-different {
+    color: var(--accent-ink);
+    background: var(--accent-soft);
+}
+
+.db-status a {
+    color: var(--accent-ink);
+}

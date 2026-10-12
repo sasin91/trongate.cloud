@@ -1,0 +1,194 @@
+{
+    "columns": [
+        {
+            "table": "jobs",
+            "name": "id",
+            "column_type": "int(11)",
+            "nullable": false,
+            "default": null,
+            "extra": "auto_increment"
+        },
+        {
+            "table": "jobs",
+            "name": "title",
+            "column_type": "varchar(255)",
+            "nullable": false,
+            "default": null,
+            "extra": ""
+        },
+        {
+            "table": "jobs",
+            "name": "salary",
+            "column_type": "decimal(10,2)",
+            "nullable": false,
+            "default": "0.00",
+            "extra": ""
+        },
+        {
+            "table": "jobs",
+            "name": "status",
+            "column_type": "enum('Open','Closed')",
+            "nullable": false,
+            "default": "'Open'",
+            "extra": ""
+        },
+        {
+            "table": "jobs",
+            "name": "remote",
+            "column_type": "tinyint(1)",
+            "nullable": false,
+            "default": "0",
+            "extra": ""
+        },
+        {
+            "table": "jobs",
+            "name": "posted_at",
+            "column_type": "timestamp",
+            "nullable": true,
+            "default": "NULL",
+            "extra": ""
+        },
+        {
+            "table": "jobs",
+            "name": "closes_at",
+            "column_type": "timestamp",
+            "nullable": true,
+            "default": "NULL",
+            "extra": ""
+        },
+        {
+            "table": "jobs",
+            "name": "meta",
+            "column_type": "longtext",
+            "nullable": true,
+            "default": "NULL",
+            "extra": ""
+        },
+        {
+            "table": "jobs",
+            "name": "trongate_user_id",
+            "column_type": "int(11)",
+            "nullable": false,
+            "default": null,
+            "extra": ""
+        },
+        {
+            "table": "notes",
+            "name": "id",
+            "column_type": "int(10) unsigned",
+            "nullable": false,
+            "default": null,
+            "extra": "auto_increment"
+        },
+        {
+            "table": "notes",
+            "name": "job_id",
+            "column_type": "int(11)",
+            "nullable": false,
+            "default": null,
+            "extra": ""
+        },
+        {
+            "table": "notes",
+            "name": "body",
+            "column_type": "text",
+            "nullable": true,
+            "default": "NULL",
+            "extra": ""
+        },
+        {
+            "table": "notes",
+            "name": "created_at",
+            "column_type": "datetime",
+            "nullable": true,
+            "default": "current_timestamp()",
+            "extra": ""
+        },
+        {
+            "table": "trongate_users",
+            "name": "id",
+            "column_type": "int(11)",
+            "nullable": false,
+            "default": null,
+            "extra": "auto_increment"
+        },
+        {
+            "table": "trongate_users",
+            "name": "code",
+            "column_type": "varchar(32)",
+            "nullable": true,
+            "default": "NULL",
+            "extra": ""
+        },
+        {
+            "table": "trongate_users",
+            "name": "user_level_id",
+            "column_type": "int(11)",
+            "nullable": true,
+            "default": "NULL",
+            "extra": ""
+        }
+    ],
+    "keys": [
+        {
+            "table": "jobs",
+            "name": "fk_jobs_user",
+            "non_unique": true,
+            "index_type": "BTREE",
+            "column": "trongate_user_id",
+            "sub_part": null
+        },
+        {
+            "table": "jobs",
+            "name": "PRIMARY",
+            "non_unique": false,
+            "index_type": "BTREE",
+            "column": "id",
+            "sub_part": null
+        },
+        {
+            "table": "jobs",
+            "name": "title_prefix",
+            "non_unique": true,
+            "index_type": "BTREE",
+            "column": "title",
+            "sub_part": "20"
+        },
+        {
+            "table": "notes",
+            "name": "PRIMARY",
+            "non_unique": false,
+            "index_type": "BTREE",
+            "column": "id",
+            "sub_part": null
+        },
+        {
+            "table": "trongate_users",
+            "name": "code",
+            "non_unique": false,
+            "index_type": "BTREE",
+            "column": "code",
+            "sub_part": null
+        },
+        {
+            "table": "trongate_users",
+            "name": "PRIMARY",
+            "non_unique": false,
+            "index_type": "BTREE",
+            "column": "id",
+            "sub_part": null
+        }
+    ],
+    "foreign_keys": [
+        {
+            "table": "jobs",
+            "name": "fk_jobs_user",
+            "column": "trongate_user_id",
+            "parent": "trongate_users",
+            "parent_column": "id",
+            "on_delete": "CASCADE",
+            "on_update": "RESTRICT"
+        }
+    ],
+    "explicit_timestamps": true
+}
