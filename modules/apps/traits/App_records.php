@@ -86,7 +86,7 @@ trait App_records {
      * Update an app's platform settings (the app must be in the project).
      * The custom domain goes through update_app_domain().
      *
-     * @param array{domain: ?string, persistent_paths: list<string>, php_extensions: string, always_on: bool, auto_deploy: bool, trongate_env: string, mail_capture: bool, health_path: string} $settings
+     * @param array{domain: ?string, persistent_paths: list<string>, php_extensions: string, always_on: bool, auto_deploy: bool, source_branch: string, trongate_env: string, mail_capture: bool, health_path: string} $settings
      */
     function update_app_settings(int $project_id, int $app_id, array $settings): void {
         $this->update_app_domain($project_id, $app_id, $settings['domain']);
@@ -99,7 +99,8 @@ trait App_records {
                 trongate_env = :trongate_env,
                 mail_capture = :mail_capture,
                 health_path = :health_path,
-                auto_deploy = :auto_deploy
+                auto_deploy = :auto_deploy,
+                source_branch = :source_branch
             WHERE id = :app_id AND project_id = :project_id
         SQL;
         $this->db->query_bind($sql, [
@@ -110,6 +111,7 @@ trait App_records {
             'mail_capture' => $settings['mail_capture'] ? 1 : 0,
             'health_path' => $settings['health_path'] === '/' ? '' : $settings['health_path'],
             'auto_deploy' => $settings['auto_deploy'] ? 1 : 0,
+            'source_branch' => $settings['source_branch'],
             'app_id' => $app_id,
             'project_id' => $project_id,
         ]);

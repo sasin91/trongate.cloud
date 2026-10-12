@@ -169,6 +169,13 @@ trait Platform_actions {
     function queue_app_delete(int $project_id, int $app_id): int {
         $app = $this->_app_or_fail($project_id, $app_id);
 
+        // A production app takes its staging app with it, first, so a staging app never outlives it
+        $staging = $this->find_staging_app($app_id);
+
+        if ($staging !== false) {
+            $this->queue_app_delete($project_id, (int) $staging->id);
+        }
+
         return $this->db->transaction(function () use ($project_id, $app) {
             $app_id = (int) $app->id;
 
@@ -254,24 +261,27 @@ trait Platform_actions {
     }
 
     /**
-     * The project's apps with their current deployment's state.
+     * The project's production apps with their current deployment's state and
+     * staging_app_id (tasks/split_staging.php), NULL when they have none.
      * Lists columns explicitly so the rows are safe to return to API clients.
      */
     function project_apps(int $project_id): array {
         $sql = <<<SQL
             SELECT
-                a.id, a.project_id, a.label, a.slug, a.type, a.domain, a.verified_domain,
+                a.id, a.project_id, a.label, a.slug, a.type, a.environment, a.domain, a.verified_domain,
                 a.domain_pointed_at, a.domain_secured_at, a.domain_checked_at,
                 a.source_provider, a.source_url, a.source_branch,
                 a.persistent_paths, a.php_extensions, a.always_on,
                 a.database_server_id, a.current_deployment_id, a.created_at,
+                st.id AS staging_app_id,
                 cd.status AS current_status,
                 cd.commit_sha AS current_commit_sha,
                 cd.image AS current_image,
                 cd.completed_at AS current_deployed_at
             FROM app a
             LEFT JOIN deployment cd ON cd.id = a.current_deployment_id
-            WHERE a.project_id = :project_id AND a.deleted_at IS NULL
+            LEFT JOIN app st ON st.production_app_id = a.id AND st.environment = 'staging' AND st.deleted_at IS NULL
+            WHERE a.project_id = :project_id AND a.deleted_at IS NULL AND a.environment = 'production'
             ORDER BY a.label ASC
         SQL;
         return $this->db->query_bind($sql, ['project_id' => $project_id], 'object');
@@ -465,6 +475,58 @@ trait Platform_actions {
         $this->queue_domain_recheck($project_id, $app_id);
 
         return true;
+    }
+
+    /**
+     * Queue split_staging for a production app: its {slug} host moves to a
+     * new staging app (a copy deploying its own branch) and production keeps
+     * only its domain. recheck_domains does this by itself when a domain first
+     * goes live; this is for apps that went live earlier or lost their
+     * staging app. A split already waiting is not queued again.
+     *
+     * @throws RuntimeException when the app is not a production app with a secured domain, or already has a staging app
+     */
+    function queue_staging_split(int $project_id, int $app_id): void {
+        $app = $this->_app_or_fail($project_id, $app_id);
+
+        if ($app->environment !== 'production' || Manifests::secured_domains((array) $app) === []) {
+            throw new RuntimeException('Staging is set up once the custom domain is live with HTTPS.');
+        }
+
+        if ($this->find_staging_app($app_id) !== false) {
+            throw new RuntimeException('This app already has a staging app.');
+        }
+
+        $sql = <<<SQL
+            SELECT COUNT(*)
+            FROM tasks
+            WHERE app_id = :app_id
+              AND script = 'split_staging'
+              AND completed_at IS NULL
+              AND failed_at IS NULL
+        SQL;
+
+        if ((int) $this->db->query_bind($sql, ['app_id' => $app_id], 'column') === 0) {
+            $this->_queue_task($project_id, $app_id, null, 'split_staging', [
+                'project_id' => $project_id,
+                'app_id' => $app_id,
+            ]);
+        }
+    }
+
+    /**
+     * A production app's staging app (id, slug, source_branch), if it has one
+     */
+    function find_staging_app(int $production_app_id): object|false {
+        $sql = <<<SQL
+            SELECT id, slug, source_branch
+            FROM app
+            WHERE production_app_id = :app_id AND environment = 'staging' AND deleted_at IS NULL
+            LIMIT 1
+        SQL;
+        $rows = $this->db->query_bind($sql, ['app_id' => $production_app_id], 'object');
+
+        return $rows[0] ?? false;
     }
 
     /**

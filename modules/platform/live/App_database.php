@@ -698,6 +698,50 @@ class App_database {
     }
 
     /**
+     * CREATE TABLE statements of every base table, without rows, for
+     * create_tables() on another app's database (a staging app's copy of its
+     * production app). AUTO_INCREMENT counters are left out, so the copy
+     * starts from 1. Views and triggers are not copied: theirs name this
+     * database and its user.
+     *
+     * @return array<string, string> table => CREATE TABLE
+     */
+    function table_definitions(): array {
+        $definitions = [];
+
+        foreach ($this->tables() as $table) {
+            if ($table['view']) {
+                continue;
+            }
+
+            $create = (string) $this->pdo->query('SHOW CREATE TABLE ' . self::quote_name($table['name']))->fetch(PDO::FETCH_NUM)[1];
+            $definitions[$table['name']] = (string) preg_replace('/ AUTO_INCREMENT=\d+/', '', $create);
+        }
+
+        return $definitions;
+    }
+
+    /**
+     * Create tables from table_definitions(), in any order: foreign keys are
+     * not checked meanwhile. Fails on the first table that already exists.
+     *
+     * @param array<string, string> $definitions table => CREATE TABLE
+     * @throws PDOException when MariaDB refuses one (the earlier ones stay)
+     */
+    function create_tables(array $definitions): void {
+        $this->pdo->exec('SET SESSION TRANSACTION READ WRITE');
+        $this->pdo->exec('SET SESSION foreign_key_checks = 0');
+
+        try {
+            foreach ($definitions as $create) {
+                $this->pdo->exec($create);
+            }
+        } finally {
+            $this->pdo->exec('SET SESSION foreign_key_checks = 1');
+        }
+    }
+
+    /**
      * Back up whole tables (structure, triggers and every row) for restore().
      *
      * @param list<string> $tables base tables

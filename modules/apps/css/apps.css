@@ -310,6 +310,33 @@ textarea.form-input {
     letter-spacing: -0.025em;
 }
 
+.ov-head-form {
+    margin: 0;
+}
+
+/* Production / Staging switch (App_page::_environment_data) */
+.ov-envs {
+    display: inline-flex;
+    padding: 2px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-subtle);
+    font-size: 0.8125rem;
+}
+
+.ov-envs a {
+    padding: 3px 10px;
+    border-radius: 6px;
+    color: var(--text-muted);
+    text-decoration: none;
+}
+
+.ov-envs a.is-active {
+    background: var(--white);
+    color: var(--text-main);
+    box-shadow: 0 1px 2px rgba(29, 30, 110, 0.12);
+}
+
 .ov-live {
     display: inline-flex;
     align-items: center;
@@ -611,7 +638,8 @@ a.status-pill {
     overflow-wrap: anywhere;
 }
 
-.ov-domain:last-child {
+.ov-domain:last-child,
+.ov-domain:has(+ .ov-domain-hint) {
     border-bottom: none;
 }
 

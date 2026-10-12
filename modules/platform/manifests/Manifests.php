@@ -201,11 +201,16 @@ class Manifests {
     }
 
     /**
-     * Hostnames routed to an app: "{slug}.PLATFORM_APPS_DOMAIN" plus its routed
-     * custom domains (custom_domains())
+     * Hostnames routed to an app: "{slug}.PLATFORM_APPS_DOMAIN" (unless its
+     * staging app took it, serves_slug_host()) plus its routed custom
+     * domains (custom_domains())
      */
     static function hostnames(array $app): array {
-        $hostnames = [strtolower($app['slug'] . '.' . PLATFORM_APPS_DOMAIN)];
+        $hostnames = [];
+
+        if (self::serves_slug_host($app)) {
+            $hostnames[] = strtolower($app['slug'] . '.' . PLATFORM_APPS_DOMAIN);
+        }
 
         foreach (self::custom_domains($app) as $domain) {
             if (!in_array($domain, $hostnames, true)) {
@@ -234,11 +239,26 @@ class Manifests {
     static function custom_domains(array $app): array {
         $domain = strtolower(trim((string) ($app['verified_domain'] ?? '')));
 
-        if ($domain === '' || empty($app['domain_pointed_at'])) {
+        if ($domain === '') {
+            return [];
+        }
+
+        // A production app without the {slug} host has nothing else to answer
+        // on, so its domain stays routed even while its DNS checks fail
+        if (empty($app['domain_pointed_at']) && self::serves_slug_host($app)) {
             return [];
         }
 
         return [$domain];
+    }
+
+    /**
+     * Whether the app answers on {slug}.PLATFORM_APPS_DOMAIN: every app but a
+     * production app whose staging app took it (app.serves_slug_host,
+     * tasks/split_staging.php)
+     */
+    static function serves_slug_host(array $app): bool {
+        return (int) ($app['serves_slug_host'] ?? 1) === 1;
     }
 
     /**

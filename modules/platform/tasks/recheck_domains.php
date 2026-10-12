@@ -32,6 +32,9 @@
  * so a domain goes live soon after its DNS change propagates and a domain that
  * moved away is noticed.
  *
+ * A production app's domain going live (domain_secured_at set) queues
+ * split_staging, which moves its {slug} host to a new staging app.
+ *
  * Rules:
  * - Promotion re-applies the image of the app's current (successful)
  *   deployment. It never builds or deploys: a DNS edit at a registrar must not
@@ -127,6 +130,30 @@ return function (Task_log $log) use ($payload, $runtime): int {
         $log->info('Applied; the app\'s base URL is ' . Trongate_config::base_url($app));
 
         return true;
+    };
+
+    /**
+     * Queue split_staging for a production app whose domain just went live,
+     * unless it has a staging app (split_staging checks again)
+     */
+    $queue_split = function (array $app) use ($runtime, $log): void {
+        $db = $runtime->db();
+        $staging = Platform_task::row(
+            $db,
+            "SELECT id FROM app WHERE production_app_id = ? AND environment = 'staging' AND deleted_at IS NULL",
+            [(int) $app['id']],
+        );
+
+        if ($staging !== null) {
+            return;
+        }
+
+        Platform_task::execute(
+            $db,
+            "INSERT INTO tasks (project_id, app_id, script, payload) VALUES (?, ?, 'split_staging', ?)",
+            [(int) $app['project_id'], (int) $app['id'], json_encode(['project_id' => (int) $app['project_id'], 'app_id' => (int) $app['id']])],
+        );
+        $log->info('Queued split_staging: ' . $app['slug'] . '.' . PLATFORM_APPS_DOMAIN . ' becomes its staging app');
     };
 
     /**
@@ -243,9 +270,14 @@ return function (Task_log $log) use ($payload, $runtime): int {
                     SET domain_secured_at = NOW()
                     WHERE id = ? AND verified_domain = ? AND domain_pointed_at IS NOT NULL AND domain_secured_at IS NULL
                     SQL;
-                Platform_task::execute($db, $sql, [(int) $id, $domain]);
+                $secured = Platform_task::execute($db, $sql, [(int) $id, $domain]) > 0;
                 $log->info("{$domain}: HTTPS certificate issued");
                 $app = Platform_task::app($db, $project_id, (int) $id);
+
+                // Going live: {slug}.PLATFORM_APPS_DOMAIN becomes its staging app's
+                if ($secured && $app['environment'] === 'production') {
+                    $queue_split($app);
+                }
             }
 
             // No Deployment yet: the first deploy applies the right BASE_URL

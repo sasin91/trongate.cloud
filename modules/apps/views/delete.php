@@ -3,7 +3,7 @@
         <a href="apps/<?= $app->id ?>/settings" class="nav-link">&larr; Back to settings</a>
     </div>
 
-    <h1>Delete <?= htmlspecialchars($app->label) ?></h1>
+    <h1>Delete <?= htmlspecialchars($name) ?></h1>
 
     <?= flashdata('<p class="flash">', '</p>') ?>
     <?= validation_errors() ?>
@@ -15,6 +15,9 @@
         <ul class="delete-list">
             <?php foreach ($urls as $url): ?>
                 <li>The app at <code><?= htmlspecialchars($url) ?></code></li>
+            <?php endforeach; ?>
+            <?php foreach ($staging_urls as $url): ?>
+                <li>Its staging app at <code><?= htmlspecialchars($url) ?></code></li>
             <?php endforeach; ?>
             <li>Its access to its database, and any queued deployments</li>
         </ul>

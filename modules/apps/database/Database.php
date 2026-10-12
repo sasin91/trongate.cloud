@@ -405,7 +405,90 @@ class Database extends Trongate {
         redirect($this->_database_url($app, count($restored['tables']) === 1 ? ['table' => $restored['tables'][0]] : []));
     }
 
+    /**
+     * POST apps/{id}/database/copy-tables: give a staging app's empty database
+     * its production app's tables, without their rows.
+     */
+    function copy_tables(): void {
+        $this->_make_sure_allowed();
+        $app = $this->_member_app_or_redirect(segment(3, 'int'));
+        $this->_require_post_with_csrf();
+
+        try {
+            $count = $this->_copy_production_tables($app);
+        } catch (PDOException | RuntimeException $e) {
+            $message = $e instanceof PDOException ? $this->_database_error($e) : $e->getMessage();
+            error_log("Copying production's tables to staging app #{$app->id} failed: {$message}");
+            set_flashdata(htmlspecialchars('Could not copy the tables: ' . $message));
+            redirect($this->_database_url($app));
+        }
+
+        set_flashdata('Copied ' . $count . ($count === 1 ? ' table' : ' tables') . ' from production, without their rows.');
+        redirect($this->_database_url($app));
+    }
+
     // --- Helpers ---
+
+    /**
+     * Create the production app's tables in this staging app's database,
+     * which must have none yet. Logged like a statement from the SQL view.
+     *
+     * @return int how many tables were created
+     * @throws RuntimeException when it is not a staging app, either database cannot be opened, or it has tables
+     * @throws PDOException when MariaDB refuses a table
+     */
+    function _copy_production_tables(object $app): int {
+        if ($app->environment !== 'staging') {
+            throw new RuntimeException('Only a staging app copies its tables from production.');
+        }
+
+        $production = $this->model->find_project_app((int) $app->project_id, (int) $app->production_app_id);
+
+        if ($production === false) {
+            throw new RuntimeException('Its production app is gone.');
+        }
+
+        $source = $this->_open_app_database($production);
+
+        if (is_string($source)) {
+            throw new RuntimeException('Production: ' . $source);
+        }
+
+        $target = $this->_open_app_database($app);
+
+        if (is_string($target)) {
+            throw new RuntimeException($target);
+        }
+
+        if ($target->tables() !== []) {
+            throw new RuntimeException('This database already has tables.');
+        }
+
+        $definitions = $source->table_definitions();
+        $statement = implode(";\n\n", $definitions);
+
+        $this->_logged($app, 'query', $statement, true, function () use ($target, $definitions) {
+            $target->create_tables($definitions);
+
+            return [null, null];
+        });
+
+        return count($definitions);
+    }
+
+    /**
+     * Where to post copy_tables(): only on a staging app's database while it
+     * has no tables (and opened fine)
+     *
+     * @param array<string, mixed> $data
+     */
+    function _copy_tables_url(object $app, array $data): ?string {
+        if ($app->environment !== 'staging' || $data['error'] !== null || $data['tables'] !== []) {
+            return null;
+        }
+
+        return $data['base'] . '/copy-tables';
+    }
 
     /**
      * The primary keys of the ticked rows (rows[], each a key[col]=value query
@@ -569,6 +652,7 @@ class Database extends Trongate {
         }
 
         $data = $this->_workspace_data($app, $data);
+        $data['copy_tables_url'] = $this->_copy_tables_url($app, $data);
 
         $this->module('templates');
         $this->templates->customer($data);

@@ -223,6 +223,10 @@
     color: var(--text-muted);
 }
 
+.db-side-empty p {
+    margin: 0 0 0.5rem;
+}
+
 .db-side-foot {
     display: flex;
     justify-content: space-between;

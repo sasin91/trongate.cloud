@@ -203,7 +203,14 @@ CREATE TABLE app (
   project_id INT NOT NULL,
   label VARCHAR(255) NOT NULL,
   slug VARCHAR(40) NOT NULL,
+  -- Serves {slug}.PLATFORM_APPS_DOMAIN; 0 for a production app whose staging app took it
+  serves_slug_host TINYINT(1) NOT NULL DEFAULT 1,
   type ENUM('trongate_v1', 'trongate_v2') NOT NULL,
+  -- A staging app is a copy of its production app (production_app_id) with
+  -- the same slug that deploys its own branch (tasks/split_staging.php);
+  -- 'preview' is reserved for pull request previews, linked the same way
+  environment ENUM('production', 'staging', 'preview') NOT NULL DEFAULT 'production',
+  production_app_id INT NULL,
 
   -- Custom domain: as entered, then proven by a TXT record, pointed here, and secured
   domain VARCHAR(255) NULL,
@@ -237,10 +244,12 @@ CREATE TABLE app (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   deleted_at TIMESTAMP NULL DEFAULT NULL,
 
-  UNIQUE KEY unique_slug (slug),
+  UNIQUE KEY unique_slug_environment (slug, environment),
   UNIQUE KEY unique_verified_domain (verified_domain),
   KEY idx_project_deleted (project_id, deleted_at),
+  KEY idx_production_app (production_app_id),
   CONSTRAINT fk_app_project FOREIGN KEY (project_id) REFERENCES project (id),
+  CONSTRAINT fk_app_production_app FOREIGN KEY (production_app_id) REFERENCES app (id),
   CONSTRAINT fk_app_database_server FOREIGN KEY (database_server_id) REFERENCES database_server (id)
 );
 
@@ -474,4 +483,5 @@ INSERT INTO schema_migrations (name) VALUES
   ('0005_deployment_config_version'),
   ('0006_app_process'),
   ('0007_drop_php_session'),
-  ('0008_app_health_path');
+  ('0008_app_health_path'),
+  ('0009_app_environments');

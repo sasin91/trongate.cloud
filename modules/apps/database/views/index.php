@@ -9,7 +9,8 @@
  * $can_rollback, $base, $database_name, $view, $error, $table_name,
  * $sidebar_tables and $sidebar_views (name, href, note, is_current), $open_tabs
  * (href, label, icon, is_current, close_href), $view_toggle ([href, label, is_current]),
- * $sql_url, $history_url, $backups_url, $backup_entries, and what the partials list.
+ * $sql_url, $history_url, $backups_url, $backup_entries, $copy_tables_url (null hides
+ * Copy production's tables), and what the partials list.
  */
 $e = fn($value) => htmlspecialchars((string) $value);
 $is_sql_view = in_array($view, ['sql', 'history', 'backups'], true);
@@ -51,7 +52,14 @@ $is_sql_view = in_array($view, ['sql', 'history', 'backups'], true);
             <div class="db-side-list">
                 <p class="db-group">Tables &middot; <?= count($sidebar_tables) ?></p>
                 <?php if ($sidebar_tables === []): ?>
+                    <?php if ($copy_tables_url !== null): ?>
+                    <?= form_open($copy_tables_url, ['class' => 'db-side-empty']) ?>
+                        <p>No tables yet. Start from production's tables, without their rows.</p>
+                        <button type="submit" class="btn-secondary">Copy production's tables</button>
+                    <?= form_close() ?>
+                    <?php else: ?>
                     <p class="db-side-empty">No tables yet. Your app creates them, or run a <code>CREATE TABLE</code> in <a href="<?= $e($sql_url) ?>">SQL</a>.</p>
+                    <?php endif; ?>
                 <?php endif; ?>
                 <ul>
                     <?php foreach ($sidebar_tables as $item): ?>
