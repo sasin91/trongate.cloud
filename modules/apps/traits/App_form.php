@@ -1,6 +1,7 @@
 <?php
 
 require_once APPPATH . 'modules/platform/manifests/Manifests.php';
+require_once APPPATH . 'modules/platform/manifests/App_env_suggestions.php';
 require_once __DIR__ . '/App_rules.php';
 
 /**
@@ -51,6 +52,8 @@ trait App_form {
             'repositories' => $repositories,
             'install_url' => $this->services->github_app()->install_url(),
             'app_types' => self::APP_TYPES,
+            'env_fields' => $this->_env_fields($this->_posted_env_suggestions()),
+            'env_loaded_for' => $this->_posted_env_loaded_for(),
         ];
     }
 
@@ -61,6 +64,7 @@ trait App_form {
         $this->validation->set_rules('label', 'App Name', 'required|min_length[3]|max_length[50]');
         $this->validation->set_rules('domain', 'Custom Domain', 'max_length[253]|callback__validate_domain');
         $this->validation->set_rules('type', 'App Type', 'required|callback__validate_app_type');
+        $this->validation->set_rules('env', 'Environment variables', 'callback__validate_suggested_env');
     }
 
     /**
@@ -72,7 +76,7 @@ trait App_form {
 
         $client = $this->_provider_client($customer_id, $provider);
 
-        return $this->model->create_app(
+        $app_id = $this->model->create_app(
             project_id: $project_id,
             label: post('label', true),
             type: post('type', true),
@@ -83,6 +87,37 @@ trait App_form {
             // The switch posts a hidden 0 then the checkbox's 1; older forms leave it out
             auto_deploy: post('auto_deploy') !== '0',
         );
+
+        if ($app_id !== false) {
+            $this->_save_suggested_env($app_id);
+        }
+
+        return $app_id;
+    }
+
+    /**
+     * Save the environment variables filled in on the Environment question
+     * (POST env[NAME]); blank ones are skipped.
+     */
+    function _save_suggested_env(int $app_id): void {
+        $posted = post('env');
+
+        if (!is_array($posted)) {
+            return;
+        }
+
+        $env = [];
+
+        foreach ($posted as $name => $value) {
+            if (is_string($value) && $value !== '') {
+                $env[(string) $name] = $value;
+            }
+        }
+
+        if ($env !== []) {
+            $this->module('secrets');
+            $this->secrets->save(App_env::MODULE, $app_id, App_env::SERVICE, $env);
+        }
     }
 
     /**
@@ -129,7 +164,123 @@ trait App_form {
         require APPPATH . 'modules/apps/views/_repository_branch_options.php';
     }
 
+    /**
+     * MX partial: an input for each environment variable the branch's
+     * config/*.php reads (App_env_suggestions), prefilled with its default.
+     */
+    function env_suggestion_fields(): void {
+        $this->_make_sure_allowed();
+        $customer = $this->_customer_or_redirect();
+        $repository = trim($_GET['repository'] ?? '');
+        $branch = trim($_GET['branch'] ?? '');
+        $provider = trim($_GET['provider'] ?? '');
+
+        if ($this->_validate_source_provider($provider) !== true
+            || $this->_validate_repository($repository) !== true
+            || $this->_validate_branch($branch) !== true) {
+            http_response_code(422);
+            die();
+        }
+
+        $client = $this->_provider_client((int) $customer->id, $provider);
+        $read_failed = false;
+
+        try {
+            $files = $client->config_php_files($repository, $branch, App_env_suggestions::MAX_FILES, App_env_suggestions::MAX_FILE_BYTES);
+        } catch (Client_Error | RuntimeException $e) {
+            $files = [];
+            $read_failed = true;
+        }
+
+        $env_fields = $this->_env_fields(App_env_suggestions::from_files($files));
+
+        header('Content-Type: text/html');
+        require APPPATH . 'modules/apps/views/_env_suggestion_fields.php';
+    }
+
+    /**
+     * What the Environment question shows per variable. Blank ones are
+     * likely secrets, so their input hides what is typed.
+     *
+     * @param list<array{name: string, default: string, file: string}> $suggestions
+     * @return list<array{name: string, value: string, file: string, input_type: string}>
+     */
+    function _env_fields(array $suggestions): array {
+        $fields = [];
+
+        foreach ($suggestions as $suggestion) {
+            $fields[] = [
+                'name' => $suggestion['name'],
+                'value' => $suggestion['default'],
+                'file' => $suggestion['file'] === '' ? '' : 'config/' . $suggestion['file'],
+                'input_type' => $suggestion['default'] === '' ? 'password' : 'text',
+            ];
+        }
+
+        return $fields;
+    }
+
+    /**
+     * The Environment question as posted, when the form is shown again after a failed submit
+     *
+     * @return list<array{name: string, default: string, file: string}>
+     */
+    function _posted_env_suggestions(): array {
+        $posted = post('env');
+
+        if (!is_array($posted)) {
+            return [];
+        }
+
+        $suggestions = [];
+
+        foreach ($posted as $name => $value) {
+            $suggestions[] = ['name' => (string) $name, 'default' => is_string($value) ? $value : '', 'file' => ''];
+        }
+
+        return $suggestions;
+    }
+
+    /**
+     * The repository and branch the posted Environment question was read
+     * from, so the form does not read them again and lose what was typed
+     */
+    function _posted_env_loaded_for(): string {
+        if (!is_array(post('env'))) {
+            return '';
+        }
+
+        return (string) post('repository') . '@' . (string) post('repository_branch');
+    }
+
     // --- Validation callbacks ---
+
+    /**
+     * The Environment question's env[NAME] values: names App_env allows, values within its size
+     */
+    function _validate_suggested_env(array|string $env): bool|string {
+        if (!is_array($env)) {
+            return true;
+        }
+
+        if (count($env) > App_env::MAX_VARIABLES) {
+            return 'An app can have at most ' . App_env::MAX_VARIABLES . ' environment variables.';
+        }
+
+        foreach ($env as $name => $value) {
+            $name_error = App_env::name_error((string) $name);
+
+            if ($name_error !== null) {
+                return $name_error;
+            }
+
+            if (!is_string($value) || strlen($value) > App_env::MAX_VALUE_BYTES) {
+                return "The value of {$name} is too long.";
+            }
+        }
+
+        return true;
+    }
 
     /**
      * A repository the customer can see on one of the GitHub App's installations

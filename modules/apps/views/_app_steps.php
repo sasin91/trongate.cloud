@@ -1,9 +1,10 @@
 <?php
 /**
- * New-app questions, one at a time: repository, branch, name, Trongate version.
+ * New-app questions, one at a time: repository, branch, environment, name, Trongate version.
  * Shared by onboarding/app and projects/{id}/apps/new.
  *
  * Expects: $provider, $repositories, $install_url, $app_types, $branches_url (returns <option>s),
+ * $env_url (returns the Environment inputs), $env_fields and $env_loaded_for (App_form::_app_form_data),
  * $form_action, $q_offset (questions answered before this page), $q_total,
  * $back_href (optional link for the first question's Back).
  */
@@ -18,7 +19,7 @@ $errors = validation_errors('<p>', '</p>');
 ?>
 <div class="wz-wrap">
     <main class="wz-main">
-        <?= form_open($form_action, ['class' => 'wz-stage', 'data-steps' => '', 'data-offset' => (string) (int) $q_offset, 'data-total' => (string) (int) $q_total, 'data-branches' => $branches_url, 'data-provider' => $provider, 'data-apps-domain' => PLATFORM_APPS_DOMAIN]) ?>
+        <?= form_open($form_action, ['class' => 'wz-stage', 'data-steps' => '', 'data-offset' => (string) (int) $q_offset, 'data-total' => (string) (int) $q_total, 'data-branches' => $branches_url, 'data-env' => $env_url, 'data-provider' => $provider, 'data-apps-domain' => PLATFORM_APPS_DOMAIN]) ?>
             <?= form_hidden('provider', $provider) ?>
 
             <button type="button" class="wz-back" data-back hidden>
@@ -81,9 +82,23 @@ $errors = validation_errors('<p>', '</p>');
                 </label>
             </fieldset>
 
-            <fieldset class="wz-step" data-step="name" data-label="Name">
+            <fieldset class="wz-step" data-step="env" data-label="Environment">
                 <div class="wz-q">
                     <span class="wz-num"><?= $q_offset + 3 ?> &rarr;</span>
+                    <legend>Fill in its environment variables.</legend>
+                </div>
+                <div data-env-fields data-loaded-for="<?= $e($env_loaded_for) ?>">
+                    <?php if ($env_loaded_for !== ''): ?>
+                        <?php require __DIR__ . '/_env_suggestion_fields.php'; ?>
+                    <?php else: ?>
+                        <p class="wz-hint">Pick a repository and branch first.</p>
+                    <?php endif; ?>
+                </div>
+            </fieldset>
+
+            <fieldset class="wz-step" data-step="name" data-label="Name">
+                <div class="wz-q">
+                    <span class="wz-num"><?= $q_offset + 4 ?> &rarr;</span>
                     <legend>Name it. That's your address.</legend>
                 </div>
                 <label class="wz-field">
@@ -101,7 +116,7 @@ $errors = validation_errors('<p>', '</p>');
 
             <fieldset class="wz-step" data-step="type" data-label="Trongate version">
                 <div class="wz-q">
-                    <span class="wz-num"><?= $q_offset + 4 ?> &rarr;</span>
+                    <span class="wz-num"><?= $q_offset + 5 ?> &rarr;</span>
                     <legend>Which Trongate is it built on?</legend>
                 </div>
                 <div class="wz-choices row">
@@ -135,6 +150,7 @@ $errors = validation_errors('<p>', '</p>');
             <dl>
                 <div><dt>repository</dt><dd data-show="repository"></dd></div>
                 <div><dt>branch</dt><dd data-show="branch"></dd></div>
+                <div><dt>env</dt><dd data-show="env"></dd></div>
                 <div><dt>address</dt><dd data-show="address"></dd></div>
                 <div><dt>domain</dt><dd data-show="domain"></dd></div>
                 <div><dt>trongate</dt><dd data-show="type"></dd></div>

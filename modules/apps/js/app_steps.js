@@ -94,6 +94,37 @@ document.addEventListener('DOMContentLoaded', function () {
         next.insertAdjacentHTML('afterbegin', '<span class="wz-spinner" aria-hidden="true"></span>');
     });
 
+    // Environment: the variables the branch's config/*.php reads, read again only when the branch changes
+    const envFields = form.querySelector('[data-env-fields]');
+
+    const loadEnv = function () {
+        const repository = checked('repository');
+        if (!repository || !branch.value) return;
+
+        const loadedFor = repository + '@' + branch.value;
+        if (envFields.dataset.loadedFor === loadedFor) return;
+        envFields.dataset.loadedFor = loadedFor;
+
+        const url = form.dataset.env + '?repository=' + encodeURIComponent(repository) + '&branch=' + encodeURIComponent(branch.value) + '&provider=' + encodeURIComponent(form.dataset.provider);
+        envFields.innerHTML = '<p class="wz-hint">Reading config/ for environment variables...</p>';
+        fetch(url, { credentials: 'same-origin' })
+            .then(function (response) {
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                return response.text();
+            })
+            .then(function (html) {
+                if (envFields.dataset.loadedFor !== loadedFor) return;
+                envFields.innerHTML = html;
+                updateSheet();
+            })
+            .catch(function () {
+                envFields.dataset.loadedFor = '';
+                envFields.innerHTML = '<p class="wz-hint">Could not read config/. You can add variables later on the app\'s Settings page.</p>';
+            });
+    };
+
+    branch.addEventListener('change', loadEnv);
+
     // Repository: load its branches, suggest a name, move on
     const loadBranches = function (repository) {
         const url = form.dataset.branches + '?repository=' + encodeURIComponent(repository) + '&provider=' + encodeURIComponent(form.dataset.provider);
@@ -108,6 +139,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 const names = Array.from(branch.options).map(function (option) { return option.value; });
                 const preferred = ['main', 'master'].find(function (name) { return names.includes(name); });
                 if (preferred) branch.value = preferred;
+                loadEnv();
                 updateSheet();
             })
             .catch(function () {
@@ -163,6 +195,10 @@ document.addEventListener('DOMContentLoaded', function () {
         slugTarget.textContent = slug || 'your-app';
         if (sheet.repository) sheet.repository.textContent = checked('repository');
         if (sheet.branch) sheet.branch.textContent = branch.value ? branch.value + (onPush ? ', on push' : ', manual') : '';
+        if (sheet.env) {
+            const filled = Array.from(envFields.querySelectorAll('input')).filter(function (input) { return input.value !== ''; }).length;
+            sheet.env.textContent = filled === 0 ? '' : filled + (filled === 1 ? ' variable' : ' variables');
+        }
         if (sheet.address) sheet.address.textContent = slug ? slug + '.' + form.dataset.appsDomain : '';
         if (sheet.domain) sheet.domain.textContent = domain;
         if (sheet.type) sheet.type.textContent = typeInput ? typeInput.closest('.wz-choice').querySelector('strong').textContent : '';
