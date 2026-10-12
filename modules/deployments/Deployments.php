@@ -31,6 +31,7 @@ class Deployments extends Trongate {
             'is_finished' => in_array($deployment->status, self::FINISHED, true),
             'failure' => $this->_failure($deployment),
             'additional_includes_top' => ['deployments_module/css/deployments.css'],
+            'additional_includes_btm' => ['deployments_module/js/follow_log.js'],
         ];
 
         $this->module('templates');
