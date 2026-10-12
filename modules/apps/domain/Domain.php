@@ -43,7 +43,7 @@ class Domain extends Trongate {
             'app' => $app,
             'domain_input' => $domain_input,
             'platform_host' => $app->slug . '.' . PLATFORM_APPS_DOMAIN,
-            'serves_platform_host' => Manifests::serves_platform_host((array) $app),
+            'serves_slug_host' => Manifests::serves_slug_host((array) $app),
             ...$this->_app_header_data($app),
             ...$this->_domain_progress($app),
             'records' => $this->_unchecked_records($app),

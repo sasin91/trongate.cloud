@@ -1,7 +1,7 @@
 <?php
 /**
  * apps/{id}/domain (Domain::index). Expects: $app, $urls, $live_state, $can_rollback,
- * $domain_input (the form field), $platform_host ({slug}.trongate.dev), $serves_platform_host (Manifests::serves_platform_host), $domain (saved, '' for none), $steps, $summary,
+ * $domain_input (the form field), $platform_host ({slug}.trongate.dev), $serves_slug_host (Manifests::serves_slug_host), $domain (saved, '' for none), $steps, $summary,
  * $verify_label ('' hides the button), $go_live_hint (App_page::_environment_data) and $records (Domain::_unchecked_records,
  * replaced by _records.php once the lookups are done).
  */
@@ -20,7 +20,7 @@
                 <input type="text" name="domain" id="domain" class="form-input mono" placeholder="app.example.com" autocomplete="off" value="<?= htmlspecialchars($domain_input) ?>">
                 <?php if ($go_live_hint): ?>
                 <p class="form-hint"><code><?= htmlspecialchars($platform_host) ?></code> is your staging address. Add your own domain when you're ready to go live.</p>
-                <?php elseif ($serves_platform_host): ?>
+                <?php elseif ($serves_slug_host): ?>
                 <p class="form-hint">Your app also stays on <code><?= htmlspecialchars($platform_host) ?></code>. Clear the field and save to remove the domain.</p>
                 <?php else: ?>
                 <p class="form-hint">Production answers only on this domain; <code><?= htmlspecialchars($platform_host) ?></code> is your staging app.</p>

@@ -417,7 +417,9 @@ class Database extends Trongate {
         try {
             $count = $this->_copy_production_tables($app);
         } catch (PDOException | RuntimeException $e) {
-            set_flashdata(htmlspecialchars('Could not copy the tables: ' . ($e instanceof PDOException ? $this->_database_error($e) : $e->getMessage())));
+            $message = $e instanceof PDOException ? $this->_database_error($e) : $e->getMessage();
+            error_log("Copying production's tables to staging app #{$app->id} failed: {$message}");
+            set_flashdata(htmlspecialchars('Could not copy the tables: ' . $message));
             redirect($this->_database_url($app));
         }
 

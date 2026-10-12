@@ -34,8 +34,8 @@ if ($domain !== '') {
     }
 }
 // A production app whose staging app took {slug}.PLATFORM_APPS_DOMAIN answers only on its domain
-$serves_platform_host = Manifests::serves_platform_host((array) $app);
-$domain_count = ($serves_platform_host ? 1 : 0) + ($domain === '' ? 0 : 1);
+$serves_slug_host = Manifests::serves_slug_host((array) $app);
+$domain_count = ($serves_slug_host ? 1 : 0) + ($domain === '' ? 0 : 1);
 // {slug}.PLATFORM_APPS_DOMAIN is for trying things out; adding a domain is going live
 $environment ??= $domain === '' ? 'staging' : 'production';
 $go_live_hint ??= $domain === '';
@@ -197,7 +197,7 @@ $platform_host = $app->slug . '.' . PLATFORM_APPS_DOMAIN;
                     <h2 id="dom-h">Domains</h2>
                     <a href="apps/<?= (int) $app->id ?>/domain"><?= $domain === '' ? 'Add domain' : 'Manage' ?></a>
                 </div>
-                <?php if ($serves_platform_host): ?>
+                <?php if ($serves_slug_host): ?>
                     <div class="ov-domain">
                         <span class="ov-mono"><?= $e($platform_host) ?></span>
                         <span class="ov-badge ok">HTTPS</span>

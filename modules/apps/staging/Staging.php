@@ -25,6 +25,7 @@ class Staging extends Trongate {
         try {
             $this->model->queue_staging_split((int) $app->project_id, (int) $app->id);
         } catch (RuntimeException $e) {
+            error_log("Add staging for app #{$app->id} refused: {$e->getMessage()}");
             set_flashdata(htmlspecialchars($e->getMessage()));
             redirect('apps/' . $app->id);
         }

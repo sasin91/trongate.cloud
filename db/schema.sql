@@ -204,11 +204,12 @@ CREATE TABLE app (
   label VARCHAR(255) NOT NULL,
   slug VARCHAR(40) NOT NULL,
   -- Serves {slug}.PLATFORM_APPS_DOMAIN; 0 for a production app whose staging app took it
-  platform_host TINYINT(1) NOT NULL DEFAULT 1,
+  serves_slug_host TINYINT(1) NOT NULL DEFAULT 1,
   type ENUM('trongate_v1', 'trongate_v2') NOT NULL,
   -- A staging app is a copy of its production app (production_app_id) with
-  -- the same slug that deploys its own branch (tasks/split_staging.php)
-  environment ENUM('production', 'staging') NOT NULL DEFAULT 'production',
+  -- the same slug that deploys its own branch (tasks/split_staging.php);
+  -- 'preview' is reserved for pull request previews, linked the same way
+  environment ENUM('production', 'staging', 'preview') NOT NULL DEFAULT 'production',
   production_app_id INT NULL,
 
   -- Custom domain: as entered, then proven by a TXT record, pointed here, and secured

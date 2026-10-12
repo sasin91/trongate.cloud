@@ -16,7 +16,7 @@
  *
  * Production keeps its database, settings, deployments and domain. It is
  * re-applied with its current deployment so its route drops the {slug} host
- * (app.platform_host 0, Manifests::serves_platform_host).
+ * (app.serves_slug_host 0, Manifests::serves_slug_host).
  *
  * Payload: {project_id, app_id} (the production app).
  *
@@ -112,7 +112,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
             [$staging_id, $app_id],
         );
 
-        Platform_task::execute($db, 'UPDATE app SET platform_host = 0 WHERE id = ?', [$app_id]);
+        Platform_task::execute($db, 'UPDATE app SET serves_slug_host = 0 WHERE id = ?', [$app_id]);
 
         $db->commit();
     } catch (Throwable $e) {
@@ -142,5 +142,10 @@ return function (Task_log $log) use ($payload, $runtime): int {
     $database = Platform_task::database_server($db, $app, $log);
     Platform_task::apply($runtime, $log, $app, $deployment, $database);
 
-    return Platform_task::wait_for_rollout($runtime, $log, $app) ? 0 : 1;
+    if (!Platform_task::wait_for_rollout($runtime, $log, $app)) {
+        $log->error("Production did not roll out without {$host}; it still answers there until its next deploy");
+        return 1;
+    }
+
+    return 0;
 };
