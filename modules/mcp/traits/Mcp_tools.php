@@ -165,6 +165,7 @@ trait Mcp_tools {
                     'processes' => ['type' => 'array', 'description' => 'The full list of processes run next to the app, which never sleep, e.g. [{"name": "worker", "command": "php bin/queue.php work --time-limit=3600", "replicas": 1}]; [] removes them all. Replicas run side by side.', 'items' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string', 'description' => 'Lowercase letters, numbers and -, at most 20'], 'command' => ['type' => 'string'], 'replicas' => ['type' => 'integer', 'minimum' => 1, 'maximum' => Manifests::MAX_PROCESS_REPLICAS]], 'required' => ['name', 'command']]],
                     'always_on' => ['type' => 'boolean', 'description' => 'Never sleep when idle (needed when other apps call it directly)'],
                     'auto_deploy' => ['type' => 'boolean', 'description' => 'Deploy on every push to the branch'],
+                    'source_branch' => ['type' => 'string', 'description' => 'The branch it deploys from (a staging app: staging by default)'],
                     'trongate_env' => ['type' => 'string', 'description' => "Trongate's ENV constant in config/config.php, e.g. " . implode(', ', Trongate_config::ENV_SUGGESTIONS) . ' (dev shows errors)'],
                     'mail_capture' => ['type' => 'boolean', 'description' => "Catch mail sent with Trongate's email module on the app's Mail tab instead of delivering it (on by default); off sends with the app's own config/trongate_email.php"],
                 ], ['app_id']),
@@ -492,6 +493,7 @@ trait Mcp_tools {
             'php_extensions' => (string) ($app->php_extensions ?? ''),
             'always_on' => (bool) $app->always_on,
             'auto_deploy' => (bool) $app->auto_deploy,
+            'source_branch' => (string) $app->source_branch,
             'trongate_env' => Trongate_config::env((array) $app),
             'mail_capture' => Mail_capture::enabled((array) $app),
         ];
@@ -543,6 +545,13 @@ trait Mcp_tools {
                 $settings[$flag] = $this->_bool_arg($args, $flag);
                 $changed[] = $flag;
             }
+        }
+
+        if (array_key_exists('source_branch', $args)) {
+            $branch = trim($this->_string_arg($args, 'source_branch'));
+            $this->_check($this->_validate_branch($branch));
+            $settings['source_branch'] = $branch;
+            $changed[] = 'source_branch';
         }
 
         if (array_key_exists('trongate_env', $args)) {
@@ -1016,6 +1025,8 @@ trait Mcp_tools {
             'urls' => array_map(fn(string $host) => 'https://' . $host, $hostnames),
             'source_url' => $app->source_url ?? null,
             'source_branch' => $app->source_branch ?? null,
+            'environment' => $app->environment ?? 'production',
+            'staging_app_id' => isset($app->staging_app_id) ? (int) $app->staging_app_id : null,
             'always_on' => !empty($app->always_on),
             'current_deployment_id' => isset($app->current_deployment_id) ? (int) $app->current_deployment_id : null,
             'current_status' => $app->current_status ?? null,

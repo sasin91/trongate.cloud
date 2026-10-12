@@ -98,6 +98,7 @@ class Apps extends Trongate {
             'current' => $current,
             'deployments' => $deployments,
             'can_rollback' => $this->model->rollback_target($app) !== false,
+            ...$this->_environment_data($app),
             'live_state' => $this->_live_app_state($app),
             'log_rates' => $this->_log_rates($app),
             'database_name' => Manifests::database_name((int) $app->id),
@@ -162,6 +163,7 @@ class Apps extends Trongate {
             'app' => $app,
             'urls' => $this->_app_urls($app),
             'can_rollback' => $this->model->rollback_target($app) !== false,
+            ...$this->_environment_data($app),
             'live_state' => $logs['state'] ?? null,
             'logs' => $logs,
             'crumbs' => $this->_app_crumbs($app),
@@ -263,6 +265,7 @@ class Apps extends Trongate {
             'always_on' => $is_resubmit ? (bool) post('always_on') : (bool) $app->always_on,
             'trongate_env' => $is_resubmit ? (string) post('trongate_env', true) : Trongate_config::env((array) $app),
             'auto_deploy' => $is_resubmit ? (bool) post('auto_deploy') : (bool) $app->auto_deploy,
+            'source_branch' => $is_resubmit ? (string) post('source_branch', true) : (string) $app->source_branch,
             'mail_capture' => $is_resubmit ? (bool) post('mail_capture') : Mail_capture::enabled((array) $app),
             'env_names' => array_keys($this->_app_env($app)),
             'env_name' => $this->env_form_posted ? (string) post('env_name', true) : '',
@@ -332,6 +335,7 @@ class Apps extends Trongate {
         $this->validation->set_rules('php_extensions', 'PHP Extensions', 'max_length[255]|callback__validate_php_extensions');
         $this->validation->set_rules('processes', 'Processes', 'callback__validate_processes');
         $this->validation->set_rules('trongate_env', 'Environment', 'required|callback__validate_trongate_env');
+        $this->validation->set_rules('source_branch', 'Branch', 'required|max_length[100]|callback__validate_branch');
 
         if ($this->validation->run() !== true) {
             $this->settings();
@@ -345,6 +349,7 @@ class Apps extends Trongate {
             'php_extensions' => implode(',', $this->_parse_php_extensions((string) post('php_extensions', true))),
             'always_on' => (bool) post('always_on'),
             'auto_deploy' => (bool) post('auto_deploy'),
+            'source_branch' => trim((string) post('source_branch', true)),
             'trongate_env' => trim((string) post('trongate_env', true)),
             'mail_capture' => (bool) post('mail_capture'),
         ]);
@@ -368,6 +373,8 @@ class Apps extends Trongate {
             'view_file' => 'delete',
             'app' => $app,
             'urls' => $this->_app_urls($app),
+            'staging_urls' => $this->_staging_urls($app),
+            'name' => $app->environment === 'staging' ? $app->label . ' staging' : $app->label,
             'crumbs' => $this->_app_crumbs($app),
             'additional_includes_top' => ['apps_module/css/apps.css'],
         ];
@@ -403,11 +410,32 @@ class Apps extends Trongate {
             redirect('apps/' . $app->id);
         }
 
+        if ($app->environment === 'staging') {
+            set_flashdata('Staging was deleted. It is being taken offline now.');
+            redirect('apps/' . $app->production_app_id);
+        }
+
         set_flashdata(htmlspecialchars($app->label) . ' was deleted. It is being taken offline now.');
         redirect('projects/' . $app->project_id);
     }
 
     // --- Helpers ---
+
+    /**
+     * The addresses of a production app's staging app, deleted along with it;
+     * empty when it has none
+     *
+     * @return list<string>
+     */
+    function _staging_urls(object $app): array {
+        $staging = $this->model->find_staging_app((int) $app->id);
+
+        if ($staging === false) {
+            return [];
+        }
+
+        return ['https://' . $staging->slug . '.' . PLATFORM_APPS_DOMAIN];
+    }
 
     /**
      * Hourly error and warning counts of the last 24 hours (App_log_rates),

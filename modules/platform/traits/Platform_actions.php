@@ -22,6 +22,9 @@ trait Platform_actions {
     /** Subdomains an app slug may not take */
     const RESERVED_SLUGS = ['www', 'api', 'app', 'admin', 'mail', 'mcp', 'oauth', 'status', 'docs', 'registry'];
 
+    /** The branch a new staging app deploys from; its Settings change it */
+    const STAGING_BRANCH = 'staging';
+
     /**
      * Queue a deployment of the app's configured source.
      *
@@ -169,6 +172,13 @@ trait Platform_actions {
     function queue_app_delete(int $project_id, int $app_id): int {
         $app = $this->_app_or_fail($project_id, $app_id);
 
+        // A production app takes its staging app with it, first, so a staging app never outlives it
+        $staging = $this->find_staging_app($app_id);
+
+        if ($staging !== false) {
+            $this->queue_app_delete($project_id, (int) $staging->id);
+        }
+
         return $this->db->transaction(function () use ($project_id, $app) {
             $app_id = (int) $app->id;
 
@@ -254,24 +264,27 @@ trait Platform_actions {
     }
 
     /**
-     * The project's apps with their current deployment's state.
+     * The project's production apps with their current deployment's state and
+     * staging_app_id (create_staging_app), NULL when they have none.
      * Lists columns explicitly so the rows are safe to return to API clients.
      */
     function project_apps(int $project_id): array {
         $sql = <<<SQL
             SELECT
-                a.id, a.project_id, a.label, a.slug, a.type, a.domain, a.verified_domain,
+                a.id, a.project_id, a.label, a.slug, a.type, a.environment, a.domain, a.verified_domain,
                 a.domain_pointed_at, a.domain_secured_at, a.domain_checked_at,
                 a.source_provider, a.source_url, a.source_branch,
                 a.persistent_paths, a.php_extensions, a.always_on,
                 a.database_server_id, a.current_deployment_id, a.created_at,
+                st.id AS staging_app_id,
                 cd.status AS current_status,
                 cd.commit_sha AS current_commit_sha,
                 cd.image AS current_image,
                 cd.completed_at AS current_deployed_at
             FROM app a
             LEFT JOIN deployment cd ON cd.id = a.current_deployment_id
-            WHERE a.project_id = :project_id AND a.deleted_at IS NULL
+            LEFT JOIN app st ON st.production_app_id = a.id AND st.environment = 'staging' AND st.deleted_at IS NULL
+            WHERE a.project_id = :project_id AND a.deleted_at IS NULL AND a.environment = 'production'
             ORDER BY a.label ASC
         SQL;
         return $this->db->query_bind($sql, ['project_id' => $project_id], 'object');
@@ -464,7 +477,87 @@ trait Platform_actions {
 
         $this->queue_domain_recheck($project_id, $app_id);
 
+        // Going live: {slug}.PLATFORM_APPS_DOMAIN was its staging, now it gets one of its own
+        if ($app->environment === 'production' && $this->find_staging_app($app_id) === false) {
+            $this->create_staging_app($project_id, $app_id);
+        }
+
         return true;
+    }
+
+    /**
+     * Give a production app a staging app: a copy with its settings and
+     * environment variables (copied once, separate after that) on
+     * {slug}-staging.PLATFORM_APPS_DOMAIN, deploying pushes to STAGING_BRANCH.
+     * It gets its own database, empty, and never production's processes or
+     * custom domain. It sleeps when idle and captures mail, so it stays cheap
+     * and never mails real people. Nothing is deployed until the branch gets
+     * a push or someone presses Deploy.
+     *
+     * @return int The staging app's id (the existing one, if it has one)
+     * @throws RuntimeException when the app is not the project's or is itself a staging app
+     */
+    function create_staging_app(int $project_id, int $app_id): int {
+        $app = $this->_app_or_fail($project_id, $app_id);
+
+        if ($app->environment !== 'production') {
+            throw new RuntimeException('A staging app cannot have a staging app of its own.');
+        }
+
+        return $this->db->transaction(function () use ($app) {
+            // Row lock: a second, concurrent call waits here, then finds the first one's staging app
+            $this->db->query_bind('SELECT id FROM app WHERE id = :app_id FOR UPDATE', ['app_id' => (int) $app->id], 'column');
+
+            $existing = $this->find_staging_app((int) $app->id);
+
+            if ($existing !== false) {
+                return (int) $existing->id;
+            }
+
+            $staging_id = (int) $this->db->insert([
+                'project_id' => (int) $app->project_id,
+                'label' => $app->label,
+                'slug' => $this->generate_app_slug($app->slug . '-staging'),
+                'type' => $app->type,
+                'environment' => 'staging',
+                'production_app_id' => (int) $app->id,
+                'source_url' => $app->source_url,
+                'source_provider' => $app->source_provider,
+                'source_branch' => self::STAGING_BRANCH,
+                'auto_deploy' => (int) $app->auto_deploy,
+                'persistent_paths' => (string) ($app->persistent_paths ?? '[]'),
+                'php_extensions' => (string) $app->php_extensions,
+                'always_on' => 0,
+                'trongate_env' => (string) $app->trongate_env,
+                'mail_capture' => 1,
+            ], 'app');
+
+            // App_env: still encrypted, so the values never pass through here
+            $this->db->query_bind(
+                "INSERT INTO secrets (module, module_id, service, variables)
+                 SELECT module, :staging_id, service, variables
+                 FROM secrets
+                 WHERE module = 'app' AND module_id = :app_id AND service = 'env'",
+                ['staging_id' => $staging_id, 'app_id' => (int) $app->id]
+            );
+
+            return $staging_id;
+        });
+    }
+
+    /**
+     * A production app's staging app (id, slug, source_branch), if it has one
+     */
+    function find_staging_app(int $production_app_id): object|false {
+        $sql = <<<SQL
+            SELECT id, slug, source_branch
+            FROM app
+            WHERE production_app_id = :app_id AND environment = 'staging' AND deleted_at IS NULL
+            LIMIT 1
+        SQL;
+        $rows = $this->db->query_bind($sql, ['app_id' => $production_app_id], 'object');
+
+        return $rows[0] ?? false;
     }
 
     /**

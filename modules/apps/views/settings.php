@@ -69,11 +69,17 @@
         </div>
 
         <div class="form-group">
+            <label for="source_branch" class="form-label">Branch</label>
+            <input type="text" name="source_branch" id="source_branch" class="form-input mono" autocomplete="off" value="<?= htmlspecialchars($source_branch) ?>">
+            <p class="form-hint">Where this app deploys from.</p>
+        </div>
+
+        <div class="form-group">
             <label class="checkbox-label">
                 <input type="checkbox" name="auto_deploy" value="1" <?= $auto_deploy ? 'checked' : '' ?>>
                 Deploy on push
             </label>
-            <p class="form-hint">Pushes to <code><?= htmlspecialchars((string) $app->source_branch) ?></code> deploy automatically through the trongate.cloud GitHub app. Turn this off to deploy only when you press Deploy.</p>
+            <p class="form-hint">Pushes to the branch deploy automatically through the trongate.cloud GitHub app. Turn this off to deploy only when you press Deploy.</p>
         </div>
 
         <div class="form-group">

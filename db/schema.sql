@@ -204,6 +204,10 @@ CREATE TABLE app (
   label VARCHAR(255) NOT NULL,
   slug VARCHAR(40) NOT NULL,
   type ENUM('trongate_v1', 'trongate_v2') NOT NULL,
+  -- A staging app is a copy of its production app (production_app_id) that
+  -- deploys from its own branch, on {slug}-staging (create_staging_app)
+  environment ENUM('production', 'staging') NOT NULL DEFAULT 'production',
+  production_app_id INT NULL,
 
   -- Custom domain: as entered, then proven by a TXT record, pointed here, and secured
   domain VARCHAR(255) NULL,
@@ -238,7 +242,9 @@ CREATE TABLE app (
   UNIQUE KEY unique_slug (slug),
   UNIQUE KEY unique_verified_domain (verified_domain),
   KEY idx_project_deleted (project_id, deleted_at),
+  KEY idx_production_app (production_app_id),
   CONSTRAINT fk_app_project FOREIGN KEY (project_id) REFERENCES project (id),
+  CONSTRAINT fk_app_production_app FOREIGN KEY (production_app_id) REFERENCES app (id),
   CONSTRAINT fk_app_database_server FOREIGN KEY (database_server_id) REFERENCES database_server (id)
 );
 
@@ -471,4 +477,5 @@ INSERT INTO schema_migrations (name) VALUES
   ('0004_app_mail'),
   ('0005_deployment_config_version'),
   ('0006_app_process'),
-  ('0007_drop_php_session');
+  ('0007_drop_php_session'),
+  ('0008_app_environments');

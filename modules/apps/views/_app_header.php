@@ -5,17 +5,26 @@
  * the traffic page (traffic/views/index.php), the mail page (mail/views/index.php), the upgrade page (upgrade/views/index.php) and the domain page (domain/views/index.php).
  *
  * Expects: $app, $urls, $live_state (array|null), $can_rollback, $active_tab
- * ('overview', 'logs', 'traffic', 'database', 'mail', 'upgrade' or 'domain'), and optionally $preview (true: no forms, no polling).
+ * ('overview', 'logs', 'traffic', 'database', 'mail', 'upgrade' or 'domain'), and optionally
+ * $environments (App_page::_environment_data) and $preview (true: no forms, no polling).
  */
 $preview = $preview ?? false;
 $e ??= fn($value) => htmlspecialchars((string) $value);
 $repository ??= preg_replace('#^https?://(www\.)?github\.com/#', '', (string) $app->source_url);
 $auto_deploy ??= !isset($app->auto_deploy) || !empty($app->auto_deploy);
+$environments ??= [];
 ?>
     <div class="ov-head">
         <div class="ov-title">
             <div class="ov-title-row">
                 <h1><?= $e($app->label) ?></h1>
+                <?php if ($environments !== []): ?>
+                    <nav class="ov-envs" aria-label="Environments">
+                        <?php foreach ($environments as [$href, $label, $active]): ?>
+                            <a href="<?= $e($href) ?>"<?= $active ? ' class="is-active" aria-current="page"' : '' ?>><?= $e($label) ?></a>
+                        <?php endforeach; ?>
+                    </nav>
+                <?php endif; ?>
                 <span class="ov-live" id="live-state"<?php if (!$preview && $live_state !== null): ?> mx-get="apps/<?= (int) $app->id ?>/live-state" mx-trigger="every 5s"<?php endif; ?>>
                     <?php if ($live_state !== null): ?>
                         <?php require __DIR__ . '/_live_state.php'; ?>

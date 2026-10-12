@@ -6,7 +6,8 @@
  * Expects: $app, $urls, $current (deployment|false), $deployments, $can_rollback,
  * $live_state (array|null), $database_name, and optionally $processes and
  * $process_states (see _processes.php), $services (the project's services,
- * Platform_actions::project_services) and $preview (true: no forms, no polling).
+ * Platform_actions::project_services), $environment, $environments, $go_live_hint
+ * and $can_add_staging (App_page::_environment_data) and $preview (true: no forms, no polling).
  */
 $preview = $preview ?? false;
 $processes = $processes ?? [];
@@ -34,7 +35,9 @@ if ($domain !== '') {
 }
 $domain_count = $domain === '' ? 1 : 2;
 // {slug}.PLATFORM_APPS_DOMAIN is for trying things out; adding a domain is going live
-$environment = $domain === '' ? 'staging' : 'production';
+$environment ??= $domain === '' ? 'staging' : 'production';
+$go_live_hint ??= $domain === '';
+$can_add_staging ??= false;
 $platform_host = $app->slug . '.' . PLATFORM_APPS_DOMAIN;
 ?>
 <div class="ov">
@@ -49,7 +52,13 @@ $platform_host = $app->slug . '.' . PLATFORM_APPS_DOMAIN;
             <section class="ov-card" aria-labelledby="env-h">
                 <div class="ov-card-head">
                     <h2 id="env-h">Environment</h2>
-                    <span class="muted"><?= $environment ?></span>
+                    <?php if (!$preview && $can_add_staging): ?>
+                        <?= form_open('apps/' . $app->id . '/staging/submit', ['class' => 'ov-head-form']) ?>
+                            <button type="submit" class="btn-link">Add staging</button>
+                        <?= form_close() ?>
+                    <?php else: ?>
+                        <span class="muted"><?= $environment ?></span>
+                    <?php endif; ?>
                 </div>
                 <div class="ov-canvas">
                     <div class="ov-env">
@@ -190,9 +199,9 @@ $platform_host = $app->slug . '.' . PLATFORM_APPS_DOMAIN;
                     <span class="ov-mono"><?= $e($platform_host) ?></span>
                     <span class="ov-badge ok">HTTPS</span>
                 </div>
-                <?php if ($domain_state === null): ?>
+                <?php if ($domain_state === null && $go_live_hint): ?>
                     <p class="ov-domain-hint muted">Your staging address. Add your own domain when you're ready to go live.</p>
-                <?php else: ?>
+                <?php elseif ($domain_state !== null): ?>
                     <div class="ov-domain">
                         <span class="ov-mono"><?= $e($domain) ?></span>
                         <span class="ov-badge <?= $domain_state['class'] ?>"><?= $e($domain_state['label']) ?></span>
