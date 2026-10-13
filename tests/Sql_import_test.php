@@ -86,6 +86,7 @@ $test('a dump\'s session settings are applied without the ones that save or rest
     $same(['TIME_ZONE' => 'TIME_ZONE = "+00:00"'], Sql_import::step('SET time_zone = "+00:00"')['settings']);
     $same('skip', Sql_import::step('/*!50001 SET character_set_client = latin1 */')['action']);
     $same(['NAMES' => 'NAMES utf8mb4 COLLATE utf8mb4_unicode_ci'], Sql_import::step('SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci')['settings']);
+    $same(['NAMES' => 'CHARSET utf8mb4'], Sql_import::step('SET CHARSET utf8mb4')['settings']);
 });
 
 $test('settings are applied again in the order they were last set', function () use ($same) {
