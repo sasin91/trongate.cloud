@@ -50,7 +50,7 @@ final class Setup_sql {
     const SKIPPED = '/^(START\s+TRANSACTION|BEGIN|COMMIT|ROLLBACK|(UN)?LOCK\s+TABLES?)\b/i';
 
     /** Session settings a dump sets; SET of anything else (max_statement_time) is refused */
-    const ALLOWED_SET = '/^SET\s+(SESSION\s+|@@SESSION\.|@@)?(NAMES|CHARACTER\s+SET|SQL_MODE|TIME_ZONE|FOREIGN_KEY_CHECKS|UNIQUE_CHECKS|SQL_NOTES)\b/i';
+    const ALLOWED_SET = '/^SET\s+(SESSION\s+|@@SESSION\.|@@)?(NAMES|CHARACTER\s+SET|CHARSET|SQL_MODE|TIME_ZONE|FOREIGN_KEY_CHECKS|UNIQUE_CHECKS|SQL_NOTES)\b/i';
 
     /**
      * The .sql files in a repository to offer, from its tree's paths: the

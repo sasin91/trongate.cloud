@@ -93,6 +93,8 @@ $test('SET of anything but a dump\'s session settings is refused', function () u
     $same('Statement 2: Only SET NAMES, CHARACTER SET, SQL_MODE, TIME_ZONE, FOREIGN_KEY_CHECKS, UNIQUE_CHECKS or SQL_NOTES runs here, one per statement.', Setup_sql::plan("CREATE TABLE a (id INT);\nSET NAMES utf8mb4, max_statement_time = 0")['refusal']);
     $same(null, Setup_sql::plan("SET SQL_MODE = 'STRICT_TRANS_TABLES,NO_ZERO_DATE'")['refusal']);
     $same(null, Setup_sql::plan('SET SESSION foreign_key_checks = 1')['refusal']);
+    $same(null, Setup_sql::plan('SET CHARSET utf8mb4')['refusal']);
+    $same(null, Setup_sql::plan('SET CHARACTER SET utf8mb4')['refusal']);
 });
 
 $test('statements the SQL box refuses are refused, changes allowed', function () use ($same) {

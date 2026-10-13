@@ -161,7 +161,7 @@ final class Sql_import {
 
     /**
      * The session settings in the clauses of a SET, by name: NAMES,
-     * CHARACTER SET and the SETTINGS given a plain value. Clauses that set
+     * CHARACTER SET or CHARSET and the SETTINGS given a plain value. Clauses that set
      * user variables (@OLD_SQL_MODE = @@SQL_MODE), restore from them, or set
      * anything else are left out.
      *
@@ -171,7 +171,7 @@ final class Sql_import {
         $settings = [];
 
         foreach (self::clauses($clauses) as $clause) {
-            if (preg_match('/^(NAMES|CHARACTER\s+SET)\s+' . self::VALUE . '(\s+COLLATE\s+' . self::VALUE . ')?$/i', $clause)) {
+            if (preg_match('/^(NAMES|CHARACTER\s+SET|CHARSET)\s+' . self::VALUE . '(\s+COLLATE\s+' . self::VALUE . ')?$/i', $clause)) {
                 $settings['NAMES'] = $clause;
                 continue;
             }
