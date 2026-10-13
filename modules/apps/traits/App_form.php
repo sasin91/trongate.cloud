@@ -156,6 +156,7 @@ trait App_form {
             'php_extensions' => implode(',', $this->_parse_php_extensions((string) post('php_extensions', true))),
             'always_on' => post('always_on') === '1',
             'auto_deploy' => post('auto_deploy') !== '0',
+            'source_branch' => trim((string) post('repository_branch', true)),
             'trongate_env' => trim((string) post('trongate_env', true)),
             'mail_capture' => post('mail_capture') !== '0',
             'health_path' => $this->_parse_health_path((string) post('health_path', true)),
