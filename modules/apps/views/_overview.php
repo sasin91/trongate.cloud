@@ -58,7 +58,14 @@ $platform_host = $app->slug . '.' . PLATFORM_APPS_DOMAIN;
                 <summary>The SQL that did not run</summary>
                 <pre><?= $e($setup_sql_failure['remaining_sql']) ?></pre>
             </details>
-            <p class="muted">Fix it and run it from the <a href="apps/<?= (int) $app->id ?>/database?view=sql">Database tab</a>.</p>
+            <div class="ov-setup-sql-foot">
+                <p class="muted">Fix it and run it from the <a href="apps/<?= (int) $app->id ?>/database?view=sql">Database tab</a>. Dismissing deletes this SQL.</p>
+                <?php if (!$preview): ?>
+                    <?= form_open('apps/' . $app->id . '/setup-sql/dismiss') ?>
+                        <button type="submit" class="btn-link">Dismiss</button>
+                    <?= form_close() ?>
+                <?php endif; ?>
+            </div>
         </div>
     <?php endif; ?>
 

@@ -50,6 +50,7 @@ $routes = [
     'apps/env-suggestions' => 'apps/env_suggestion_fields',
     'apps/sql-files' => 'apps/sql_file_options',
     'apps/(:num)/deploy' => 'apps/deploy/$1',
+    'apps/(:num)/setup-sql/dismiss' => 'apps/dismiss_setup_sql/$1',
     'apps/(:num)/rollback' => 'apps/rollback/$1',
     'apps/(:num)/settings' => 'apps/settings/$1',
     'apps/(:num)/settings/submit' => 'apps/submit_settings/$1',
