@@ -67,13 +67,14 @@ class App_database {
 
     /**
      * @param array $server database_server row (host, port)
+     * @param int $statement_seconds how long one statement may run (a file import's run longer, see Sql_import)
      * @throws PDOException when the server cannot be reached or refuses the app's user
      */
-    static function open(array $server, int $app_id): self {
+    static function open(array $server, int $app_id, int $statement_seconds = self::STATEMENT_SECONDS): self {
         $name = Manifests::database_name($app_id);
 
         // Client-side cap too: the statement's own session could lift max_statement_time
-        ini_set('mysqlnd.net_read_timeout', (string) (self::STATEMENT_SECONDS + 5));
+        ini_set('mysqlnd.net_read_timeout', (string) ($statement_seconds + 5));
 
         $dsn = 'mysql:host=' . $server['host'] . ';port=' . (int) ($server['port'] ?? 3306) . ';dbname=' . $name . ';charset=utf8mb4';
 
@@ -87,7 +88,7 @@ class App_database {
             // Numbers as MariaDB writes them, so a backed-up DOUBLE is restored exactly
             PDO::ATTR_STRINGIFY_FETCHES => true,
         ]);
-        $pdo->exec('SET SESSION max_statement_time = ' . self::STATEMENT_SECONDS);
+        $pdo->exec('SET SESSION max_statement_time = ' . $statement_seconds);
 
         return new self($pdo, $name);
     }
@@ -732,14 +733,36 @@ class App_database {
      * @return array{index: int, error: string}|null the failed statement (0-based) and MariaDB's message, or null when all ran
      */
     function import(array $statements): ?array {
-        $this->pdo->exec('SET SESSION TRANSACTION READ WRITE');
+        $this->prepare_import();
 
         foreach ($statements as $index => $statement) {
-            try {
-                $this->pdo->exec($statement);
-            } catch (PDOException $e) {
-                return ['index' => $index, 'error' => self::error_message($e)];
+            $error = $this->import_statement($statement);
+
+            if ($error !== null) {
+                return ['index' => $index, 'error' => $error];
             }
+        }
+
+        return null;
+    }
+
+    /**
+     * Before import_statement(): statements may change data
+     */
+    function prepare_import(): void {
+        $this->pdo->exec('SET SESSION TRANSACTION READ WRITE');
+    }
+
+    /**
+     * Run one statement Setup_sql or Sql_import allowed, on its own
+     *
+     * @return string|null MariaDB's message when it failed
+     */
+    function import_statement(string $statement): ?string {
+        try {
+            $this->pdo->exec($statement);
+        } catch (PDOException $e) {
+            return self::error_message($e);
         }
 
         return null;
