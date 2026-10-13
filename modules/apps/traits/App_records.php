@@ -91,6 +91,14 @@ trait App_records {
     }
 
     /**
+     * Hide a failed setup SQL's alert: the SQL that did not run is cleared,
+     * the error kept
+     */
+    function dismiss_setup_sql(int $app_id): void {
+        $this->db->query_bind("UPDATE app SET setup_sql = NULL, setup_sql_status = 'dismissed' WHERE id = :app_id AND setup_sql_status = 'failed'", ['app_id' => $app_id]);
+    }
+
+    /**
      * Update an app's platform settings (the app must be in the project).
      * The custom domain goes through update_app_domain().
      *

@@ -245,6 +245,19 @@ class Apps extends Trongate {
     }
 
     /**
+     * POST apps/{id}/setup-sql/dismiss: hide the alert about a failed setup SQL
+     */
+    function dismiss_setup_sql(): void {
+        $this->_make_sure_allowed();
+        $app = $this->_member_app_or_redirect(segment(3, 'int'));
+        $this->_require_post_with_csrf();
+
+        $this->model->dismiss_setup_sql((int) $app->id);
+
+        redirect('apps/' . $app->id);
+    }
+
+    /**
      * Roll back to a given deployment (POST deployment_id) or, without one, the previous successful one.
      */
     function rollback(): void {

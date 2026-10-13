@@ -28,6 +28,17 @@
     margin: 0;
 }
 
+.ov-setup-sql-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+}
+
+.ov-setup-sql-foot form {
+    margin: 0;
+}
+
 .ov-setup-sql details {
     margin: 0.5rem 0;
 }
