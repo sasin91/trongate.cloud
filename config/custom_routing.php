@@ -39,6 +39,7 @@ $routes = [
     'projects/(:num)/delete' => 'projects/submit_delete/$1',
     'projects/(:num)/members/add' => 'projects/add_member/$1',
     'projects/(:num)/members/(:num)/remove' => 'projects/remove_member/$1/$2',
+    'projects/(:num)/services' => 'projects/services/$1',
     'projects/(:num)/services/add' => 'projects/add_service/$1',
     'projects/(:num)/services/(:num)/redeploy' => 'projects/redeploy_service/$1/$2',
     'projects/(:num)/services/(:num)/delete' => 'projects/delete_service/$1/$2',

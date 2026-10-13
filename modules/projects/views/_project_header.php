@@ -1,9 +1,9 @@
 <?php
 /**
  * Project page header: name, counts, New app and the section tabs. Shared by
- * the project page (show.php) and its traffic page (traffic.php).
+ * the project page (show.php), its traffic page (traffic.php) and its services page (services.php).
  *
- * Expects: $project, $app_count, $member_count, $is_owner, $active_tab ('apps' or 'traffic').
+ * Expects: $project, $app_count, $member_count, $is_owner, $active_tab ('apps', 'traffic' or 'services').
  */
 $e = fn($value) => htmlspecialchars((string) $value);
 $new_app_href = 'projects/' . (int) $project->id . '/apps/new';
@@ -29,7 +29,7 @@ $project_href = 'projects/' . (int) $project->id;
 $tabs = [
     [$project_href, 'Apps', $active_tab === 'apps'],
     [$project_href . '/traffic', 'Traffic', $active_tab === 'traffic'],
-    [$project_href . '#services', 'Services', false],
+    [$project_href . '/services', 'Services', $active_tab === 'services'],
     [$project_href . '#members', 'Members', false],
 ];
 if ($is_owner) {
