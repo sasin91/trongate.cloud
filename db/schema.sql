@@ -287,7 +287,8 @@ CREATE TABLE app (
   -- failed one on
   setup_sql LONGTEXT NULL,
   -- NULL when the wizard had none
-  setup_sql_status ENUM('pending', 'done', 'failed') NULL,
+  -- dismissed: failed, then dismissed from the app page (its SQL cleared)
+  setup_sql_status ENUM('pending', 'done', 'failed', 'dismissed') NULL,
   -- Why it stopped; it is not run again
   setup_sql_error TEXT NULL,
   database_server_id INT NULL,
@@ -538,4 +539,5 @@ INSERT INTO schema_migrations (name) VALUES
   ('0008_app_health_path'),
   ('0009_app_environments'),
   ('0010_app_setup_sql'),
+  ('0011_app_setup_sql_dismissed'),
   ('0012_app_sql_import');

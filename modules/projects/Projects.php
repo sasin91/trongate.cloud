@@ -86,8 +86,6 @@ class Projects extends Trongate {
             'project' => $project,
             'apps' => $apps,
             'members' => $this->model->project_members((int) $project->id),
-            'services' => $this->model->project_services((int) $project->id),
-            'service_form' => $this->_service_form(),
             'is_owner' => $this->_is_owner($project),
             'customer_id' => (int) $customer->id,
             'email' => REQUEST_TYPE === 'POST' ? (string) post('email', true) : '',
@@ -129,6 +127,61 @@ class Projects extends Trongate {
         ];
         $this->module('templates');
         $this->templates->customer($data);
+    }
+
+    /**
+     * projects/{id}/services: the project's services (Project_service) and the Add service form
+     */
+    function services(): void {
+        $this->_make_sure_allowed();
+        $project = $this->_member_project_or_redirect(segment(3, 'int'));
+        $services = $this->model->project_services((int) $project->id);
+
+        foreach ($services as $service) {
+            $this->_add_service_display($service);
+        }
+
+        $data = [
+            'view_module' => 'projects',
+            'view_file' => 'services',
+            'project' => $project,
+            'services' => $services,
+            'can_add_service' => count($services) < Project_service::MAX_PER_PROJECT,
+            'service_form' => $this->_service_form(),
+            'app_count' => count($this->model->project_apps((int) $project->id)),
+            'member_count' => count($this->model->project_members((int) $project->id)),
+            'is_owner' => $this->_is_owner($project),
+            'crumbs' => [['projects/' . $project->id, $project->name], ['projects/' . $project->id . '/services', 'Services']],
+            'additional_includes_top' => [
+                'deployments_module/css/deployments.css',
+                'apps_module/css/apps.css',
+                'projects_module/css/projects.css',
+            ],
+        ];
+        $this->module('templates');
+        $this->templates->customer($data);
+    }
+
+    /**
+     * What the services list shows for one service: its status pill and the
+     * {NAME}_URL line apps get
+     */
+    function _add_service_display(object $service): void {
+        $status = (string) ($service->status ?? 'queued');
+        $status_class = 'pending';
+
+        if ($status === 'running') {
+            $status_class = 'success';
+        }
+
+        if ($status === 'failed') {
+            $status_class = 'failed';
+        }
+
+        $service->status = $status;
+        $service->status_class = $status_class;
+        $service->url_line = Project_service::url_variable($service->name) . '=' . Project_service::url((int) $service->id, (int) $service->port);
+        $service->remove_question = 'Remove ' . $service->name . '? Apps calling it will get errors until you redeploy them without it.';
     }
 
     /**
@@ -267,7 +320,7 @@ class Projects extends Trongate {
         $this->_require_post_with_csrf();
 
         $form = $this->_service_form();
-        $back = 'projects/' . $project->id . '#services';
+        $back = 'projects/' . $project->id . '/services';
 
         try {
             $env = $this->_parse_service_env($form['env']);
@@ -305,7 +358,7 @@ class Projects extends Trongate {
             set_flashdata(htmlspecialchars($e->getMessage()));
         }
 
-        redirect('projects/' . $project->id . '#services');
+        redirect('projects/' . $project->id . '/services');
     }
 
     /**
@@ -323,7 +376,7 @@ class Projects extends Trongate {
             set_flashdata(htmlspecialchars($e->getMessage()));
         }
 
-        redirect('projects/' . $project->id . '#services');
+        redirect('projects/' . $project->id . '/services');
     }
 
     /**

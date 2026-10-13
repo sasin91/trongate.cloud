@@ -58,7 +58,14 @@ $platform_host = $app->slug . '.' . PLATFORM_APPS_DOMAIN;
                 <summary>The SQL that did not run</summary>
                 <pre><?= $e($setup_sql_failure['remaining_sql']) ?></pre>
             </details>
-            <p class="muted">Fix it and run it from the <a href="apps/<?= (int) $app->id ?>/database?view=sql">Database tab</a>.</p>
+            <div class="ov-setup-sql-foot">
+                <p class="muted">Fix it and run it from the <a href="apps/<?= (int) $app->id ?>/database?view=sql">Database tab</a>. Dismissing deletes this SQL.</p>
+                <?php if (!$preview): ?>
+                    <?= form_open('apps/' . $app->id . '/setup-sql/dismiss') ?>
+                        <button type="submit" class="btn-link">Dismiss</button>
+                    <?= form_close() ?>
+                <?php endif; ?>
+            </div>
         </div>
     <?php endif; ?>
 
@@ -125,13 +132,13 @@ $platform_host = $app->slug . '.' . PLATFORM_APPS_DOMAIN;
                                 <div>
                                     <span class="ov-node-kind">Service</span>
                                     <strong class="ov-mono"><?= $e($service->name) ?></strong>
-                                    <span class="muted"><?= $e(Project_service::url_variable((string) $service->name)) ?> &middot; <span class="<?= $status === 'failed' ? 'ov-warn-text' : '' ?>"><?= $e($status) ?></span><?php if (!$preview): ?> &middot; <a href="projects/<?= (int) $app->project_id ?>#services">Manage</a><?php endif; ?></span>
+                                    <span class="muted"><?= $e(Project_service::url_variable((string) $service->name)) ?> &middot; <span class="<?= $status === 'failed' ? 'ov-warn-text' : '' ?>"><?= $e($status) ?></span><?php if (!$preview): ?> &middot; <a href="projects/<?= (int) $app->project_id ?>/services">Manage</a><?php endif; ?></span>
                                 </div>
                             </div>
                         <?php endforeach; ?>
                         </div>
                         <?php if (!$preview && $services === []): ?>
-                            <a class="ov-add-service" href="projects/<?= (int) $app->project_id ?>#services">Add a service</a>
+                            <a class="ov-add-service" href="projects/<?= (int) $app->project_id ?>/services">Add a service</a>
                         <?php endif; ?>
                     </div>
                 </div>
