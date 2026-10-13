@@ -38,6 +38,8 @@ $admin_nav = [
         'database_server/manage' => 'Database servers',
         'app_database_log/manage' => 'Database tab log',
         'app_database_backup/manage' => 'Database backups',
+        'app_sql_import/manage' => 'SQL imports',
+        'app_sql_import_chunk/manage' => 'SQL import parts',
     ],
     'Worker' => [
         'tasks/manage' => 'Tasks',

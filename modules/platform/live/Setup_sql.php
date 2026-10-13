@@ -118,7 +118,7 @@ final class Setup_sql {
         $plan = ['statements' => [], 'skipped' => 0, 'refusal' => null];
 
         if (strlen($sql) > self::MAX_BYTES) {
-            $plan['refusal'] = 'That is more than ' . self::max_megabytes() . ' MB of SQL. Import it from the Database tab in parts.';
+            $plan['refusal'] = 'That is more than ' . self::max_megabytes() . ' MB of SQL. Import it as a file from the Database tab once the app runs.';
 
             return $plan;
         }

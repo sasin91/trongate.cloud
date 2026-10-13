@@ -3,13 +3,14 @@
  * apps/{id}/database (Database::index): the workspace, laid out like TablePlus.
  * A sidebar of tables, tabs along the top, and one view in the middle:
  * data (views/_data.php), structure (views/_structure.php), diagram (views/_diagram.php), SQL with its
- * result, history and backups (views/_sql.php), or how the database differs from schema.sql (views/_schema.php).
+ * result, history and backups (views/_sql.php), how the database differs from schema.sql (views/_schema.php),
+ * or a .sql file import (views/_import.php).
  *
  * Expects plain values from Database::_workspace_data: $app, $urls, $live_state,
  * $can_rollback, $base, $database_name, $view, $error, $table_name,
  * $sidebar_tables and $sidebar_views (name, href, note, is_current), $open_tabs
  * (href, label, icon, is_current, close_href), $view_toggle ([href, label, is_current]),
- * $sql_url, $history_url, $backups_url, $backup_entries, $copy_tables_url (null hides
+ * $sql_url, $history_url, $backups_url, $import_url, $backup_entries, $copy_tables_url (null hides
  * Copy production's tables), and what the partials list.
  */
 $e = fn($value) => htmlspecialchars((string) $value);
@@ -90,6 +91,7 @@ $is_sql_view = in_array($view, ['sql', 'history', 'backups'], true);
             <div class="db-side-foot">
                 <a href="<?= $e($history_url) ?>"<?= $view === 'history' ? ' aria-current="page"' : '' ?>>History</a>
                 <a href="<?= $e($backups_url) ?>"<?= $view === 'backups' ? ' aria-current="page"' : '' ?>>Backups &middot; <?= count($backup_entries) ?></a>
+                <a href="<?= $e($import_url) ?>"<?= $view === 'import' ? ' aria-current="page"' : '' ?>>Import</a>
             </div>
         </aside>
 
@@ -107,6 +109,8 @@ $is_sql_view = in_array($view, ['sql', 'history', 'backups'], true);
                 <?php require __DIR__ . '/_sql.php'; ?>
             <?php elseif ($view === 'schema'): ?>
                 <?php require __DIR__ . '/_schema.php'; ?>
+            <?php elseif ($view === 'import'): ?>
+                <?php require __DIR__ . '/_import.php'; ?>
             <?php elseif ($table_name === null): ?>
                 <div class="db-empty">
                     <p>Pick a table on the left to see its rows, or run SQL.</p>

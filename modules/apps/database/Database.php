@@ -7,6 +7,7 @@ require_once APPPATH . 'modules/platform/live/App_password.php';
 require_once __DIR__ . '/traits/App_database_guard.php';
 require_once __DIR__ . '/traits/App_database_diagram.php';
 require_once __DIR__ . '/traits/App_database_schema.php';
+require_once __DIR__ . '/traits/App_database_import.php';
 
 /**
  * Child module of apps: apps/{id}/database, browse and edit an app's own
@@ -24,6 +25,7 @@ class Database extends Trongate {
     use App_database_guard;
     use App_database_diagram;
     use App_database_schema;
+    use App_database_import;
 
     /** mx-build-modal for the Change password form (views/_password_form.php) */
     const PASSWORD_MODAL = '{"id":"db-password-modal","modalHeading":"Change password","width":"32rem","marginTop":"8vh"}';
@@ -38,7 +40,7 @@ class Database extends Trongate {
     const ADD_ROW_MODAL = '{"id":"db-row-modal","modalHeading":"Add row","width":"44rem","marginTop":"6vh"}';
 
     /** What the workspace shows (?view=); data is the default */
-    const VIEWS = ['data', 'structure', 'diagram', 'sql', 'history', 'backups', 'schema'];
+    const VIEWS = ['data', 'structure', 'diagram', 'sql', 'history', 'backups', 'schema', 'import'];
 
     /** Tables kept open as tabs along the top of the workspace, per app */
     const OPEN_TABS = 6;
@@ -48,7 +50,7 @@ class Database extends Trongate {
 
     /**
      * apps/{id}/database: the workspace. ?table= opens a table, ?view= picks
-     * data, structure, sql, history, backups or schema, ?close= closes a table's tab,
+     * data, structure, sql, history, backups, schema or import, ?close= closes a table's tab,
      * and the filter bar's ?filter_column=&filter_value= becomes ?where[col]=.
      */
     function index(): void {
@@ -642,6 +644,7 @@ class Database extends Trongate {
                 'apps-database_module/js/keep_scroll.js',
                 'apps-database_module/js/select.js',
                 'apps-database_module/js/workspace.js',
+                'apps-database_module/js/import.js',
             ],
         ];
         $data = $page + $data;
@@ -655,6 +658,7 @@ class Database extends Trongate {
                 $data = $this->_load_table($app, $database, $data);
                 $data = $this->_load_diagram($app, $database, $data);
                 $data = $this->_load_schema($app, $database, $data);
+                $data = $this->_load_import($app, $data);
             } catch (PDOException $e) {
                 $data['error'] = $this->_database_error($e);
             }
@@ -736,6 +740,20 @@ class Database extends Trongate {
     }
 
     /**
+     * The Import view's values (App_database_import) when it is the view asked for
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    function _load_import(object $app, array $data): array {
+        if ($data['view'] !== 'import') {
+            return $data;
+        }
+
+        return $this->_import_data($app, array_keys($data['tables'])) + $data;
+    }
+
+    /**
      * Everything views/index.php shows, as plain values: the sidebar, the tabs,
      * the grid's header and cells, the status bar, the SQL results, history and backups
      *
@@ -753,6 +771,7 @@ class Database extends Trongate {
         $data['sql_url'] = $this->_database_url($app, $this->_with_table(['view' => 'sql'], $table_name));
         $data['history_url'] = $this->_database_url($app, $this->_with_table(['view' => 'history'], $table_name));
         $data['backups_url'] = $this->_database_url($app, $this->_with_table(['view' => 'backups'], $table_name));
+        $data['import_url'] = $this->_database_url($app, ['view' => 'import']);
         $data['query_url'] = $data['base'] . '/query' . ($table_name === null ? '' : '?' . http_build_query(['table' => $table_name]));
         $data['sql_placeholder'] = 'SELECT * FROM ' . ($table_name ?? 'users') . ' LIMIT 10';
         $data['statement_seconds'] = App_database::STATEMENT_SECONDS;

@@ -6,7 +6,7 @@
  * Expects (Database::_workspace_data): $view (sql, history or backups), $query_url,
  * $database_name, $sql, $sql_placeholder, $statement_seconds, $query_error,
  * $result_panels, $results_summary, $backup_link, $history, $backup_entries,
- * $sql_url, $history_url, $backups_url, $base.
+ * $sql_url, $history_url, $backups_url, $import_url, $base.
  */
 $e = fn($value) => htmlspecialchars((string) $value);
 ?>
@@ -30,6 +30,7 @@ $e = fn($value) => htmlspecialchars((string) $value);
         <span class="db-sql-hint" title="Separate statements with ;. They run in one transaction as your app's own database user, so if one fails the others are rolled back. CREATE, ALTER, DROP, TRUNCATE and RENAME commit at once, with everything before them. Read-only unless you allow changes. Deploys never change your tables: run your modules' .sql files here.">
             One transaction &middot; read-only unless you allow changes &middot; stops after <?= (int) $statement_seconds ?> s &middot; logged
         </span>
+        <a href="<?= $e($import_url) ?>" class="db-sql-import">Import a .sql file</a>
     </div>
 <?= form_close() ?>
 

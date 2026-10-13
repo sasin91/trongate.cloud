@@ -10,6 +10,8 @@ ENV PORT=8080 \
     XDG_DATA_HOME=/tmp/caddy/data
 
 COPY docker/Caddyfile /etc/frankenphp/Caddyfile
+# Upload size for the Database tab's .sql file import, in parts (docker/php.ini)
+COPY docker/php.ini /usr/local/etc/php/conf.d/zz-trongate-cloud.ini
 
 WORKDIR /app
 COPY --chown=root:root . /app
