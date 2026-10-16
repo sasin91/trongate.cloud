@@ -20,6 +20,9 @@ class Onboarding extends Trongate {
     use Provider_clients;
     use App_form;
 
+    /** The onboarding wizard's draft in the session (App_wizard_draft) */
+    const WIZARD_DRAFT_KEY = 'onboarding';
+
     function __construct(string $module_name = '') {
         parent::__construct($module_name);
         $this->_make_sure_allowed();
@@ -51,9 +54,21 @@ class Onboarding extends Trongate {
     function app(): void {
         $customer = $this->_customer_or_redirect();
         $this->_forget_earlier_errors();
-        $form = $this->_app_form_data((int) $customer->id, 'auth/github?then=onboarding/app');
+        $form = $this->_app_form_data((int) $customer->id, 'auth/github?then=onboarding/app', self::WIZARD_DRAFT_KEY);
 
         $this->view('app', $form);
+    }
+
+    /**
+     * POST onboarding/draft: app_steps.js keeps the answers so far and the
+     * open question, so a refresh opens the same question
+     */
+    function draft(): void {
+        $this->_customer_or_redirect();
+        $this->_require_post_with_csrf();
+
+        $this->_save_wizard_draft(self::WIZARD_DRAFT_KEY, (string) post('wizard_step', true), post());
+        http_response_code(204);
     }
 
     function submit_app(): void {
@@ -84,6 +99,8 @@ class Onboarding extends Trongate {
         if ($app_id === false) {
             redirect('onboarding/app');
         }
+
+        $this->_forget_wizard_draft(self::WIZARD_DRAFT_KEY);
 
         // Queued after the transaction commits (queue_deploy opens its own)
         $deployment_id = $this->_queue_first_deploy((int) $customer->id, (int) $app_id);

@@ -3,25 +3,22 @@
  * New-app questions, one at a time: repository, branch, environment, name, Trongate version, database, build, settings.
  * Shared by onboarding/app and projects/{id}/apps/new.
  *
- * Expects: $provider, $github_connected, $repositories, $connect_url, $public_link, $install_url, $app_types, $branches_url (returns <option>s),
+ * Expects: $provider, $github_connected, $repositories, $connect_url, $public_link, $selected_repository,
+ * $repository_branch, $auto_deploy, $label, $domain, $selected_type, $install_url, $app_types, $branches_url (returns <option>s),
  * $env_url (returns the Environment inputs), $sql_url (returns the Database question's files),
  * $build_url (returns the Build question's fields), $env_fields, $env_loaded_for, $settings, $setup_sql,
- * $build and $error_step (App_form::_app_form_data),
- * $form_action, $q_offset (questions answered before this page), $q_total,
- * $back_href (optional link for the first question's Back).
+ * $build, $error_step and $draft_step (App_form::_app_form_data),
+ * $form_action, $draft_url (keeps the answers so far, App_wizard_draft), $q_offset (questions answered before this page), $q_total,
+ * $cancel_action (optional: Cancel forgets the draft there and leaves).
  */
 $e = fn($value) => htmlspecialchars((string) $value);
-$selected_repository = (string) post('repository');
-$selected_type = post('type') ?: 'trongate_v2';
-$auto_deploy = post('auto_deploy') === '' ? true : post('auto_deploy') === '1';
-$domain = (string) post('domain');
 $keys = range('A', 'Z');
 $type_descriptions = ['trongate_v2' => 'The current release', 'trongate_v1' => 'Older apps'];
 $errors = validation_errors('<p>', '</p>');
 ?>
 <div class="wz-wrap">
     <main class="wz-main">
-        <?= form_open($form_action, ['class' => 'wz-stage', 'data-steps' => '', 'data-offset' => (string) (int) $q_offset, 'data-total' => (string) (int) $q_total, 'data-branches' => $branches_url, 'data-env' => $env_url, 'data-sql' => $sql_url, 'data-build' => $build_url, 'data-provider' => $provider, 'data-error-step' => $error_step, 'data-apps-domain' => PLATFORM_APPS_DOMAIN]) ?>
+        <?= form_open($form_action, ['class' => 'wz-stage', 'data-steps' => '', 'data-offset' => (string) (int) $q_offset, 'data-total' => (string) (int) $q_total, 'data-branches' => $branches_url, 'data-env' => $env_url, 'data-sql' => $sql_url, 'data-build' => $build_url, 'data-provider' => $provider, 'data-error-step' => $error_step, 'data-draft' => $draft_url, 'data-draft-step' => $draft_step, 'data-apps-domain' => PLATFORM_APPS_DOMAIN]) ?>
             <?= form_hidden('provider', $provider) ?>
 
             <button type="button" class="wz-back" data-back hidden>
@@ -74,8 +71,8 @@ $errors = validation_errors('<p>', '</p>');
                 <label class="wz-field">
                     <span class="wz-sr">Branch</span>
                     <select name="repository_branch" id="repository_branch" class="wz-select" required>
-                        <?php if (post('repository_branch') !== ''): ?>
-                            <option value="<?= $e(post('repository_branch')) ?>" selected><?= $e(post('repository_branch')) ?></option>
+                        <?php if ($repository_branch !== ''): ?>
+                            <option value="<?= $e($repository_branch) ?>" selected><?= $e($repository_branch) ?></option>
                         <?php else: ?>
                             <option value="">Pick a repository first</option>
                         <?php endif; ?>
@@ -113,7 +110,7 @@ $errors = validation_errors('<p>', '</p>');
                 </div>
                 <label class="wz-field">
                     <span class="wz-sr">App name</span>
-                    <input type="text" name="label" id="label" class="wz-big" placeholder="Storefront" value="<?= $e(post('label')) ?>" required minlength="3" maxlength="50">
+                    <input type="text" name="label" id="label" class="wz-big" placeholder="Storefront" value="<?= $e($label) ?>" required minlength="3" maxlength="50">
                 </label>
                 <p class="wz-address"><span>https://<b data-slug>your-app</b>.<?= $e(PLATFORM_APPS_DOMAIN) ?></span></p>
                 <button type="button" class="wz-reveal" data-reveal="domain-field" <?= $domain !== '' ? 'hidden' : '' ?>>+ Add your own domain (optional)</button>
@@ -240,8 +237,8 @@ $errors = validation_errors('<p>', '</p>');
             <div class="wz-nav">
                 <button type="submit" class="wz-ok" data-next>Launch</button>
                 <span class="wz-enter">press <strong>Enter &#8629;</strong></span>
-                <?php if (!empty($back_href)): ?>
-                    <a href="<?= $e($back_href) ?>" class="wz-back" data-cancel>Cancel</a>
+                <?php if (!empty($cancel_action)): ?>
+                    <button type="submit" formaction="<?= $e(BASE_URL . $cancel_action) ?>" formnovalidate class="wz-back" data-cancel>Cancel</button>
                 <?php endif; ?>
             </div>
         <?= form_close() ?>

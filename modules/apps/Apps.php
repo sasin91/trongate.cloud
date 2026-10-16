@@ -51,7 +51,7 @@ class Apps extends Trongate {
             'view_module' => 'apps',
             'view_file' => 'create',
             'project' => $project,
-            'form' => $this->_app_form_data((int) $customer->id, 'auth/github?then=projects/' . (int) $project->id . '/apps/new'),
+            'form' => $this->_app_form_data((int) $customer->id, 'auth/github?then=projects/' . (int) $project->id . '/apps/new', $this->_wizard_draft_key($project)),
             'crumbs' => [['projects/' . $project->id, (string) $project->name], ['projects/' . $project->id . '/apps/new', 'New app']],
             'additional_includes_top' => ['apps_module/css/wizard.css', 'sql_check_module/css/sql_check.css'],
         ];
@@ -79,9 +79,42 @@ class Apps extends Trongate {
             redirect('projects/' . $project->id . '/apps/new');
         }
 
+        $this->_forget_wizard_draft($this->_wizard_draft_key($project));
         $deployment_id = $this->_queue_first_deploy((int) $customer->id, $app_id);
 
         redirect($deployment_id === false ? 'apps/' . $app_id : 'deployments/' . $deployment_id);
+    }
+
+    /**
+     * POST projects/{id}/apps/draft: app_steps.js keeps the answers so far
+     * and the open question, so a refresh opens the same question
+     */
+    function save_draft(): void {
+        $this->_make_sure_allowed();
+        $project = $this->_member_project_or_redirect(segment(3, 'int'));
+        $this->_require_post_with_csrf();
+
+        $this->_save_wizard_draft($this->_wizard_draft_key($project), (string) post('wizard_step', true), post());
+        http_response_code(204);
+    }
+
+    /**
+     * POST projects/{id}/apps/cancel: forget the draft and go back to the project
+     */
+    function cancel(): void {
+        $this->_make_sure_allowed();
+        $project = $this->_member_project_or_redirect(segment(3, 'int'));
+        $this->_require_post_with_csrf();
+
+        $this->_forget_wizard_draft($this->_wizard_draft_key($project));
+        redirect('projects/' . $project->id);
+    }
+
+    /**
+     * Each project's new-app wizard keeps its own draft
+     */
+    function _wizard_draft_key(object $project): string {
+        return 'project-' . (int) $project->id;
     }
 
     function show(): void {

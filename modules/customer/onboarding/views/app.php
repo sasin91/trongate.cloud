@@ -15,6 +15,7 @@
 
     <?php
     $form_action = 'onboarding/submit_app';
+    $draft_url = 'onboarding/draft';
     $branches_url = 'onboarding/branches';
     $env_url = 'onboarding/env-suggestions';
     $sql_url = 'onboarding/sql-files';
