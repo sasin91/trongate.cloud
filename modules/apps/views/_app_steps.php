@@ -7,8 +7,8 @@
  * $repository_branch, $auto_deploy, $label, $domain, $selected_type, $install_url, $app_types, $branches_url (returns <option>s),
  * $env_url (returns the Environment inputs), $sql_url (returns the Database question's files),
  * $build_url (returns the Build question's fields), $env_fields, $env_loaded_for, $settings, $setup_sql,
- * $build, $error_step and $draft_step (App_form::_app_form_data),
- * $form_action, $draft_url (keeps the answers so far, App_wizard_draft), $q_offset (questions answered before this page), $q_total,
+ * $build, $error_step and $open_step (App_form::_app_form_data),
+ * $form_action, $draft_url (keeps the answers so far, App_wizard_draft), $step_url (each question's URL, before its step), $q_offset (questions answered before this page), $q_total,
  * $cancel_action (optional: Cancel forgets the draft there and leaves).
  */
 $e = fn($value) => htmlspecialchars((string) $value);
@@ -18,7 +18,7 @@ $errors = validation_errors('<p>', '</p>');
 ?>
 <div class="wz-wrap">
     <main class="wz-main">
-        <?= form_open($form_action, ['class' => 'wz-stage', 'data-steps' => '', 'data-offset' => (string) (int) $q_offset, 'data-total' => (string) (int) $q_total, 'data-branches' => $branches_url, 'data-env' => $env_url, 'data-sql' => $sql_url, 'data-build' => $build_url, 'data-provider' => $provider, 'data-error-step' => $error_step, 'data-draft' => $draft_url, 'data-draft-step' => $draft_step, 'data-apps-domain' => PLATFORM_APPS_DOMAIN]) ?>
+        <?= form_open($form_action, ['class' => 'wz-stage', 'data-steps' => '', 'data-offset' => (string) (int) $q_offset, 'data-total' => (string) (int) $q_total, 'data-branches' => $branches_url, 'data-env' => $env_url, 'data-sql' => $sql_url, 'data-build' => $build_url, 'data-provider' => $provider, 'data-error-step' => $error_step, 'data-draft' => $draft_url, 'data-step-url' => BASE_URL . $step_url, 'data-open-step' => $open_step, 'data-apps-domain' => PLATFORM_APPS_DOMAIN]) ?>
             <?= form_hidden('provider', $provider) ?>
 
             <button type="button" class="wz-back" data-back hidden>

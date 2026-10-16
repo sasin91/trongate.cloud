@@ -38,20 +38,33 @@ class Apps extends Trongate {
     private bool $env_form_posted = false;
 
     /**
-     * projects/{id}/apps/new: the new-app questions. Without a GitHub
-     * sign-in the customer can paste a public link or connect GitHub.
+     * projects/{id}/apps/new[/{step}]: the new-app questions, open on the
+     * step in the URL. Without a GitHub sign-in the customer can paste a
+     * public link or connect GitHub. Opened without a step while answers are
+     * kept (App_wizard_draft), it first asks whether to continue them.
      */
     function create(): void {
         $this->_make_sure_allowed();
         $project = $this->_member_project_or_redirect(segment(3, 'int'));
         $customer = $this->_customer_or_redirect();
         $this->_forget_earlier_errors();
+        $draft_key = $this->_wizard_draft_key($project);
+        $step = (string) segment(4);
+
+        if ($step !== '' && !$this->_is_wizard_step($step)) {
+            redirect('projects/' . $project->id . '/apps/new');
+        }
+
+        if (REQUEST_TYPE === 'GET' && $step === '' && $this->_has_wizard_draft($draft_key)) {
+            $this->_ask_to_continue($project, $draft_key);
+            return;
+        }
 
         $data = [
             'view_module' => 'apps',
             'view_file' => 'create',
             'project' => $project,
-            'form' => $this->_app_form_data((int) $customer->id, 'auth/github?then=projects/' . (int) $project->id . '/apps/new', $this->_wizard_draft_key($project)),
+            'form' => $this->_app_form_data((int) $customer->id, 'auth/github?then=projects/' . (int) $project->id . '/apps/new', $draft_key, $step),
             'crumbs' => [['projects/' . $project->id, (string) $project->name], ['projects/' . $project->id . '/apps/new', 'New app']],
             'additional_includes_top' => ['apps_module/css/wizard.css', 'sql_check_module/css/sql_check.css'],
         ];
@@ -96,6 +109,37 @@ class Apps extends Trongate {
 
         $this->_save_wizard_draft($this->_wizard_draft_key($project), (string) post('wizard_step', true), post());
         http_response_code(204);
+    }
+
+    /**
+     * The wizard opened without a step while answers are kept: continue
+     * them (the step they were on) or start over
+     */
+    function _ask_to_continue(object $project, string $draft_key): void {
+        $data = [
+            'view_module' => 'apps',
+            'view_file' => 'continue',
+            'project' => $project,
+            'draft_name' => $this->_wizard_draft_name($draft_key),
+            'continue_url' => 'projects/' . (int) $project->id . '/apps/new/' . $this->_wizard_draft_step($draft_key),
+            'start_over_action' => 'projects/' . (int) $project->id . '/apps/new/start-over',
+            'crumbs' => [['projects/' . $project->id, (string) $project->name], ['projects/' . $project->id . '/apps/new', 'New app']],
+            'additional_includes_top' => ['apps_module/css/wizard.css'],
+        ];
+        $this->module('templates');
+        $this->templates->customer($data);
+    }
+
+    /**
+     * POST projects/{id}/apps/new/start-over: forget the draft and open the first question
+     */
+    function start_over(): void {
+        $this->_make_sure_allowed();
+        $project = $this->_member_project_or_redirect(segment(3, 'int'));
+        $this->_require_post_with_csrf();
+
+        $this->_forget_wizard_draft($this->_wizard_draft_key($project));
+        redirect('projects/' . $project->id . '/apps/new');
     }
 
     /**

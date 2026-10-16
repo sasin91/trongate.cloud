@@ -1,7 +1,7 @@
 // New-app form shown one question at a time (views/_app_steps.php).
 // Without JS every question stays visible and the form submits as one page.
-// Each move to another question keeps the answers in the session (App_wizard_draft),
-// so a refresh opens the same question again.
+// Each question has its own URL (data-step-url + its data-step), so a refresh or Back
+// opens it again; each move also keeps the answers in the session (App_wizard_draft).
 document.addEventListener('DOMContentLoaded', function () {
     const form = document.querySelector('form[data-steps]');
     if (!form) return;
@@ -112,10 +112,26 @@ document.addEventListener('DOMContentLoaded', function () {
         if (focusable) focusable.focus({ preventScroll: true });
     };
 
+    // A move made by the customer: the question's own URL, so Back returns to the one before
     const moveTo = function (index) {
         show(index);
+        if (form.dataset.stepUrl) {
+            const step = steps[current].dataset.step;
+            history.pushState({ step: step }, '', form.dataset.stepUrl + step);
+        }
         saveDraft();
     };
+
+    const stepIndex = function (name) {
+        return steps.findIndex(function (step) { return step.dataset.step === name; });
+    };
+
+    // Back and Forward in the browser
+    window.addEventListener('popstate', function (event) {
+        if (!event.state || !event.state.step) return;
+        show(Math.max(0, stepIndex(event.state.step)));
+        saveDraft();
+    });
 
     const advance = function () {
         if (!fieldsValid(steps[current])) return;
@@ -367,7 +383,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     let start = 0;
     if (form.querySelector('.wz-errors') && form.dataset.errorStep) {
-        start = steps.findIndex(function (step) { return step.dataset.step === form.dataset.errorStep; });
+        start = stepIndex(form.dataset.errorStep);
     } else if (form.querySelector('.wz-errors')) {
         start = steps.findIndex(function (step) {
             return Array.from(step.querySelectorAll('input, select')).some(function (field) {
@@ -375,8 +391,9 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         });
         if (start === -1) start = steps.findIndex(function (step) { return step.dataset.step === 'name'; });
-    } else if (form.dataset.draftStep) {
-        start = Math.max(0, steps.findIndex(function (step) { return step.dataset.step === form.dataset.draftStep; }));
+    } else if (form.dataset.openStep) {
+        start = Math.max(0, stepIndex(form.dataset.openStep));
     }
     show(start);
+    history.replaceState({ step: steps[current].dataset.step }, '');
 });

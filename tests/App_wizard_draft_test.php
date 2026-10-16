@@ -75,4 +75,25 @@ test('a fresh open answers from the draft, cleaned up when asked', function () {
     assert_same('', $host->_answer('label'));
 });
 
+test('the Continue question names the app, else its repository, and reopens its step', function () {
+    $host = new Wizard_draft_host();
+    assert_same(false, $host->_has_wizard_draft('project-4'));
+
+    $host->_save_wizard_draft('project-4', 'type', ['label' => '', 'repository' => 'owner/shop']);
+    assert_same(true, $host->_has_wizard_draft('project-4'));
+    assert_same('owner/shop', $host->_wizard_draft_name('project-4'));
+    assert_same('type', $host->_wizard_draft_step('project-4'));
+
+    $host->_save_wizard_draft('project-4', 'nonsense', ['label' => 'Shop']);
+    assert_same('Shop', $host->_wizard_draft_name('project-4'));
+    assert_same('repository', $host->_wizard_draft_step('project-4'));
+});
+
+test('WIZARD_STEPS lists the questions in views/_app_steps.php, in order', function () {
+    $view = file_get_contents(dirname(__DIR__) . '/modules/apps/views/_app_steps.php');
+    preg_match_all('/class="wz-step" data-step="([a-z_]+)"/', $view, $matches);
+
+    assert_same(Wizard_draft_host::WIZARD_STEPS, $matches[1]);
+});
+
 finish_tests();

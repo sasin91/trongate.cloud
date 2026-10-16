@@ -7,6 +7,7 @@
     extract($form);
     $form_action = 'projects/' . (int) $project->id . '/apps/submit';
     $draft_url = 'projects/' . (int) $project->id . '/apps/draft';
+    $step_url = 'projects/' . (int) $project->id . '/apps/new/';
     $branches_url = 'apps/branches';
     $env_url = 'apps/env-suggestions';
     $sql_url = 'apps/sql-files';
