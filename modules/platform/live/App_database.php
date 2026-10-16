@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../manifests/Manifests.php';
+require_once __DIR__ . '/Sql_query_rules.php';
 
 /**
  * A customer app's own MariaDB database, opened as the app's own user
@@ -32,6 +33,9 @@ class App_database {
 
     /** First keywords of statements that change data or tables; they run only with $allow_changes */
     const WRITE_STATEMENTS = ['INSERT', 'UPDATE', 'DELETE', 'REPLACE', 'CREATE', 'ALTER', 'DROP', 'TRUNCATE', 'RENAME'];
+
+    /** USE and CREATE, ALTER or DROP DATABASE (or SCHEMA): refused, see database_refusal() */
+    const DATABASE_STATEMENT = '/^(USE\b|(CREATE|ALTER|DROP)\s+(DATABASE|SCHEMA)\b)/i';
 
     /** MariaDB aborts a statement (or the rest of several, see run()) after this long, so one query cannot tie up a web worker */
     const STATEMENT_SECONDS = 15;
@@ -511,39 +515,137 @@ class App_database {
     }
 
     /**
-     * Why the SQL may not run here, or null when it may (see run()). It may
-     * hold several statements separated by ";". Anything but the
-     * statements in READ_STATEMENTS and WRITE_STATEMENTS is refused: SET (which
-     * could lift the read-only mode and the time limit), BEGIN, COMMIT, LOCK,
-     * HANDLER, LOAD DATA, CALL, PREPARE and the like.
+     * Why the SQL may not run here, or null when it may (see run()), by
+     * Sql_query_rules. It may hold several statements separated by ";".
      */
     static function refusal(string $sql, bool $allow_changes): ?string {
-        if (strlen($sql) > self::MAX_STATEMENT_BYTES) {
-            return 'That SQL is longer than ' . (self::MAX_STATEMENT_BYTES / 1024) . ' KB.';
+        return (new Sql_query_rules($allow_changes))->refusal($sql);
+    }
+
+    /**
+     * Why one statement of refusal() may not run, or null when it may
+     */
+    static function statement_refusal(string $statement, bool $allow_changes): ?string {
+        $syntax_refusal = self::syntax_refusal($statement);
+
+        if ($syntax_refusal !== null) {
+            return $syntax_refusal;
         }
 
-        $content_refusal = self::content_refusal($sql);
+        $database_refusal = self::database_refusal($statement);
 
-        if ($content_refusal !== null) {
-            return $content_refusal;
+        if ($database_refusal !== null) {
+            return $database_refusal;
         }
 
-        $statements = self::statements($sql);
+        $kind = self::keyword_kind($statement);
 
-        foreach ($statements as $i => $statement) {
-            $kind = self::keyword_kind($statement);
-            $which = count($statements) > 1 ? 'Statement ' . ($i + 1) . ': ' : '';
+        if ($kind === null) {
+            return 'Only SELECT, SHOW, DESCRIBE and EXPLAIN run here, or with "Allow changes" INSERT, UPDATE, DELETE, REPLACE, CREATE, ALTER, DROP, TRUNCATE and RENAME.';
+        }
 
-            if ($kind === null) {
-                return $which . 'Only SELECT, SHOW, DESCRIBE and EXPLAIN run here, or with "Allow changes" INSERT, UPDATE, DELETE, REPLACE, CREATE, ALTER, DROP, TRUNCATE and RENAME.';
+        if ($kind === 'write' && !$allow_changes) {
+            return 'This changes your database. Tick "Allow changes" to run it.';
+        }
+
+        return null;
+    }
+
+    /**
+     * Statements about which database to use (USE, CREATE DATABASE and the
+     * like), which dumps often start with. The app's user is already in the
+     * app's own database and may not create or pick another.
+     */
+    static function database_refusal(string $statement): ?string {
+        if (preg_match(self::DATABASE_STATEMENT, self::without_comments($statement))) {
+            return 'Your app is already connected to its own database, so USE and CREATE, ALTER or DROP DATABASE are not needed.';
+        }
+
+        return null;
+    }
+
+    /**
+     * Mistakes in one statement that MariaDB would refuse anyway, found
+     * without sending it anywhere (syntax_problem()), or null
+     */
+    static function syntax_refusal(string $statement): ?string {
+        $problem = self::syntax_problem($statement);
+
+        return $problem === null ? null : $problem['message'];
+    }
+
+    /**
+     * A quote or comment that is never closed, or brackets that do not pair
+     * up, with where in the statement it is and a few words to show there.
+     * Quotes, `quoted names` and comments are read the way statements() reads them.
+     *
+     * @return array{message: string, label: string, offset: int}|null
+     */
+    static function syntax_problem(string $statement): ?array {
+        $open_brackets = [];
+        $length = strlen($statement);
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $statement[$i];
+
+            if ($char === "'" || $char === '"' || $char === '`') {
+                $close = self::closing_quote($statement, $i);
+
+                if ($close === null) {
+                    return ['message' => 'A ' . $char . ' is never closed.', 'label' => 'opened here, never closed', 'offset' => $i];
+                }
+
+                $i = $close;
+            } elseif ($char === '#' || ($char === '-' && substr($statement, $i, 2) === '--' && ctype_space($statement[$i + 2] ?? ' '))) {
+                $end = strpos($statement, "\n", $i);
+                $i = $end === false ? $length : $end;
+            } elseif ($char === '/' && ($statement[$i + 1] ?? '') === '*') {
+                $end = strpos($statement, '*/', $i + 2);
+
+                if ($end === false) {
+                    return ['message' => 'A /* comment is never closed.', 'label' => 'opened here, never closed', 'offset' => $i];
+                }
+
+                $i = $end + 1;
+            } elseif ($char === '(') {
+                $open_brackets[] = $i;
+            } elseif ($char === ')') {
+                if ($open_brackets === []) {
+                    return ['message' => 'A ) has no ( before it.', 'label' => 'no ( before it', 'offset' => $i];
+                }
+
+                array_pop($open_brackets);
             }
+        }
 
-            if ($kind === 'write' && !$allow_changes) {
-                return $which . 'This changes your database. Tick "Allow changes" to run it.';
+        if ($open_brackets !== []) {
+            return ['message' => 'A ( is never closed.', 'label' => 'opened here, never closed', 'offset' => end($open_brackets)];
+        }
+
+        return null;
+    }
+
+    /**
+     * Where the quote opened at $open closes, or null when it never does. A
+     * doubled quote, or a backslash in a string, escapes.
+     */
+    static function closing_quote(string $sql, int $open): ?int {
+        $quote = $sql[$open];
+        $length = strlen($sql);
+
+        for ($i = $open + 1; $i < $length; $i++) {
+            if ($sql[$i] === '\\' && $quote !== '`') {
+                $i++;
+            } elseif ($sql[$i] === $quote) {
+                if (($sql[$i + 1] ?? '') !== $quote) {
+                    return $i;
+                }
+
+                $i++;
             }
         }
 
-        return $statements === [] ? 'There is no statement to run.' : null;
+        return null;
     }
 
     /**

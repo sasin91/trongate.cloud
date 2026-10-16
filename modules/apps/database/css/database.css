@@ -593,6 +593,13 @@ button.db-rownum:focus {
     background: #fcfcff;
 }
 
+/* Live SQL check under the editor (sql_check module) */
+.db-sql-check {
+    padding: 0.4rem 0.875rem;
+    font-size: 0.8125rem;
+    border-bottom: 1px solid var(--border);
+}
+
 .db-sql-bar {
     display: flex;
     align-items: center;
