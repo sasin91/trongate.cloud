@@ -88,10 +88,10 @@ trait App_database_schema {
         $ref_label = $commit === '' ? $branch : $branch . ' (' . substr($commit, 0, 7) . ', running now)';
 
         try {
-            $github = Platform_task::app_source_client((array) $app, $repo);
+            $github = Platform_task::source_client($repo);
             $found = $this->_find_schema_file($github, $repo, $ref);
         } catch (Client_Error | RuntimeException $e) {
-            return 'Could not read ' . $repo . ' on GitHub. Check that the trongate.cloud GitHub App is installed on it, or for an app from a public link, that it is still public.';
+            return 'Could not read ' . $repo . ' on GitHub. Check that the trongate.cloud GitHub App is installed on it, or that it is public.';
         }
 
         if ($found === null) {

@@ -127,18 +127,28 @@ class Platform_task {
     }
 
     /**
-     * A GitHub client that can read the app's repository: without a token
-     * for an app from a public link, else with an installation token
-     * (github_client).
+     * A GitHub client that can read an app's repository: an installation
+     * token when the GitHub App is installed on it (github_client), else
+     * no token when the repository is public (an app from a pasted link).
      *
-     * @throws Client_Error 404 when the App is not installed on the repository
+     * @throws Client_Error 404 when the App is not installed and the repository is not public
      */
-    static function app_source_client(array $app, string $repo): Github {
-        if (($app['source_access'] ?? '') === 'public_link') {
-            return Github::anonymous();
+    static function source_client(string $repo): Github {
+        try {
+            return self::github_client($repo);
+        } catch (Client_Error $e) {
+            if ($e->getCode() !== 404) {
+                throw $e;
+            }
         }
 
-        return self::github_client($repo);
+        $github = Github::anonymous();
+
+        if (!$github->is_public($repo)) {
+            throw new Client_Error("{$repo} is not public", 404);
+        }
+
+        return $github;
     }
 
     /**

@@ -14,8 +14,6 @@
 
         <?php if ($app->type !== 'trongate_v2'): ?>
         <p class="form-hint">Upgrades are for Trongate v2 apps. Moving from v1 to v2 changes your own code, so it is not covered.</p>
-        <?php elseif ($app->source_access === 'public_link'): ?>
-        <p class="form-hint">This app deploys from a public link, so we cannot open a pull request on its repository. Upgrades need the trongate.cloud GitHub app installed on a repository you own.</p>
         <?php else: ?>
         <p class="form-hint">Opens a pull request on your repository that moves your app to the newest Trongate release. Framework files you changed are merged with the newer ones, and your config values stay as they are. Nothing deploys until you merge it.</p>
 

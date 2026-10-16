@@ -421,13 +421,13 @@ trait Mcp_tools {
      * without the GitHub App; owner/name must be one the customer's GitHub
      * sign-in can pick.
      *
-     * @return array{url: string, access: string}
+     * @return array{url: string, public: bool}
      */
     function _new_app_source(int $customer_id, string $repository): array {
         $public_repository = Github::repository_from_link($repository);
 
         if ($public_repository !== null) {
-            return ['url' => $this->_public_repository_url($public_repository), 'access' => 'public_link'];
+            return ['url' => $this->_public_repository_url($public_repository), 'public' => true];
         }
 
         $this->_check($this->_validate_repository($repository));
@@ -448,7 +448,7 @@ trait Mcp_tools {
             throw new RuntimeException('The trongate.cloud GitHub App cannot read ' . $repository . '. Install it on that repository first: ' . $this->services->github_app()->install_url());
         }
 
-        return ['url' => $client->url($repository), 'access' => 'github_app'];
+        return ['url' => $client->url($repository), 'public' => false];
     }
 
     /**
@@ -501,7 +501,7 @@ trait Mcp_tools {
         $auto_deploy = $this->_bool_arg($args, 'auto_deploy', true);
 
         // No webhook arrives for a repository the GitHub App is not installed on
-        if ($source['access'] === 'public_link') {
+        if ($source['public']) {
             $auto_deploy = false;
         }
 
@@ -514,7 +514,6 @@ trait Mcp_tools {
             source_branch: $branch,
             domain: $this->_normalise_domain($domain),
             auto_deploy: $auto_deploy,
-            source_access: $source['access'],
         );
 
         if ($app_id === false) {
@@ -1088,7 +1087,6 @@ trait Mcp_tools {
             'urls' => array_map(fn(string $host) => 'https://' . $host, $hostnames),
             'source_url' => $app->source_url ?? null,
             'source_branch' => $app->source_branch ?? null,
-            'source_access' => $app->source_access ?? null,
             'environment' => $app->environment ?? 'production',
             'staging_app_id' => isset($app->staging_app_id) ? (int) $app->staging_app_id : null,
             'always_on' => !empty($app->always_on),

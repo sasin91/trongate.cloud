@@ -265,12 +265,10 @@ CREATE TABLE app (
   domain_checked_at TIMESTAMP NULL DEFAULT NULL,
 
   -- Source: a repository the GitHub App is installed on. Builds read it with an
-  -- installation token; the App's webhook delivers its pushes. A public link
-  -- (source_access 'public_link') is read without a token and deploys only by hand.
+  -- installation token; the App's webhook delivers its pushes.
   source_url VARCHAR(500) NULL,
   source_branch VARCHAR(100) DEFAULT 'main',
   source_provider VARCHAR(100) NULL,
-  source_access ENUM('github_app', 'public_link') NOT NULL DEFAULT 'github_app',
   auto_deploy TINYINT(1) NOT NULL DEFAULT 1,
   reconciled_at TIMESTAMP NULL DEFAULT NULL COMMENT 'Last deploy reconcile check',
 
@@ -542,5 +540,4 @@ INSERT INTO schema_migrations (name) VALUES
   ('0009_app_environments'),
   ('0010_app_setup_sql'),
   ('0011_app_setup_sql_dismissed'),
-  ('0012_app_sql_import'),
-  ('0013_app_source_access');
+  ('0012_app_sql_import');
