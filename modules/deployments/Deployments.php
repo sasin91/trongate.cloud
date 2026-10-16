@@ -1,5 +1,6 @@
 <?php
 require_once APPPATH . 'modules/customer/traits/Customer_guard.php';
+require_once __DIR__ . '/Deploy_steps.php';
 
 /**
  * Deployment detail page with live build/rollout logs. Any member of
@@ -21,6 +22,7 @@ class Deployments extends Trongate {
 
         $deployment = $this->_find_or_redirect((int) $customer->id, segment(3, 'int'));
         $logs = $this->model->deployment_logs((int) $deployment->project_id, (int) $deployment->id, 0, 1000);
+        $steps = $this->_steps((int) $customer->id, $deployment);
 
         $data = [
             'view_module' => 'deployments',
@@ -30,6 +32,8 @@ class Deployments extends Trongate {
             'last_log_id' => $this->_last_log_id($logs, 0),
             'is_finished' => in_array($deployment->status, self::FINISHED, true),
             'failure' => $this->_failure($deployment),
+            'steps' => $steps,
+            'step_now' => Deploy_steps::now($steps),
             'additional_includes_top' => ['deployments_module/css/deployments.css'],
             'additional_includes_btm' => ['deployments_module/js/follow_log.js'],
         ];
@@ -55,12 +59,16 @@ class Deployments extends Trongate {
         $last_log_id = max(0, (int) ($_GET['last_log_id'] ?? 0));
         $logs = $this->model->deployment_logs((int) $deployment->project_id, (int) $deployment->id, $last_log_id);
 
+        $steps = $this->_steps((int) $customer->id, $deployment);
+
         $this->view('_logs_partial', [
             'deployment' => $deployment,
             'logs' => $logs,
             'last_log_id' => $this->_last_log_id($logs, $last_log_id),
             'is_finished' => in_array($deployment->status, self::FINISHED, true),
             'failure' => $this->_failure($deployment),
+            'steps' => $steps,
+            'step_now' => Deploy_steps::now($steps),
         ]);
     }
 
@@ -99,6 +107,20 @@ class Deployments extends Trongate {
             : null;
 
         return $failure;
+    }
+
+    /**
+     * What happens in a deploy of the deployment's app (Deploy_steps), with
+     * the app's current settings; none once the app is deleted
+     */
+    function _steps(int $customer_id, object $deployment): array {
+        $app = $this->model->find_member_app($customer_id, (int) $deployment->app_id);
+
+        if ($app === false) {
+            return [];
+        }
+
+        return Deploy_steps::steps((array) $app, (array) $deployment);
     }
 
     function _last_log_id(array $logs, int $default): int {

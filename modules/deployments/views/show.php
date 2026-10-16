@@ -32,6 +32,16 @@
 
     <?php require __DIR__ . '/_failure.php'; ?>
 
+    <?php if ($steps): ?>
+        <details class="card what-happens">
+            <summary>
+                <span class="what-happens-title">What happens during a deploy</span>
+                <?php require __DIR__ . '/_step_now.php'; ?>
+            </summary>
+            <?php require __DIR__ . '/_step_list.php'; ?>
+        </details>
+    <?php endif; ?>
+
     <h3>Logs</h3>
     <div id="log-container" class="card log-container">
         <div id="logs-content"><?php require __DIR__ . '/_log_lines.php'; ?></div>
@@ -48,6 +58,8 @@
                    {"select": "#log-cursor", "target": "#log-poller", "swap": "value"},
                    {"select": "#deployment-status", "target": "#deployment-status", "swap": "outerHTML"},
                    {"select": "#deploy-failure", "target": "#deploy-failure", "swap": "outerHTML"},
+                   {"select": "#deploy-step-now", "target": "#deploy-step-now", "swap": "outerHTML"},
+                   {"select": "#deploy-steps", "target": "#deploy-steps", "swap": "outerHTML"},
                    {"select": "#log-poller-stop", "target": ".log-poller-keepalive, #log-poller", "swap": "delete"}
                ]'>
     <?php endif; ?>

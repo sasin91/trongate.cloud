@@ -5,6 +5,8 @@
  *   #log-cursor        written into the poller's value (next last_log_id)
  *   #deployment-status replaces the status pill
  *   #deploy-failure    replaces the "Deploy failed" card (empty until it fails)
+ *   #deploy-step-now,
+ *   #deploy-steps      replace the "What happens" card's current step and steps
  *   #log-poller-stop   deletes the first of ".log-poller-keepalive, #log-poller";
  *                      the pill only carries a keepalive while the deployment runs,
  *                      so once finished the poller itself is removed and polling stops.
@@ -14,4 +16,6 @@
 <div id="log-cursor"><?= $last_log_id ?></div>
 <?php require __DIR__ . '/_status_pill.php'; ?>
 <?php require __DIR__ . '/_failure.php'; ?>
+<?php require __DIR__ . '/_step_now.php'; ?>
+<?php require __DIR__ . '/_step_list.php'; ?>
 <div id="log-poller-stop"></div>
