@@ -314,6 +314,12 @@ textarea.form-input {
     background: #b91c1c;
 }
 
+.btn-danger:disabled {
+    background: #dc2626;
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 /* --- App overview (apps/show, also the landing page's product shot) --- */
 
 .ov {
