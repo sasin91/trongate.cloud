@@ -18,7 +18,7 @@ $e = fn($value) => htmlspecialchars((string) $value);
             </div>
             <div class="wz-nav">
                 <a href="<?= $e(BASE_URL . $continue_url) ?>" class="wz-ok">Continue</a>
-                <button type="submit" class="wz-back">Start over</button>
+                <button type="submit" class="wz-back">Reset</button>
             </div>
         <?= form_close() ?>
     </main>
