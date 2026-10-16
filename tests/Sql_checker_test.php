@@ -8,6 +8,7 @@
  */
 
 require_once dirname(__DIR__) . '/modules/platform/live/Sql_checker.php';
+require_once dirname(__DIR__) . '/modules/platform/live/Setup_sql_rules.php';
 
 $failures = 0;
 
@@ -41,6 +42,16 @@ $test('quotes, comments and brackets left open are refused', function () use ($s
     $same('A ) has no ( before it.', App_database::syntax_refusal('SELECT 1)'));
 });
 
+$test('a rule set refuses the same in its real submit and its plan', function () use ($same) {
+    $rules = new Setup_sql_rules();
+    $plan = $rules->plan("START TRANSACTION;\nCREATE TABLE t (id INT);\nCOMMIT;");
+
+    $same(['CREATE TABLE t (id INT)'], $plan['statements']);
+    $same(2, $plan['skipped']);
+    $same('There is no statement to run.', (new Sql_query_rules(false))->refusal('-- only a comment'));
+    $same(null, $rules->refusal('-- only a comment'));
+});
+
 $test('the real submit refuses what the check finds', function () use ($same) {
     $same('Statement 2: A ( is never closed.', App_database::refusal("SELECT 1;\nCREATE TABLE t (id INT", true));
     $same(null, App_database::refusal("SELECT 1;\nCREATE TABLE t (id INT)", true));
@@ -49,7 +60,7 @@ $test('the real submit refuses what the check finds', function () use ($same) {
 
 $test('Database tab: each refused statement, pointing at its keyword', function () use ($same) {
     $sql = "SELECT 1;\n\n-- tidy up\nUPDATE t SET a = 1;\nSET max_statement_time = 0;\nSELECT (2";
-    $check = Sql_checker::database_tab($sql, false);
+    $check = Sql_checker::check($sql, new Sql_query_rules(false));
 
     $same(4, $check['statements']);
     $same(App_database::refusal($sql, false), $check['refusal']);
@@ -66,7 +77,7 @@ $test('Database tab: each refused statement, pointing at its keyword', function 
 });
 
 $test('Database tab: allowed SQL has nothing to show but its count', function () use ($same) {
-    $check = Sql_checker::database_tab("SELECT 1; UPDATE t SET a = 1", true);
+    $check = Sql_checker::check("SELECT 1; UPDATE t SET a = 1", new Sql_query_rules(true));
 
     $same(null, $check['refusal']);
     $same([], $check['problems']);
@@ -74,14 +85,14 @@ $test('Database tab: allowed SQL has nothing to show but its count', function ()
 });
 
 $test('Database tab: too long is refused as a whole', function () use ($same) {
-    $check = Sql_checker::database_tab(str_repeat('SELECT 1;', 10000), false);
+    $check = Sql_checker::check(str_repeat('SELECT 1;', 10000), new Sql_query_rules(false));
 
     $same([], $check['problems']);
     $same('That SQL is longer than 64 KB.', Sql_checker::summary($check));
 });
 
 $test('Database tab: an executable comment is pointed at', function () use ($same) {
-    $check = Sql_checker::database_tab("SELECT 1;\nSELECT /*! SLEEP(1) */ 2", false);
+    $check = Sql_checker::check("SELECT 1;\nSELECT /*! SLEEP(1) */ 2", new Sql_query_rules(false));
 
     $same([2], array_column($check['problems'], 'number'));
     $same('Executable comments (/*! ... */) are not allowed here', $check['problems'][0]['title']);
@@ -91,7 +102,7 @@ $test('Database tab: an executable comment is pointed at', function () use ($sam
 
 $test('setup: a dump\'s CREATE DATABASE and USE are refused, commented out by the fix', function () use ($same) {
     $sql = "-- header\nCREATE DATABASE IF NOT EXISTS `app`\n    DEFAULT CHARACTER SET utf8mb4;\nUSE `app`;\n\nSET NAMES utf8mb4;\nSET FOREIGN_KEY_CHECKS = 0;\nCREATE TABLE t (id INT);\nSET FOREIGN_KEY_CHECKS = 1;";
-    $check = Sql_checker::setup($sql);
+    $check = Sql_checker::check($sql, new Setup_sql_rules());
 
     $same(Setup_sql_plan::plan($sql)['refusal'], $check['refusal']);
     $same(['CREATE DATABASE is not needed here', 'USE is not needed here'], array_column($check['problems'], 'title'));
@@ -113,7 +124,7 @@ $test('the real submit refuses database statements too', function () use ($same)
 
 $test('setup: dump transactions are skipped, SET checked as the wizard does', function () use ($same) {
     $sql = "START TRANSACTION;\nSET NAMES utf8mb4;\nSET max_statement_time = 0;\nCREATE TABLE t (id INT);\nCOMMIT;";
-    $check = Sql_checker::setup($sql);
+    $check = Sql_checker::check($sql, new Setup_sql_rules());
 
     $same(3, $check['statements']);
     $same(2, $check['skipped']);
@@ -125,7 +136,7 @@ $test('setup: dump transactions are skipped, SET checked as the wizard does', fu
 });
 
 $test('a statement sharing a line with another is not offered for commenting out', function () use ($same) {
-    $check = Sql_checker::setup("SET NAMES utf8mb4; USE app;\nCREATE TABLE t (id INT);");
+    $check = Sql_checker::check("SET NAMES utf8mb4; USE app;\nCREATE TABLE t (id INT);", new Setup_sql_rules());
 
     $same(1, count($check['problems']));
     $same([], $check['fix_lines']);
@@ -133,7 +144,7 @@ $test('a statement sharing a line with another is not offered for commenting out
 });
 
 $test('only the first problems are listed, then how many more, all fixable', function () use ($same) {
-    $check = Sql_checker::setup(str_repeat("USE x;\n", 25));
+    $check = Sql_checker::check(str_repeat("USE x;\n", 25), new Setup_sql_rules());
 
     $same(Sql_checker::MAX_PROBLEMS, count($check['problems']));
     $same(5, $check['more_problems']);
@@ -141,7 +152,7 @@ $test('only the first problems are listed, then how many more, all fixable', fun
 });
 
 $test('columns count characters, after tabs and multibyte text', function () use ($same) {
-    $check = Sql_checker::database_tab("SELECT 'æø';\n\tSELECT ((1", false);
+    $check = Sql_checker::check("SELECT 'æø';\n\tSELECT ((1", new Sql_query_rules(false));
 
     $same(2, $check['problems'][0]['line']);
     $same(10, $check['problems'][0]['column']);

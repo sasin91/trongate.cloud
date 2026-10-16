@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../manifests/Manifests.php';
+require_once __DIR__ . '/Sql_query_rules.php';
 
 /**
  * A customer app's own MariaDB database, opened as the app's own user
@@ -514,40 +515,11 @@ class App_database {
     }
 
     /**
-     * Why the SQL may not run here, or null when it may (see run()). It may
-     * hold several statements separated by ";". Anything but the
-     * statements in READ_STATEMENTS and WRITE_STATEMENTS is refused: SET (which
-     * could lift the read-only mode and the time limit), BEGIN, COMMIT, LOCK,
-     * HANDLER, LOAD DATA, CALL, PREPARE and the like.
+     * Why the SQL may not run here, or null when it may (see run()), by
+     * Sql_query_rules. It may hold several statements separated by ";".
      */
     static function refusal(string $sql, bool $allow_changes): ?string {
-        if (strlen($sql) > self::MAX_STATEMENT_BYTES) {
-            return 'That SQL is longer than ' . (self::MAX_STATEMENT_BYTES / 1024) . ' KB.';
-        }
-
-        $content_refusal = self::content_refusal($sql);
-
-        if ($content_refusal !== null) {
-            return $content_refusal;
-        }
-
-        $statements = self::statements($sql);
-
-        foreach ($statements as $i => $statement) {
-            $refusal = self::statement_refusal($statement, $allow_changes);
-
-            if ($refusal === null) {
-                continue;
-            }
-
-            if (count($statements) > 1) {
-                return 'Statement ' . ($i + 1) . ': ' . $refusal;
-            }
-
-            return $refusal;
-        }
-
-        return $statements === [] ? 'There is no statement to run.' : null;
+        return (new Sql_query_rules($allow_changes))->refusal($sql);
     }
 
     /**

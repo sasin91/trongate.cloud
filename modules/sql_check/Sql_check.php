@@ -1,6 +1,8 @@
 <?php
 
 require_once APPPATH . 'modules/platform/live/Sql_checker.php';
+require_once APPPATH . 'modules/platform/live/Sql_query_rules.php';
+require_once APPPATH . 'modules/platform/live/Setup_sql_rules.php';
 
 /**
  * SQL checked while it is written, for any SQL box in the panel: the
@@ -21,7 +23,7 @@ require_once APPPATH . 'modules/platform/live/Sql_checker.php';
  */
 class Sql_check extends Trongate {
 
-    /** Which submit's checks to run: the Database tab's SQL box, or SQL a new app starts with */
+    /** Which rule set (Sql_rules) to check by: the Database tab's SQL box, or SQL a new app starts with (_rules) */
     const RULES = ['database', 'setup'];
 
     /** Names the SQL is posted under, by the box's form: the Database tab's, the wizard's */
@@ -62,11 +64,19 @@ class Sql_check extends Trongate {
             die(); // nothing to say about an empty box
         }
 
-        if ($rules === 'setup') {
-            $this->_show(Sql_checker::setup($sql));
-        } else {
-            $this->_show(Sql_checker::database_tab($sql, (bool) post('allow_changes')));
+        $this->_show(Sql_checker::check($sql, $this->_rules($rules)));
+    }
+
+    /**
+     * The rule set RULES names: the Database tab's SQL box (with changes when
+     * its Allow changes is ticked), or SQL a new app starts with
+     */
+    function _rules(string $name): Sql_rules {
+        if ($name === 'setup') {
+            return new Setup_sql_rules();
         }
+
+        return new Sql_query_rules((bool) post('allow_changes'));
     }
 
     /**

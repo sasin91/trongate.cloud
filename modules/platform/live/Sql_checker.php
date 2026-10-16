@@ -1,13 +1,12 @@
 <?php
 
 require_once __DIR__ . '/App_database.php';
-require_once __DIR__ . '/Setup_sql_plan.php';
+require_once __DIR__ . '/Sql_rules.php';
 
 /**
- * SQL checked while it is typed or pasted, before it is submitted: the
- * Database tab's SQL box and the new-app wizard's typed SQL. Like Laravel
- * Precognition, it runs the same checks the real submit runs and nothing
- * else, and it never sends the SQL to a database. So it finds statements
+ * SQL checked while it is written, before it is submitted, by the rule set
+ * (Sql_rules) of the way in it is for. Like Laravel Precognition, it runs
+ * the same checks the real submit runs and nothing else, and it never sends the SQL to a database. So it finds statements
  * that would be refused (and why, per statement), quotes, comments and
  * brackets that are never closed, but not misspelt keywords, missing
  * tables or columns, or anything else only MariaDB knows.
@@ -16,7 +15,7 @@ require_once __DIR__ . '/Setup_sql_plan.php';
  * does, and whether commenting the statement out fixes it: the lines to
  * comment out for all of those are in fix_lines.
  *
- * Framework-free, like App_database and Setup_sql_plan.
+ * Framework-free, like App_database and Sql_rules.
  */
 final class Sql_checker {
 
@@ -24,59 +23,29 @@ final class Sql_checker {
     const MAX_PROBLEMS = 20;
 
     /**
-     * SQL for the Database tab's SQL box, checked as Database::query() checks it
-     * (App_database::refusal)
+     * The SQL checked by one way in's rules, statement by statement, as its
+     * real submit would check it (Sql_rules)
      *
      * @return array{statements: int, skipped: int, problems: list<array<string, mixed>>, more_problems: int, fix_lines: list<array{int, int}>, refusal: string|null}
      */
-    static function database_tab(string $sql, bool $allow_changes): array {
+    static function check(string $sql, Sql_rules $rules): array {
         $check = self::empty_check();
-        $check['refusal'] = trim($sql) === '' ? null : App_database::refusal($sql, $allow_changes);
+        $check['refusal'] = trim($sql) === '' ? null : $rules->refusal($sql);
 
-        if (strlen($sql) > App_database::MAX_STATEMENT_BYTES) {
-            return $check;
-        }
-
-        $statements = self::located_statements($sql);
-        $check['statements'] = count($statements);
-
-        foreach ($statements as $i => $statement) {
-            $message = App_database::content_refusal($statement['text']) ?? App_database::statement_refusal($statement['text'], $allow_changes);
-
-            if ($message !== null) {
-                $check = self::add_problem($check, $sql, $statements, $i, $message);
-            }
-        }
-
-        return $check;
-    }
-
-    /**
-     * Typed SQL for the new-app wizard's Database question, checked as
-     * _validate_setup_sql checks it (Setup_sql_plan::plan)
-     *
-     * @return array{statements: int, skipped: int, problems: list<array<string, mixed>>, more_problems: int, fix_lines: list<array{int, int}>, refusal: string|null}
-     */
-    static function setup(string $sql): array {
-        $check = self::empty_check();
-        $check['refusal'] = Setup_sql_plan::plan($sql)['refusal'];
-
-        if (strlen($sql) > Setup_sql_plan::MAX_BYTES) {
+        if (strlen($sql) > $rules->max_bytes()) {
             return $check;
         }
 
         $statements = self::located_statements($sql);
 
         foreach ($statements as $i => $statement) {
-            $start = App_database::without_comments($statement['text']);
-
-            if (preg_match(Setup_sql_plan::SKIPPED, $start)) {
+            if ($rules->skips($statement['text'])) {
                 $check['skipped']++;
                 continue;
             }
 
             $check['statements']++;
-            $message = Setup_sql_plan::statement_refusal($statement['text'], $start);
+            $message = $rules->statement_refusal($statement['text']);
 
             if ($message !== null) {
                 $check = self::add_problem($check, $sql, $statements, $i, $message);

@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/App_database.php';
+require_once __DIR__ . '/Setup_sql_rules.php';
 require_once __DIR__ . '/../../encryption/Encryptor.php';
 
 /**
@@ -111,38 +112,12 @@ final class Setup_sql_plan {
 
     /**
      * The statements to run, how many were skipped, or why the SQL cannot run
+     * (Setup_sql_rules)
      *
      * @return array{statements: list<string>, skipped: int, refusal: string|null}
      */
     static function plan(string $sql): array {
-        $plan = ['statements' => [], 'skipped' => 0, 'refusal' => null];
-
-        if (strlen($sql) > self::MAX_BYTES) {
-            $plan['refusal'] = 'That is more than ' . self::max_megabytes() . ' MB of SQL. Import it as a file from the Database tab once the app runs.';
-
-            return $plan;
-        }
-
-        foreach (App_database::statements($sql) as $i => $statement) {
-            $start = App_database::without_comments($statement);
-
-            if (preg_match(self::SKIPPED, $start)) {
-                $plan['skipped']++;
-                continue;
-            }
-
-            $refusal = self::statement_refusal($statement, $start);
-
-            if ($refusal !== null) {
-                $plan['refusal'] = 'Statement ' . ($i + 1) . ': ' . $refusal;
-
-                return $plan;
-            }
-
-            $plan['statements'][] = $statement;
-        }
-
-        return $plan;
+        return (new Setup_sql_rules())->plan($sql);
     }
 
     /**
