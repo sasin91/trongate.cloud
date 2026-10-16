@@ -147,7 +147,7 @@ final class Setup_sql_plan {
      * row. Checked by administrator_refusal first.
      */
     static function administrator_sql(string $username, string $email, string $hash, string $code): string {
-        $email_value = "NULL";
+        $email_value = 'NULL';
 
         if ($email !== '') {
             $email_value = "'" . $email . "'";
