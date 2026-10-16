@@ -11,6 +11,9 @@ $routes = [
     'auth/github/callback' => 'github_auth/callback',
     'auth/github/installed' => 'github_auth/installed',
 
+    // Live SQL check of any SQL box (sql_check module)
+    'sql/check' => 'sql_check/check',
+
     // News: the changelog and writing (modules/news/posts)
     'news/feed' => 'news/feed',
     'news/changelog' => 'news/index/changelog',

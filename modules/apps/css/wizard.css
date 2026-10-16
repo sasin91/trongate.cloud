@@ -316,6 +316,12 @@ textarea.wz-sql {
     resize: vertical;
 }
 
+/* Live check of the typed SQL (sql_check module) */
+.wz-sql-check {
+    margin-top: 8px;
+    font-size: 14px;
+}
+
 /* Settings question: the app's Settings page, in short */
 .wz-settings {
     display: flex;
