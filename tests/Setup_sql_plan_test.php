@@ -1,13 +1,13 @@
 <?php
 
 /**
- * Tests for Setup_sql: the .sql files the new-app wizard offers, and how
+ * Tests for Setup_sql_plan: the .sql files the new-app wizard offers, and how
  * the SQL a new app's database starts with is checked and split.
  *
- * Run: php tests/Setup_sql_test.php (exits non-zero on a failure)
+ * Run: php tests/Setup_sql_plan_test.php (exits non-zero on a failure)
  */
 
-require_once dirname(__DIR__) . '/modules/platform/live/Setup_sql.php';
+require_once dirname(__DIR__) . '/modules/platform/live/Setup_sql_plan.php';
 
 $failures = 0;
 
@@ -52,11 +52,11 @@ $test('schema.sql and Trongate setup.sql come first and ticked, the rest by name
         ['path' => 'modules/shop/01_tables.sql', 'checked' => false],
         ['path' => 'modules/shop/02_products.sql', 'checked' => false],
         ['path' => 'modules/shop/10_reviews.sql', 'checked' => false],
-    ], Setup_sql::candidates($paths));
+    ], Setup_sql_plan::candidates($paths));
 });
 
 $test('a repository without .sql files offers nothing', function () use ($same) {
-    $same([], Setup_sql::candidates(['index.php', 'config/config.php']));
+    $same([], Setup_sql_plan::candidates(['index.php', 'config/config.php']));
 });
 
 $test('a dump runs without its transaction and lock statements', function () use ($same) {
@@ -75,7 +75,7 @@ $test('a dump runs without its transaction and lock statements', function () use
     COMMIT;
     SQL;
 
-    $plan = Setup_sql::plan($sql);
+    $plan = Setup_sql_plan::plan($sql);
 
     $same(null, $plan['refusal']);
     $same(4, $plan['skipped']);
@@ -89,24 +89,24 @@ $test('a dump runs without its transaction and lock statements', function () use
 });
 
 $test('SET of anything but a dump\'s session settings is refused', function () use ($same) {
-    $same('Statement 1: Only SET NAMES, CHARACTER SET, SQL_MODE, TIME_ZONE, FOREIGN_KEY_CHECKS, UNIQUE_CHECKS or SQL_NOTES runs here, one per statement.', Setup_sql::plan('SET max_statement_time = 0')['refusal']);
-    $same('Statement 2: Only SET NAMES, CHARACTER SET, SQL_MODE, TIME_ZONE, FOREIGN_KEY_CHECKS, UNIQUE_CHECKS or SQL_NOTES runs here, one per statement.', Setup_sql::plan("CREATE TABLE a (id INT);\nSET NAMES utf8mb4, max_statement_time = 0")['refusal']);
-    $same(null, Setup_sql::plan("SET SQL_MODE = 'STRICT_TRANS_TABLES,NO_ZERO_DATE'")['refusal']);
-    $same(null, Setup_sql::plan('SET SESSION foreign_key_checks = 1')['refusal']);
-    $same(null, Setup_sql::plan('SET CHARSET utf8mb4')['refusal']);
-    $same(null, Setup_sql::plan('SET CHARACTER SET utf8mb4')['refusal']);
+    $same('Statement 1: Only SET NAMES, CHARACTER SET, SQL_MODE, TIME_ZONE, FOREIGN_KEY_CHECKS, UNIQUE_CHECKS or SQL_NOTES runs here, one per statement.', Setup_sql_plan::plan('SET max_statement_time = 0')['refusal']);
+    $same('Statement 2: Only SET NAMES, CHARACTER SET, SQL_MODE, TIME_ZONE, FOREIGN_KEY_CHECKS, UNIQUE_CHECKS or SQL_NOTES runs here, one per statement.', Setup_sql_plan::plan("CREATE TABLE a (id INT);\nSET NAMES utf8mb4, max_statement_time = 0")['refusal']);
+    $same(null, Setup_sql_plan::plan("SET SQL_MODE = 'STRICT_TRANS_TABLES,NO_ZERO_DATE'")['refusal']);
+    $same(null, Setup_sql_plan::plan('SET SESSION foreign_key_checks = 1')['refusal']);
+    $same(null, Setup_sql_plan::plan('SET CHARSET utf8mb4')['refusal']);
+    $same(null, Setup_sql_plan::plan('SET CHARACTER SET utf8mb4')['refusal']);
 });
 
 $test('statements the SQL box refuses are refused, changes allowed', function () use ($same) {
-    $same('Statement 2: Only CREATE, ALTER, DROP, TRUNCATE, RENAME, INSERT, UPDATE, DELETE, REPLACE, SELECT and SET NAMES, SQL_MODE, TIME_ZONE or FOREIGN_KEY_CHECKS run here.', Setup_sql::plan("CREATE TABLE a (id INT);\nGRANT ALL ON *.* TO 'x'")['refusal']);
-    $same('Statement 1: Reading or writing files on the database server is not allowed.', Setup_sql::plan("SELECT * FROM a INTO OUTFILE '/tmp/a'")['refusal']);
-    $same('Statement 1: Executable comments (/*! ... */) are not allowed here.', Setup_sql::plan('CREATE TABLE a (id INT) /*!50100 PARTITION BY HASH(id) */')['refusal']);
-    $same(['DROP TABLE IF EXISTS a', 'CREATE TABLE a (id INT)'], Setup_sql::plan("DROP TABLE IF EXISTS a;\nCREATE TABLE a (id INT);")['statements']);
+    $same('Statement 2: Only CREATE, ALTER, DROP, TRUNCATE, RENAME, INSERT, UPDATE, DELETE, REPLACE, SELECT and SET NAMES, SQL_MODE, TIME_ZONE or FOREIGN_KEY_CHECKS run here.', Setup_sql_plan::plan("CREATE TABLE a (id INT);\nGRANT ALL ON *.* TO 'x'")['refusal']);
+    $same('Statement 1: Reading or writing files on the database server is not allowed.', Setup_sql_plan::plan("SELECT * FROM a INTO OUTFILE '/tmp/a'")['refusal']);
+    $same('Statement 1: Executable comments (/*! ... */) are not allowed here.', Setup_sql_plan::plan('CREATE TABLE a (id INT) /*!50100 PARTITION BY HASH(id) */')['refusal']);
+    $same(['DROP TABLE IF EXISTS a', 'CREATE TABLE a (id INT)'], Setup_sql_plan::plan("DROP TABLE IF EXISTS a;\nCREATE TABLE a (id INT);")['statements']);
 });
 
 $test('a statement over the SQL box\'s 64 KB is fine', function () use ($same) {
     $values = implode(',', array_fill(0, 10000, "(1,'abcdefgh')"));
-    $plan = Setup_sql::plan("INSERT INTO a VALUES {$values};");
+    $plan = Setup_sql_plan::plan("INSERT INTO a VALUES {$values};");
 
     $same(null, $plan['refusal']);
     $same(1, count($plan['statements']));
@@ -114,10 +114,10 @@ $test('a statement over the SQL box\'s 64 KB is fine', function () use ($same) {
 
 $test('join gives SQL that plans to the same statements, also after a trailing comment', function () use ($same) {
     $statements = ["CREATE TABLE a (id INT)\n-- the ids", 'INSERT INTO a VALUES (1)', "INSERT INTO a VALUES ('#1')"];
-    $sql = Setup_sql::join($statements);
+    $sql = Setup_sql_plan::join($statements);
 
     $same("CREATE TABLE a (id INT)\n-- the ids\n;\n\nINSERT INTO a VALUES (1);\n\nINSERT INTO a VALUES ('#1')\n;\n\n", $sql);
-    $same($statements, Setup_sql::plan($sql)['statements']);
+    $same($statements, Setup_sql_plan::plan($sql)['statements']);
 });
 
 $test('Trongate v2\'s setup.sql plans without a refusal', function () use ($same) {
@@ -136,7 +136,7 @@ $test('Trongate v2\'s setup.sql plans without a refusal', function () use ($same
     (1, 'admin');
     SQL;
 
-    $plan = Setup_sql::plan($sql);
+    $plan = Setup_sql_plan::plan($sql);
 
     $same(null, $plan['refusal']);
     $same(2, count($plan['statements']));
@@ -145,13 +145,13 @@ $test('Trongate v2\'s setup.sql plans without a refusal', function () use ($same
 $test('the stored SQL is encrypted with APP_KEY and comes back the same', function () use ($same) {
     putenv('APP_KEY=' . Encryptor::generate_key());
     $sql = "INSERT INTO users (email, password) VALUES ('a@example.com', 'secret');\n";
-    $stored = Setup_sql::encrypt($sql);
+    $stored = Setup_sql_plan::encrypt($sql);
 
     $same(false, str_contains($stored, 'secret'));
-    $same($sql, Setup_sql::decrypt($stored));
+    $same($sql, Setup_sql_plan::decrypt($stored));
 
     putenv('APP_KEY=' . Encryptor::generate_key());
-    $same(null, Setup_sql::decrypt($stored));
+    $same(null, Setup_sql_plan::decrypt($stored));
 });
 
 if ($failures > 0) {

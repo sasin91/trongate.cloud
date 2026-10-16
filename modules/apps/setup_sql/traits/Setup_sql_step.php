@@ -1,18 +1,19 @@
 <?php
 
-require_once APPPATH . 'modules/platform/live/Setup_sql.php';
+require_once APPPATH . 'modules/platform/live/Setup_sql_plan.php';
 
 /**
  * The new-app wizard's optional Database question: .sql files from the
- * repository (Setup_sql::candidates, the likely ones ticked), another
+ * repository (Setup_sql_plan::candidates, the likely ones ticked), another
  * file by path, and SQL typed in. They are read and checked when the form
  * is submitted, stored in app_setup_sql, and run once by the first
  * deploy, right after it creates the database (Platform_task::run_setup_sql).
  *
- * Used by App_form. The using controller must also use Customer_guard and
- * Provider_clients.
+ * Part of the apps-setup_sql child module, used by App_form: Apps and
+ * Onboarding both show the question and run its validation callback. The
+ * using controller must also use Customer_guard and Provider_clients.
  */
-trait App_setup_sql_step {
+trait Setup_sql_step {
 
     /**
      * What _validate_setup_sql read and checked, for _save_setup_sql
@@ -65,7 +66,7 @@ trait App_setup_sql_step {
         $read_failed = false;
 
         try {
-            $sql_files = Setup_sql::candidates(array_keys($source['client']->tree($repository, $branch)));
+            $sql_files = Setup_sql_plan::candidates(array_keys($source['client']->tree($repository, $branch)));
         } catch (Client_Error | RuntimeException $e) {
             error_log("New app: could not list the .sql files of {$repository}@{$branch}: {$e->getMessage()}");
             $sql_files = [];
@@ -73,13 +74,13 @@ trait App_setup_sql_step {
         }
 
         header('Content-Type: text/html');
-        require APPPATH . 'modules/apps/views/_sql_file_options.php';
+        require APPPATH . 'modules/apps/setup_sql/views/_sql_file_options.php';
     }
 
     /**
      * Validation callback for the Database question: reads the ticked files
      * and the typed path from the branch, and checks them and the typed SQL
-     * the way they will run (Setup_sql::plan). Keeps the result for
+     * the way they will run (Setup_sql_plan::plan). Keeps the result for
      * _save_setup_sql.
      */
     function _validate_setup_sql(string $value): bool|string {
@@ -104,7 +105,7 @@ trait App_setup_sql_step {
         $statements = [];
 
         foreach ($sources as $name => $sql) {
-            $plan = Setup_sql::plan($sql);
+            $plan = Setup_sql_plan::plan($sql);
 
             if ($plan['refusal'] !== null) {
                 return $name . ', ' . lcfirst($plan['refusal']);
@@ -117,10 +118,10 @@ trait App_setup_sql_step {
             return 'The chosen SQL has no statements to run.';
         }
 
-        $sql = Setup_sql::join($statements);
+        $sql = Setup_sql_plan::join($statements);
 
-        if (strlen($sql) > Setup_sql::MAX_BYTES) {
-            return 'That is more than ' . Setup_sql::max_megabytes() . ' MB of SQL. Pick fewer files and import the rest from the Database tab.';
+        if (strlen($sql) > Setup_sql_plan::MAX_BYTES) {
+            return 'That is more than ' . Setup_sql_plan::max_megabytes() . ' MB of SQL. Pick fewer files and import the rest from the Database tab.';
         }
 
         $this->setup_sql = $sql;
@@ -225,6 +226,6 @@ trait App_setup_sql_step {
             return;
         }
 
-        $this->model->set_setup_sql($app_id, Setup_sql::encrypt($this->setup_sql));
+        $this->model->set_setup_sql($app_id, Setup_sql_plan::encrypt($this->setup_sql));
     }
 }

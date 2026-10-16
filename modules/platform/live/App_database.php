@@ -724,7 +724,7 @@ class App_database {
     }
 
     /**
-     * Run statements Setup_sql::plan() allowed, one after another, each on
+     * Run statements Setup_sql_plan::plan() allowed, one after another, each on
      * its own with STATEMENT_SECONDS: nothing is rolled back, as an import
      * into an empty database is mostly CREATE TABLE, which MariaDB commits at
      * once anyway. Stops at the first one that fails.
@@ -754,7 +754,7 @@ class App_database {
     }
 
     /**
-     * Run one statement Setup_sql or Sql_import allowed, on its own
+     * Run one statement Setup_sql_plan or Sql_import allowed, on its own
      *
      * @return string|null MariaDB's message when it failed
      */

@@ -16,7 +16,7 @@ require_once __DIR__ . '/../../encryption/Encryptor.php';
  *
  * Framework-free: the panel plans it, the worker runs it.
  */
-final class Setup_sql {
+final class Setup_sql_plan {
 
     /** Where schema.sql is looked for, in this order (also the Database tab's Schema view) */
     const SCHEMA_PATHS = ['schema.sql', 'database/schema.sql', 'db/schema.sql', 'sql/schema.sql'];
