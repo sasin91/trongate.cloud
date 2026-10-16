@@ -10,7 +10,7 @@
  * $can_rollback, $base, $database_name, $view, $error, $table_name,
  * $sidebar_tables and $sidebar_views (name, href, note, is_current), $open_tabs
  * (href, label, icon, is_current, close_href), $view_toggle ([href, label, is_current]),
- * $sql_url, $history_url, $backups_url, $import_url, $backup_entries, $copy_tables_url (null hides
+ * $credentials_url (the Credentials dialog), $sql_url, $history_url, $backups_url, $import_url, $backup_entries, $copy_tables_url (null hides
  * Copy production's tables), and what the partials list.
  */
 $e = fn($value) => htmlspecialchars((string) $value);
@@ -47,6 +47,7 @@ $is_sql_view = in_array($view, ['sql', 'history', 'backups'], true);
                 </span>
                 <?php endforeach; ?>
             </nav>
+            <button type="button" class="db-button db-credentials-open" mx-get="<?= $e($credentials_url) ?>" mx-build-modal="<?= $e(Database::CREDENTIALS_MODAL) ?>">Credentials</button>
         </div>
 
         <aside class="db-side db-tables" aria-label="Tables">

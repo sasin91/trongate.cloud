@@ -164,7 +164,7 @@ CREATE TABLE app_database_log (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   app_id INT NOT NULL,
   customer_id INT NOT NULL,
-  action ENUM('query', 'insert', 'update', 'delete', 'restore', 'import') NOT NULL,
+  action ENUM('query', 'insert', 'update', 'delete', 'restore', 'import', 'credentials') NOT NULL,
   statement TEXT NOT NULL,
   allow_changes TINYINT(1) NOT NULL DEFAULT 0,
   affected INT NULL,
@@ -582,4 +582,5 @@ INSERT INTO schema_migrations (name) VALUES
   ('0013_app_build_commands'),
   ('0014_app_runtime'),
   ('0015_app_setup_sql'),
-  ('0016_app_backup');
+  ('0016_app_backup'),
+  ('0017_app_database_log_credentials');
