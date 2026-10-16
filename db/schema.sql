@@ -585,4 +585,5 @@ INSERT INTO schema_migrations (name) VALUES
   ('0014_app_runtime'),
   ('0015_app_setup_sql'),
   ('0016_app_backup'),
-  ('0017_app_database_log_credentials');
+  ('0017_app_database_log_credentials'),
+  ('0018_app_default_module');
