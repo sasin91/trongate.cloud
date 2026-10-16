@@ -3,10 +3,11 @@
  * Why the deployment failed and what gets the app deploying again
  * (Config_error::to_array, see Deployments::_failure). Rendered in place on
  * page load, and swapped into #deploy-failure by the log poller when the
- * deployment fails while the page is open.
+ * deployment fails while the page is open. A section, not a div: MX drops
+ * the outer div of an outerHTML swap, which would lose the id.
  */
 ?>
-<div id="deploy-failure">
+<section id="deploy-failure">
     <?php if ($failure !== null): ?>
         <div class="card deploy-failure" role="alert">
             <h3>Deploy failed</h3>
@@ -26,4 +27,4 @@
             <?php endif; ?>
         </div>
     <?php endif; ?>
-</div>
+</section>

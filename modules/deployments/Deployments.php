@@ -3,8 +3,9 @@ require_once APPPATH . 'modules/customer/traits/Customer_guard.php';
 require_once __DIR__ . '/Deploy_steps.php';
 
 /**
- * Deployment detail page: the deploy's steps as a timeline (Deploy_steps)
- * next to its live log. Any member of the deployment's project may read it.
+ * Deployment detail page: the deploy's steps as a timeline (Deploy_steps),
+ * with its live log in a modal. Any member of the deployment's project may
+ * read it.
  *
  * @property-read Deployments_model $model
  * @property-read Templates $templates
@@ -31,17 +32,43 @@ class Deployments extends Trongate {
             'deployment' => $deployment,
             'steps' => $steps,
             'step_now' => Deploy_steps::now($steps),
-            'logs' => Deploy_steps::without_marks($logs),
             'last_log_id' => $this->_last_log_id($logs, 0),
             'is_finished' => in_array($deployment->status, self::FINISHED, true),
             'failure' => $this->_failure($deployment),
             'poll_swaps' => $this->_poll_swaps(),
             'additional_includes_top' => ['deployments_module/css/deployments.css'],
-            'additional_includes_btm' => ['deployments_module/js/follow_log.js'],
+            'additional_includes_btm' => ['deployments_module/js/deploy_log.js'],
         ];
 
         $this->module('templates');
         $this->templates->customer($data);
+    }
+
+    /**
+     * The log, opened in an MX modal from the Steps card (_log_modal.php).
+     * While the deployment runs, the modal polls logs_partial for new lines
+     * (deploy_log.js starts it once the modal is built).
+     */
+    function log_modal(): void {
+        $this->_make_sure_allowed();
+        $customer = $this->_customer_or_redirect();
+
+        $deployment = $this->model->find_member_deployment((int) $customer->id, segment(3, 'int'));
+
+        if ($deployment === false) {
+            http_response_code(404);
+            return;
+        }
+
+        $logs = $this->model->deployment_logs((int) $deployment->project_id, (int) $deployment->id, 0, 1000);
+
+        $this->view('_log_modal', [
+            'deployment' => $deployment,
+            'logs' => Deploy_steps::without_marks($logs),
+            'last_log_id' => $this->_last_log_id($logs, 0),
+            'is_finished' => in_array($deployment->status, self::FINISHED, true),
+            'poll_swaps' => $this->_log_poll_swaps(),
+        ]);
     }
 
     /**
@@ -90,12 +117,12 @@ class Deployments extends Trongate {
     }
 
     /**
-     * The log poller's mx-select-oob (show.php): new lines appended to the
-     * log, each step's heading replaced, then the cursor, status, failure
-     * card and the stop signal (_logs_partial.php)
+     * The page poller's mx-select-oob (show.php): each step's heading
+     * replaced, then the cursor, status, failure card and the stop signal
+     * (_logs_partial.php). The log lines are for the Logs modal.
      */
     function _poll_swaps(): string {
-        $swaps = [['select' => '#new-logs', 'target' => '#logs-content', 'swap' => 'beforeend']];
+        $swaps = [];
 
         foreach (Deploy_steps::KEYS as $key) {
             $swaps[] = ['select' => "#step-head-{$key}", 'target' => "#step-head-{$key}", 'swap' => 'outerHTML'];
@@ -108,6 +135,20 @@ class Deployments extends Trongate {
         $swaps[] = ['select' => '#log-poller-stop', 'target' => '.log-poller-keepalive, #log-poller', 'swap' => 'delete'];
 
         return (string) json_encode($swaps);
+    }
+
+    /**
+     * The Logs modal poller's mx-select-oob (_log_modal.php): new lines
+     * appended, its cursor moved, and once the deployment has finished its
+     * keepalive goes, so the poller itself is deleted and stops
+     */
+    function _log_poll_swaps(): string {
+        return (string) json_encode([
+            ['select' => '#new-logs', 'target' => '#logs-content', 'swap' => 'beforeend'],
+            ['select' => '#log-cursor', 'target' => '#log-modal-poller', 'swap' => 'value'],
+            ['select' => '#log-modal-keepalive', 'target' => '#log-modal-keepalive', 'swap' => 'outerHTML'],
+            ['select' => '#log-poller-stop', 'target' => '.log-modal-running, #log-modal-poller', 'swap' => 'delete'],
+        ]);
     }
 
     /**
