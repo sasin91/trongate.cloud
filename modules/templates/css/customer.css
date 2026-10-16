@@ -1,3 +1,7 @@
+/* Trongate's baseline (public/css/trongate.css) underneath: in a layer, so
+   every rule here and in the module stylesheets wins over it */
+@import url('../../css/trongate.css') layer(trongate);
+
 @view-transition {
     navigation: auto;
 }
@@ -22,6 +26,143 @@
     --font-mono: 'Geist Mono', ui-monospace, monospace;
     --card-shadow: none;
     --card-hover-shadow: 0 12px 24px -16px rgba(29, 30, 110, 0.35);
+}
+
+/* trongate.css styles bare elements for Trongate's own pages; panel pages
+   style their elements themselves, so those element defaults are undone here.
+   :where() keeps this at zero specificity, so every panel rule still wins. */
+:where(*, *::before, *::after) {
+    box-sizing: revert;
+}
+
+:where(body) {
+    font-family: revert;
+    color: revert;
+    font-size: revert;
+}
+
+:where(h1) {
+    margin-top: revert;
+    margin-bottom: revert;
+    font-size: revert;
+}
+
+:where(h2) {
+    font-size: revert;
+}
+
+:where(p) {
+    line-height: revert;
+}
+
+:where(a) {
+    color: revert;
+}
+
+:where(form) {
+    width: revert;
+}
+
+:where(input, select, textarea) {
+    padding: revert;
+    font-size: revert;
+    font-family: revert;
+    line-height: revert;
+    width: revert;
+    height: revert;
+    border: revert;
+    background-color: revert;
+    transition: revert;
+    border-radius: revert;
+    outline: revert;
+}
+
+:where(label) {
+    margin: revert;
+    clear: revert;
+    display: revert;
+    text-align: revert;
+    font-size: revert;
+    font-weight: revert;
+    color: revert;
+    text-transform: revert;
+    letter-spacing: revert;
+}
+
+:where(label span) {
+    color: revert;
+}
+
+:where(button) {
+    border-radius: revert;
+    background-color: revert;
+    border: revert;
+    margin: revert;
+    padding: revert;
+    color: revert;
+    font-size: revert;
+    font-weight: revert;
+    cursor: revert;
+    text-decoration: revert;
+    font-family: revert;
+    line-height: revert;
+    transition: revert;
+    box-shadow: revert;
+    transform: revert;
+    opacity: revert;
+}
+
+:where(ul) {
+    margin: revert;
+    list-style-type: revert;
+}
+
+:where(li) {
+    line-height: revert;
+}
+
+:where(input[type="checkbox"], input[type="radio"]) {
+    margin: revert;
+    top: revert;
+    position: revert;
+    width: revert;
+    height: revert;
+}
+
+:where(table) {
+    border-collapse: revert;
+    width: revert;
+}
+
+:where(th, td) {
+    background-color: revert;
+    color: revert;
+    text-align: revert;
+    font-size: revert;
+    font-weight: revert;
+    text-transform: revert;
+    letter-spacing: revert;
+    border: revert;
+    padding: revert;
+    cursor: revert;
+}
+
+:where(tr) {
+    background-color: revert;
+}
+
+:where(hr) {
+    border: revert;
+    height: revert;
+    background: revert;
+    margin: revert;
+}
+
+:where(.card) {
+    display: revert;
+    flex-direction: revert;
+    margin-bottom: revert;
+    box-shadow: revert;
 }
 
 body {
@@ -300,6 +441,12 @@ a.card:hover {
     transition: color 0.2s;
 }
 
+/* Code in a label is something to type as shown, so keep its case */
+.form-label code {
+    text-transform: none;
+    letter-spacing: normal;
+}
+
 .form-input,
 .form-select {
     display: block;
@@ -412,4 +559,41 @@ dialog {
 
 dialog::backdrop {
     background: rgba(0, 0, 0, 0.5);
+}
+
+/* Trongate MX modal (mx-build-modal): trongate.css lays it out; these give
+   it the panel's look */
+#overlay {
+    background-color: var(--primary);
+    opacity: 0.32;
+}
+
+#modal-container {
+    padding: 0 1rem 2rem;
+    overflow-y: auto;
+}
+
+.modal {
+    overflow: hidden;
+    color: var(--text-main);
+    border-radius: 12px;
+    box-shadow: 0 24px 60px -12px rgba(29, 30, 110, 0.35);
+}
+
+.modal p {
+    text-align: left;
+}
+
+.modal-heading {
+    padding: 0.875rem 1.25rem;
+    font-family: var(--font-display);
+    font-size: 1rem;
+    font-weight: 600;
+    text-transform: none;
+    border: none;
+}
+
+.modal-body {
+    padding: 1rem 1.25rem 1.25rem;
+    border: none;
 }
