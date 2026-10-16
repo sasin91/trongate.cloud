@@ -41,6 +41,7 @@ class Apps extends Trongate {
         $this->_make_sure_allowed();
         $project = $this->_member_project_or_redirect(segment(3, 'int'));
         $customer = $this->_customer_or_redirect();
+        $this->_forget_earlier_errors();
 
         $data = [
             'view_module' => 'apps',
@@ -58,6 +59,7 @@ class Apps extends Trongate {
         $this->_make_sure_allowed();
         $project = $this->_member_project_or_redirect(segment(3, 'int'));
         $customer = $this->_customer_or_redirect();
+        $this->_redirect_unless_posted('projects/' . $project->id . '/apps/new');
 
         $this->_set_app_rules();
 

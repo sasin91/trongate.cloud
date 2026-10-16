@@ -50,6 +50,7 @@ class Onboarding extends Trongate {
 
     function app(): void {
         $customer = $this->_customer_or_redirect();
+        $this->_forget_earlier_errors();
         $form = $this->_app_form_data((int) $customer->id, 'auth/github?then=onboarding/app');
 
         $this->view('app', $form);
@@ -58,6 +59,7 @@ class Onboarding extends Trongate {
     function submit_app(): void {
         $customer = $this->_customer_or_redirect();
         $project_id = $this->_onboarding_project_id((int) $customer->id);
+        $this->_redirect_unless_posted('onboarding/app');
 
         $this->_set_app_rules();
 
