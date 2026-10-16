@@ -2,6 +2,7 @@
 
 require_once APPPATH . 'modules/platform/manifests/Manifests.php';
 require_once APPPATH . 'modules/platform/manifests/App_env_suggestions.php';
+require_once APPPATH . 'modules/platform/manifests/Build_commands.php';
 require_once __DIR__ . '/App_rules.php';
 require_once __DIR__ . '/App_setup_sql.php';
 require_once APPPATH . 'modules/services/clients/Client.php';
@@ -47,7 +48,27 @@ trait App_form {
             'env_loaded_for' => $this->_posted_env_loaded_for(),
             'settings' => $this->_new_app_settings_form(),
             'setup_sql' => $this->_setup_sql_form(),
+            'build' => $this->_build_form(),
+            'error_step' => $this->_wizard_error_step(),
         ];
+    }
+
+    /**
+     * The question the form opens on after a failed submit, when its error
+     * came from a check that runs only on the server; '' lets app_steps.js pick
+     */
+    function _wizard_error_step(): string {
+        $errors = $_SESSION['form_submission_errors'] ?? [];
+
+        if (isset($errors['setup_sql'])) {
+            return 'database';
+        }
+
+        if (isset($errors['build_commands']) || isset($errors['php_extensions'])) {
+            return 'build';
+        }
+
+        return '';
     }
 
     /**
@@ -94,14 +115,13 @@ trait App_form {
      * The last question's settings: the defaults a new app gets, or what was
      * posted when the form is shown again after a failed submit
      *
-     * @return array{trongate_env: string, health_path: string, php_extensions: string, persistent_paths: string, process_name: string, process_command: string, always_on: bool, mail_capture: bool}
+     * @return array{trongate_env: string, health_path: string, persistent_paths: string, process_name: string, process_command: string, always_on: bool, mail_capture: bool}
      */
     function _new_app_settings_form(): array {
         if (REQUEST_TYPE !== 'POST') {
             return [
                 'trongate_env' => Trongate_config::DEFAULT_ENV,
                 'health_path' => '',
-                'php_extensions' => '',
                 'persistent_paths' => '',
                 'process_name' => '',
                 'process_command' => '',
@@ -116,7 +136,6 @@ trait App_form {
         return [
             'trongate_env' => (string) post('trongate_env', true),
             'health_path' => (string) post('health_path', true),
-            'php_extensions' => (string) post('php_extensions', true),
             'persistent_paths' => (string) post('persistent_paths'),
             'process_name' => (string) ($process_names[0] ?? ''),
             'process_command' => (string) ($process_commands[0] ?? ''),
@@ -143,6 +162,7 @@ trait App_form {
         $this->validation->set_rules('trongate_env', 'Environment', 'required|callback__validate_trongate_env');
         $this->validation->set_rules('health_path', 'Health Check Path', 'max_length[200]|callback__validate_health_path');
         $this->validation->set_rules('php_extensions', 'PHP Extensions', 'max_length[255]|callback__validate_php_extensions');
+        $this->validation->set_rules('build_commands', 'Build Commands', 'callback__validate_build_commands');
         $this->validation->set_rules('persistent_paths', 'Persistent Paths', 'max_length[4000]|callback__validate_persistent_paths');
         $this->validation->set_rules('processes', 'Processes', 'callback__validate_processes');
     }
@@ -198,6 +218,7 @@ trait App_form {
             'domain' => $domain,
             'persistent_paths' => $this->_parse_persistent_paths((string) post('persistent_paths')),
             'php_extensions' => implode(',', $this->_parse_php_extensions((string) post('php_extensions', true))),
+            'build_commands' => (string) post('build_commands'),
             'always_on' => post('always_on') === '1',
             'auto_deploy' => post('auto_deploy') !== '0',
             'source_branch' => trim((string) post('repository_branch', true)),
@@ -365,6 +386,100 @@ trait App_form {
 
         header('Content-Type: text/html');
         require APPPATH . 'modules/apps/views/_env_suggestion_fields.php';
+    }
+
+    /**
+     * MX partial: the Build question's fields, prefilled with what the
+     * branch's root suggests (Build_commands::suggest)
+     */
+    function build_suggestion_fields(): void {
+        $this->_make_sure_allowed();
+        $customer = $this->_customer_or_redirect();
+        $source = $this->_wizard_source_from_query((int) $customer->id);
+        $branch = trim($_GET['branch'] ?? '');
+
+        if ($source === null || $this->_validate_branch($branch) !== true) {
+            http_response_code(422);
+            die();
+        }
+
+        $repository = $source['repository'];
+
+        try {
+            $suggestion = $this->_build_suggestion($source['client'], $repository, $branch);
+            $build = $this->_build_fields($suggestion['commands'], implode(', ', $suggestion['php_extensions']), $this->_build_found_note($suggestion));
+        } catch (Client_Error | RuntimeException $e) {
+            error_log("New app: could not read the root of {$repository}@{$branch} for build commands: {$e->getMessage()}");
+            $build = $this->_build_fields('', '', 'We could not read the repository. Type the commands yourself, or add them later in Settings.');
+        }
+
+        header('Content-Type: text/html');
+        require APPPATH . 'modules/apps/views/_build_fields.php';
+    }
+
+    /**
+     * What the branch's root files suggest building with
+     *
+     * @return array{commands: string, php_extensions: list<string>, found: list<string>}
+     */
+    function _build_suggestion(Github $client, string $repository, string $branch): array {
+        $root_files = $client->root_file_names($repository, $branch);
+        $package_json = '';
+        $composer_json = '';
+
+        if (in_array('package.json', $root_files, true)) {
+            $package_json = (string) $client->file_at($repository, $branch, 'package.json');
+        }
+
+        if (in_array('composer.json', $root_files, true)) {
+            $composer_json = (string) $client->file_at($repository, $branch, 'composer.json');
+        }
+
+        return Build_commands::suggest($root_files, $package_json, $composer_json);
+    }
+
+    /**
+     * The line above the Build question's fields: which files the suggestion came from
+     *
+     * @param array{commands: string, php_extensions: list<string>, found: list<string>} $suggestion
+     */
+    function _build_found_note(array $suggestion): string {
+        if ($suggestion['found'] === []) {
+            return 'Nothing to build found. Composer packages install on their own.';
+        }
+
+        $note = 'Read from ' . implode(' and ', $suggestion['found']) . '.';
+
+        if ($suggestion['commands'] === '' && $suggestion['php_extensions'] === []) {
+            $note .= ' There is no build script in package.json, so nothing runs.';
+        }
+
+        return $note;
+    }
+
+    /**
+     * The Build question's view data
+     *
+     * @return array{commands: string, php_extensions: string, note: string}
+     */
+    function _build_fields(string $commands, string $php_extensions, string $note): array {
+        return ['commands' => $commands, 'php_extensions' => $php_extensions, 'note' => $note];
+    }
+
+    /**
+     * The Build question before a repository is read, or as posted when the
+     * form is shown again after a failed submit
+     *
+     * @return array{commands: string, php_extensions: string, note: string, loaded_for: string}
+     */
+    function _build_form(): array {
+        if (REQUEST_TYPE !== 'POST') {
+            return $this->_build_fields('', '', 'Pick a repository and branch first.') + ['loaded_for' => ''];
+        }
+
+        $fields = $this->_build_fields((string) post('build_commands'), (string) post('php_extensions', true), '');
+
+        return $fields + ['loaded_for' => $this->_posted_source_key()];
     }
 
     /**

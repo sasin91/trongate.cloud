@@ -298,6 +298,7 @@ class Apps extends Trongate {
             'urls' => $this->_app_urls($app),
             'persistent_paths' => $is_resubmit ? (string) post('persistent_paths') : implode("\n", $paths),
             'php_extensions' => $is_resubmit ? (string) post('php_extensions', true) : (string) $app->php_extensions,
+            'build_commands' => $is_resubmit ? (string) post('build_commands') : (string) $app->build_commands,
             'processes' => $is_resubmit ? $this->_processes_from_post() : $this->model->app_processes((int) $app->id),
             'always_on' => $is_resubmit ? (bool) post('always_on') : (bool) $app->always_on,
             'trongate_env' => $is_resubmit ? (string) post('trongate_env', true) : Trongate_config::env((array) $app),
@@ -371,6 +372,7 @@ class Apps extends Trongate {
 
         $this->validation->set_rules('persistent_paths', 'Persistent Paths', 'max_length[4000]|callback__validate_persistent_paths');
         $this->validation->set_rules('php_extensions', 'PHP Extensions', 'max_length[255]|callback__validate_php_extensions');
+        $this->validation->set_rules('build_commands', 'Build Commands', 'callback__validate_build_commands');
         $this->validation->set_rules('processes', 'Processes', 'callback__validate_processes');
         $this->validation->set_rules('trongate_env', 'Environment', 'required|callback__validate_trongate_env');
         $this->validation->set_rules('source_branch', 'Branch', 'required|max_length[100]|callback__validate_branch');
@@ -386,6 +388,7 @@ class Apps extends Trongate {
             'domain' => !empty($app->domain) ? (string) $app->domain : null,
             'persistent_paths' => $this->_parse_persistent_paths((string) post('persistent_paths')),
             'php_extensions' => implode(',', $this->_parse_php_extensions((string) post('php_extensions', true))),
+            'build_commands' => (string) post('build_commands'),
             'always_on' => (bool) post('always_on'),
             'auto_deploy' => (bool) post('auto_deploy'),
             'source_branch' => trim((string) post('source_branch', true)),

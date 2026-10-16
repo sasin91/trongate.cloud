@@ -17,6 +17,7 @@
 
 require_once __DIR__ . '/lib/Platform_task.php';
 require_once __DIR__ . '/../manifests/Config_editor.php';
+require_once __DIR__ . '/../manifests/Build_commands.php';
 
 return function (Task_log $log) use ($payload, $runtime): int {
     $db = $runtime->db();
@@ -163,11 +164,9 @@ return function (Task_log $log) use ($payload, $runtime): int {
         // --- Dockerfile ------------------------------------------------------
         // Every Trongate app has the same shape, so the platform writes the
         // Dockerfile: the prebuilt base (docker/app-base) plus the app's extra
-        // extensions, its composer packages and its files. Only the validated
-        // extension names come from settings; nothing from the repository
-        // becomes an instruction.
-
-        $lines = ['FROM ' . PLATFORM_APP_BASE_IMAGE];
+        // extensions, its composer packages, its files and its build commands
+        // (Build_commands::dockerfile). Only validated settings become
+        // instructions; nothing from the repository does.
 
         // The base already has pdo_mysql, redis (Valkey sessions) and the common ones
         $extensions = [];
@@ -178,33 +177,46 @@ return function (Task_log $log) use ($payload, $runtime): int {
             }
         }
 
+        $extension_lines = [];
+
         if ($extensions) {
             // install-php-extensions skips any the base already has
-            $lines[] = 'RUN install-php-extensions ' . implode(' ', $extensions);
+            $extension_lines[] = 'RUN install-php-extensions ' . implode(' ', $extensions);
             $log->info('Extra PHP extensions: ' . implode(', ', $extensions));
         }
+
+        $app_lines = [];
 
         // composer.json (and lock) first, so the packages layer stays cached
         // while only the app's own files change
         if (is_file("{$src}/composer.json")) {
-            $lines[] = 'COPY composer.json ' . (is_file("{$src}/composer.lock") ? 'composer.lock ' : '') . './';
+            $app_lines[] = 'COPY composer.json ' . (is_file("{$src}/composer.lock") ? 'composer.lock ' : '') . './';
             // The autoloader comes after the app's files: a classmap entry
             // pointing at them fails while only composer.json is there
-            $lines[] = 'RUN composer install --no-dev --no-autoloader --no-scripts --no-interaction --no-progress';
+            $app_lines[] = 'RUN composer install --no-dev --no-autoloader --no-scripts --no-interaction --no-progress';
         }
 
-        $lines[] = 'COPY . ./';
+        $app_lines[] = 'COPY . ./';
 
         if (is_file("{$src}/composer.json")) {
-            $lines[] = 'RUN composer dump-autoload --no-dev --optimize --no-scripts';
+            $app_lines[] = 'RUN composer dump-autoload --no-dev --optimize --no-scripts';
         }
+
+        $final_lines = [];
 
         // A repository that ships a Caddyfile serves with it instead of the base's
         if (is_file("{$src}/Caddyfile")) {
-            $lines[] = 'COPY Caddyfile /Caddyfile';
+            $final_lines[] = 'COPY Caddyfile /Caddyfile';
             $log->info('Using the repository Caddyfile');
         }
 
+        $build_commands = Build_commands::normalise((string) ($app['build_commands'] ?? ''));
+
+        if ($build_commands !== '') {
+            $log->info("Build commands:\n{$build_commands}");
+        }
+
+        $lines = Build_commands::dockerfile(PLATFORM_APP_BASE_IMAGE, $extension_lines, $app_lines, $final_lines, $build_commands);
         file_put_contents("{$plan_dir}/Dockerfile", implode("\n", $lines) . "\n");
 
         // --- Build + push ----------------------------------------------------

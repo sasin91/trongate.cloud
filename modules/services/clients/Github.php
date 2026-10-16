@@ -176,6 +176,28 @@ class Github extends Client {
     }
 
     /**
+     * The names of the files in the repository's root folder at a branch
+     *
+     * @return list<string>
+     */
+    function root_file_names(string $repo, string $branch): array {
+        $entries = $this->request('GET', "/repos/{$repo}/contents?ref=" . rawurlencode($branch));
+        $names = [];
+
+        if (!array_is_list($entries)) {
+            return [];
+        }
+
+        foreach ($entries as $entry) {
+            if (($entry['type'] ?? '') === 'file') {
+                $names[] = (string) ($entry['name'] ?? '');
+            }
+        }
+
+        return $names;
+    }
+
+    /**
      * One file's content at a commit or branch, or null when there is no
      * file at that path. Files over 1 MB come back as null too: GitHub's
      * contents API leaves their content out.
