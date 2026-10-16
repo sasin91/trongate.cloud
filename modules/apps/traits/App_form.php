@@ -144,6 +144,29 @@ trait App_form {
         ];
     }
 
+    /**
+     * Validation::set_rules() saves its errors in the session before run()
+     * checks the CSRF token. A submit without a form (a GET of the submit URL
+     * from a reload or a browser preload) or with an expired token is sent away
+     * by the CSRF check, but its "required" errors stay behind and showed up on
+     * the next fresh New app page. Only a posted form is validated.
+     */
+    function _redirect_unless_posted(string $form_url): void {
+        if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+            redirect($form_url);
+        }
+    }
+
+    /**
+     * A fresh open of the questions (a GET) shows no errors: errors belong to
+     * the submit that re-renders this page in the same request.
+     */
+    function _forget_earlier_errors(): void {
+        if (($_SERVER['REQUEST_METHOD'] ?? '') === 'GET') {
+            unset($_SESSION['form_submission_errors'], $_SESSION['form_submission_name']);
+        }
+    }
+
     function _set_app_rules(): void {
         $this->validation->set_rules('provider', 'Source Control Provider', 'required|callback__validate_source_provider');
 
