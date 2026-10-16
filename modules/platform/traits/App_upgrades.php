@@ -29,7 +29,7 @@ trait App_upgrades {
             throw new RuntimeException('App has no source repository');
         }
 
-        if (!empty($app->source_public)) {
+        if ($app->source_access === 'public_link') {
             throw new RuntimeException('Upgrades open a pull request on the repository, which an app from a public link has no access to.');
         }
 

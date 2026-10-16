@@ -159,12 +159,12 @@ trait App_form {
             return false;
         }
 
-        $source_public = $this->_posted_public_link() !== '';
+        $source_access = $this->_posted_public_link() === '' ? 'github_app' : 'public_link';
         // The switch posts a hidden 0 then the checkbox's 1; older forms leave it out
         $auto_deploy = post('auto_deploy') !== '0';
 
         // No webhook arrives for a repository the GitHub App is not installed on
-        if ($source_public) {
+        if ($source_access === 'public_link') {
             $auto_deploy = false;
         }
 
@@ -177,7 +177,7 @@ trait App_form {
             source_branch: post('repository_branch', true),
             domain: $domain,
             auto_deploy: $auto_deploy,
-            source_public: $source_public,
+            source_access: $source_access,
         );
 
         if ($app_id === false) {

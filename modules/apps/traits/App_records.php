@@ -11,9 +11,10 @@ trait App_records {
     /**
      * Create an app with a unique slug. The repository must be one the GitHub
      * App is installed on (deploys read it with an installation token), or a
-     * public one ($source_public: read without a token, deployed by hand).
+     * public one ($source_access 'public_link': read without a token, deployed
+     * by hand).
      */
-    function create_app(int $project_id, string $label, string $type, string $source_url, string $source_provider, string $source_branch = 'main', ?string $domain = null, bool $auto_deploy = true, bool $source_public = false): int|false {
+    function create_app(int $project_id, string $label, string $type, string $source_url, string $source_provider, string $source_branch = 'main', ?string $domain = null, bool $auto_deploy = true, string $source_access = 'github_app'): int|false {
         return $this->db->insert([
             'project_id' => $project_id,
             'label' => $label,
@@ -22,7 +23,7 @@ trait App_records {
             'source_url' => $source_url,
             'source_provider' => $source_provider,
             'source_branch' => $source_branch ?: 'main',
-            'source_public' => $source_public ? 1 : 0,
+            'source_access' => $source_access,
             'domain' => $domain,
             'auto_deploy' => $auto_deploy ? 1 : 0,
             'persistent_paths' => '[]',
@@ -118,7 +119,7 @@ trait App_records {
                 trongate_env = :trongate_env,
                 mail_capture = :mail_capture,
                 health_path = :health_path,
-                auto_deploy = IF(source_public = 1, 0, :auto_deploy),
+                auto_deploy = IF(source_access = 'public_link', 0, :auto_deploy),
                 source_branch = :source_branch
             WHERE id = :app_id AND project_id = :project_id
         SQL;

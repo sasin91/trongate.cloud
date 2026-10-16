@@ -134,7 +134,7 @@ class Platform_task {
      * @throws Client_Error 404 when the App is not installed on the repository
      */
     static function app_source_client(array $app, string $repo): Github {
-        if (!empty($app['source_public'])) {
+        if (($app['source_access'] ?? '') === 'public_link') {
             return Github::anonymous();
         }
 

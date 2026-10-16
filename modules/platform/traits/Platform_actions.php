@@ -270,7 +270,7 @@ trait Platform_actions {
             SELECT
                 a.id, a.project_id, a.label, a.slug, a.type, a.environment, a.domain, a.verified_domain,
                 a.domain_pointed_at, a.domain_secured_at, a.domain_checked_at,
-                a.source_provider, a.source_url, a.source_branch, a.source_public,
+                a.source_provider, a.source_url, a.source_branch, a.source_access,
                 a.persistent_paths, a.php_extensions, a.always_on,
                 a.database_server_id, a.current_deployment_id, a.created_at,
                 st.id AS staging_app_id,

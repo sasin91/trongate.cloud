@@ -41,7 +41,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
 
     $repo = Platform_task::github_repo($app);
 
-    if (!empty($app['source_public'])) {
+    if ($app['source_access'] === 'public_link') {
         $log->info("Reading {$repo} as a public repository, without a GitHub token");
     }
 

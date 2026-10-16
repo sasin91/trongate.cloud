@@ -81,7 +81,7 @@
         </div>
 
         <div class="form-group">
-            <?php if (!empty($app->source_public)): ?>
+            <?php if ($app->source_access === 'public_link'): ?>
             <p class="form-label">Deploy on push</p>
             <p class="form-hint">This app deploys from a public link, so GitHub does not tell us about pushes. Press Deploy to put the branch's latest commit live.</p>
             <?php else: ?>
