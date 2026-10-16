@@ -24,6 +24,8 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 RUN cp /usr/local/etc/php/php.ini-production /usr/local/etc/php/php.ini
 COPY docker/app-base/php.ini /usr/local/etc/php/conf.d/trongate-cloud.ini
 COPY docker/app-base/Caddyfile /Caddyfile
+# Run by the backup Job when the app is deleted (Manifests::backup_job)
+COPY docker/app-base/backup.php /usr/local/bin/trongate-cloud-backup.php
 
 ENV PORT=8080 \
     COMPOSER_ALLOW_SUPERUSER=1 \

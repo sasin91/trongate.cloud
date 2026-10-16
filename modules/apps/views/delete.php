@@ -22,9 +22,19 @@
             <li>Its access to its database, and any queued deployments</li>
         </ul>
 
+        <?php if ($takes_backup): ?>
+            <h3>Backed up, then deleted</h3>
+            <ul class="delete-list">
+                <li>The database and the files in your persistent paths. We save a copy of both first, then delete them.</li>
+                <li>You can download the copy from the project page for <?= (int) $backup_keep_days ?> days. After that it is deleted for good.</li>
+            </ul>
+        <?php endif; ?>
+
         <h3>Kept</h3>
         <ul class="delete-list">
-            <li>The database and the files in your persistent paths. They are not deleted with the app.</li>
+            <?php if (!$takes_backup): ?>
+                <li>The database and the files in your persistent paths. They are not deleted with the app.</li>
+            <?php endif; ?>
             <li>The address <code><?= htmlspecialchars($app->slug . '.' . PLATFORM_APPS_DOMAIN) ?></code>: it is not given to another app.</li>
         </ul>
 

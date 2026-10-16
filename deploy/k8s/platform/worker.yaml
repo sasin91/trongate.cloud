@@ -55,6 +55,11 @@ spec:
             - secretRef:
                 name: trongate-cloud-mail
                 optional: true
+            # The bucket of deleted apps' backups (App_backup); without it a deleted
+            # app's database and files are kept instead
+            - secretRef:
+                name: trongate-cloud-backups
+                optional: true
           resources:
             requests:
               cpu: 100m

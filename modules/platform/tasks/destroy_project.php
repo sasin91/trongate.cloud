@@ -19,7 +19,8 @@
  * - the project row exists and is soft-deleted, and has no app that is not
  *   deleted (an app added after queue_project_delete counts too);
  * - every deleted app of the project finished its destroy_app, so their
- *   objects are gone and their custom domains released;
+ *   objects are gone and their custom domains released, and none is still
+ *   being backed up (App_backup);
  * - the live Namespace is one the platform created for a tenant
  *   (Manifests::owned_tenant_namespace: managed-by, tenant label, name);
  * - the cluster agrees it holds nothing of an app: no Pod, Deployment,
@@ -33,7 +34,8 @@
  * when it has a tenant name and the platform's tenant labels.
  *
  * Kept: the project row (soft-deleted) with its members and deployments, and,
- * as with destroy_app, its apps' databases and files.
+ * as with destroy_app, its apps' databases and files when no backups bucket
+ * is configured.
  */
 
 require_once __DIR__ . '/lib/Platform_task.php';
@@ -72,6 +74,17 @@ return function (Task_log $log) use ($payload, $runtime): int {
 
     if ((int) ($apps['uncleaned'] ?? 0) > 0) {
         throw new RuntimeException("{$apps['uncleaned']} deleted app(s) of project #{$project_id} did not finish destroy_app (see audit_app_resources); its namespace is left in place");
+    }
+
+    // destroy_app finishes while a backup Job runs; check_app_backups queues it again afterwards
+    $backing_up = Platform_task::row(
+        $db,
+        "SELECT COUNT(*) AS n FROM app_backup b JOIN app a ON a.id = b.app_id WHERE a.project_id = ? AND b.status = 'backing_up'",
+        [$project_id]
+    );
+
+    if ((int) ($backing_up['n'] ?? 0) > 0) {
+        throw new RuntimeException("{$backing_up['n']} deleted app(s) of project #{$project_id} are still being backed up; its namespace is left in place");
     }
 
     $namespace = Manifests::namespace_name($project);

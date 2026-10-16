@@ -8,6 +8,7 @@ require_once APPPATH . 'modules/platform/manifests/Manifests.php';
 require_once APPPATH . 'modules/platform/manifests/App_env.php';
 require_once APPPATH . 'modules/platform/live/App_log_rates.php';
 require_once APPPATH . 'modules/platform/mail/Mail_capture.php';
+require_once APPPATH . 'modules/platform/live/Object_storage.php';
 
 /**
  * Apps inside a project: create, overview, deploy/rollback, logs, platform settings and delete.
@@ -388,6 +389,8 @@ class Apps extends Trongate {
             'staging_urls' => $this->_staging_urls($app),
             'name' => $this->_delete_name($app),
             'confirm_url' => 'apps/' . $app->id . '/delete/confirm',
+            'takes_backup' => Object_storage::for_app_backups() !== null,
+            'backup_keep_days' => App_backup::KEEP_DAYS,
             'crumbs' => $this->_app_crumbs($app),
             'additional_includes_top' => ['apps_module/css/apps.css'],
         ];

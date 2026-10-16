@@ -46,6 +46,10 @@ spec:
             - secretRef:
                 name: trongate-cloud-github
                 optional: true
+            # The bucket of deleted apps' backups, to sign download links (App_backup)
+            - secretRef:
+                name: trongate-cloud-backups
+                optional: true
           # Sessions live in Valkey under a user the worker creates when it
           # starts (Valkey_sessions); until then this pod takes no traffic and
           # the old pods keep serving. 10 minutes covers the worker's Recreate.
