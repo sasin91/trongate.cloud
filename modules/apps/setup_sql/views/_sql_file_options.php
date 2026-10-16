@@ -7,7 +7,7 @@
  * trongate_tables_offered and sql_offered[] post what was offered, so the
  * form shows it again after a failed submit.
  * Expects: $trongate_tables (Setup_sql_step::_trongate_tables_option each),
- * $sql_files, $read_failed (optional: GitHub could not be read).
+ * $administrator (views/_administrator.php), $sql_files, $read_failed (optional: GitHub could not be read).
  */
 ?>
 <?php if ($trongate_tables !== []): ?>
@@ -23,6 +23,11 @@
                         <?php endforeach; ?>
                     </span>
                 </label>
+                <?php if ($option['adds_administrator']): ?>
+                    <div id="wz-administrator" class="wz-sql-edit">
+                        <?php require __DIR__ . '/_administrator.php'; ?>
+                    </div>
+                <?php endif; ?>
                 <details class="wz-sql-edit">
                     <summary>Edit SQL</summary>
                     <textarea name="<?= htmlspecialchars($option['sql_field']) ?>" class="wz-in mono wz-sql" rows="10" spellcheck="false" aria-describedby="wz-sql-check-<?= htmlspecialchars($option['set']) ?>" mx-post="sql/check" mx-trigger="change" mx-target="#wz-sql-check-<?= htmlspecialchars($option['set']) ?>" mx-vals='{"rules":"setup","sql_field":"<?= htmlspecialchars($option['sql_field']) ?>"}'><?= htmlspecialchars($option['sql']) ?></textarea>

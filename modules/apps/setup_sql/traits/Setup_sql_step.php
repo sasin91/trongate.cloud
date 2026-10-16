@@ -7,7 +7,8 @@ require_once APPPATH . 'modules/platform/live/Setup_sql_plan.php';
  * repository (Setup_sql_plan::candidates, the likely ones ticked),
  * Trongate's default tables when the repository has no setup.sql of its own
  * (Setup_sql_plan::TRONGATE_TABLE_SETS, each ticked, with its SQL to edit,
- * run first), another file by path, and SQL typed in. They are read and checked when the form is submitted, stored in
+ * run first, and an optional first administrator hashed by
+ * Setup_sql::administrator), another file by path, and SQL typed in. They are read and checked when the form is submitted, stored in
  * app_setup_sql, and run once by the first deploy, right after it creates
  * the database (Platform_task::run_setup_sql).
  *
@@ -29,7 +30,7 @@ trait Setup_sql_step {
      * failed submit: the files that were offered, which were ticked,
      * Trongate's default tables as offered and edited, the typed path and SQL
      *
-     * @return array{sql_files: list<array{path: string, checked: bool}>, sql_files_loaded_for: string, trongate_tables: list<array<string, mixed>>, sql_path: string, sql: string}
+     * @return array{sql_files: list<array{path: string, checked: bool}>, sql_files_loaded_for: string, trongate_tables: list<array<string, mixed>>, administrator: array<string, string>|null, sql_path: string, sql: string}
      */
     function _setup_sql_form(): array {
         $offered = post('sql_offered');
@@ -52,6 +53,7 @@ trait Setup_sql_step {
             'sql_files' => $files,
             'sql_files_loaded_for' => $loaded_for,
             'trongate_tables' => $this->_posted_trongate_tables(),
+            'administrator' => $this->_posted_administrator(),
             'sql_path' => (string) post('sql_path', true),
             'sql' => (string) post('setup_sql'),
         ];
@@ -85,6 +87,7 @@ trait Setup_sql_step {
 
         $sql_files = Setup_sql_plan::candidates($paths);
         $trongate_tables = [];
+        $administrator = null;
 
         if (Setup_sql_plan::offers_trongate_tables($paths)) {
             $trongate_tables = $this->_default_trongate_tables();
@@ -105,6 +108,18 @@ trait Setup_sql_step {
         $paths = $this->_posted_sql_paths();
         $typed = trim((string) post('setup_sql'));
         $trongate_tables = $this->_ticked_trongate_tables_sql();
+        $administrator = $this->_posted_administrator();
+
+        if ($administrator !== null) {
+            $refusal = $this->_administrator_refusal($administrator);
+
+            if ($refusal !== null) {
+                return $refusal;
+            }
+
+            $code = bin2hex(random_bytes(16));
+            $trongate_tables['first administrator'] = Setup_sql_plan::administrator_sql($administrator['username'], $administrator['email'], $administrator['hash'], $code);
+        }
 
         if ($paths === [] && $trongate_tables === [] && $typed === '') {
             return true;
@@ -161,7 +176,7 @@ trait Setup_sql_step {
      * Trongate's default tables as first offered: every set ticked, with its
      * SQL from sql/{set}.sql
      *
-     * @return list<array{set: string, label: string, tables: list<string>, checked: bool, sql_field: string, sql: string}>
+     * @return list<array{set: string, label: string, tables: list<string>, checked: bool, sql_field: string, sql: string, adds_administrator: bool}>
      */
     function _default_trongate_tables(): array {
         $options = [];
@@ -178,14 +193,14 @@ trait Setup_sql_step {
      * Trongate's default tables as posted: which sets were ticked and their
      * edited SQL, or [] when the form did not offer them
      *
-     * @return list<array{set: string, label: string, tables: list<string>, checked: bool, sql_field: string, sql: string}>
+     * @return list<array{set: string, label: string, tables: list<string>, checked: bool, sql_field: string, sql: string, adds_administrator: bool}>
      */
     function _posted_trongate_tables(): array {
         if (!$this->_trongate_tables_offered()) {
             return [];
         }
 
-        $ticked = $this->_posted_list('trongate_tables');
+        $ticked = $this->_ticked_trongate_sets();
         $options = [];
 
         foreach (array_keys(Setup_sql_plan::TRONGATE_TABLE_SETS) as $set) {
@@ -200,7 +215,7 @@ trait Setup_sql_step {
     /**
      * One set of Trongate's default tables, for views/_sql_file_options.php
      *
-     * @return array{set: string, label: string, tables: list<string>, checked: bool, sql_field: string, sql: string}
+     * @return array{set: string, label: string, tables: list<string>, checked: bool, sql_field: string, sql: string, adds_administrator: bool}
      */
     function _trongate_tables_option(string $set, bool $checked, string $sql): array {
         $about = Setup_sql_plan::TRONGATE_TABLE_SETS[$set];
@@ -212,6 +227,7 @@ trait Setup_sql_step {
             'checked' => $checked,
             'sql_field' => $set . '_sql',
             'sql' => $sql,
+            'adds_administrator' => $set === 'trongate_administrators',
         ];
     }
 
@@ -230,6 +246,59 @@ trait Setup_sql_step {
         }
 
         return $sources;
+    }
+
+    /**
+     * The first administrator the wizard posts (views/_administrator.php),
+     * or null when none was added or the Administrators set is not ticked
+     *
+     * @return array{username: string, email: string, hash: string, hashed_with: string}|null
+     */
+    function _posted_administrator(): ?array {
+        $hash = (string) post('administrator_hash');
+
+        if ($hash === '' || !in_array('trongate_administrators', $this->_ticked_trongate_sets(), true)) {
+            return null;
+        }
+
+        return [
+            'username' => (string) post('administrator_username'),
+            'email' => (string) post('administrator_email'),
+            'hash' => $hash,
+            'hashed_with' => App_password::describe_value($hash),
+        ];
+    }
+
+    /**
+     * Why the posted first administrator cannot be added, or null
+     *
+     * @param array{username: string, email: string, hash: string} $administrator
+     */
+    function _administrator_refusal(array $administrator): ?string {
+        if (!in_array('trongate_auth_core', $this->_ticked_trongate_sets(), true)) {
+            return 'The first administrator needs the auth core tables (trongate_users). Tick them, or add the administrator later.';
+        }
+
+        $refusal = Setup_sql_plan::administrator_refusal($administrator['username'], $administrator['email'], $administrator['hash']);
+
+        if ($refusal !== null) {
+            return 'First administrator: ' . lcfirst($refusal);
+        }
+
+        return null;
+    }
+
+    /**
+     * The Trongate table sets ticked on the posted form
+     *
+     * @return list<string>
+     */
+    function _ticked_trongate_sets(): array {
+        if (!$this->_trongate_tables_offered()) {
+            return [];
+        }
+
+        return $this->_posted_list('trongate_tables');
     }
 
     /**

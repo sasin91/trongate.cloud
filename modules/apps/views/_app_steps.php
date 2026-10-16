@@ -154,6 +154,7 @@ $errors = validation_errors('<p>', '</p>');
                         <?php
                         $sql_files = $setup_sql['sql_files'];
                         $trongate_tables = $setup_sql['trongate_tables'];
+                        $administrator = $setup_sql['administrator'];
                         require APPPATH . 'modules/apps/setup_sql/views/_sql_file_options.php';
                         ?>
                     <?php else: ?>

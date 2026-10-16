@@ -329,6 +329,20 @@
     margin: 4px 0 0 26px;
 }
 
+.wz-link {
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-size: 14px;
+    color: var(--wz-accent);
+    cursor: pointer;
+}
+
+.wz-link:hover {
+    text-decoration: underline;
+}
+
 .wz-sql-edit summary {
     cursor: pointer;
     font-size: 14px;
