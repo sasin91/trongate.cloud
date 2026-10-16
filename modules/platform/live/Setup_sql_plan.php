@@ -6,7 +6,7 @@ require_once __DIR__ . '/../../encryption/Encryptor.php';
 /**
  * The SQL a new app's database starts with: .sql files from its repository
  * and SQL typed into the new-app wizard. The wizard stores it in
- * app.setup_sql, and the first deploy runs it once, right after the
+ * app_setup_sql, and the first deploy runs it once, right after the
  * database is created (Platform_task::run_setup_sql).
  *
  * Statements are checked like the Database tab's SQL box, with changes
@@ -16,7 +16,7 @@ require_once __DIR__ . '/../../encryption/Encryptor.php';
  *
  * Framework-free: the panel plans it, the worker runs it.
  */
-final class Setup_sql {
+final class Setup_sql_plan {
 
     /** Where schema.sql is looked for, in this order (also the Database tab's Schema view) */
     const SCHEMA_PATHS = ['schema.sql', 'database/schema.sql', 'db/schema.sql', 'sql/schema.sql'];
@@ -187,7 +187,7 @@ final class Setup_sql {
     }
 
     /**
-     * The SQL as stored in app.setup_sql: it may hold passwords and keys, so
+     * The SQL as stored in app_setup_sql.statements: it may hold passwords and keys, so
      * encrypted with APP_KEY like the app's secrets
      */
     static function encrypt(string $sql): string {
@@ -195,7 +195,7 @@ final class Setup_sql {
     }
 
     /**
-     * app.setup_sql as SQL again, or null when it cannot be decrypted (APP_KEY changed)
+     * app_setup_sql.statements as SQL again, or null when it cannot be decrypted (APP_KEY changed)
      */
     static function decrypt(string $stored): ?string {
         $sql = Encryptor::decrypt($stored, self::key());

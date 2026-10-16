@@ -1,7 +1,7 @@
 <?php
 /**
  * The Database question's files: a checkbox per .sql file on the branch
- * (Setup_sql::candidates), the likely ones ticked. sql_offered[] posts the
+ * (Setup_sql_plan::candidates), the likely ones ticked. sql_offered[] posts the
  * whole list, so the form shows it again after a failed submit.
  * Expects: $sql_files, $read_failed (optional: GitHub could not be read).
  */

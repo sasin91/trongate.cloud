@@ -82,14 +82,6 @@
                 <div class="detail-value"><?= out($reconciled_at) ?></div>
             </div>
             <div class="detail-row">
-                <div class="detail-label">Setup Sql Status</div>
-                <div class="detail-value"><?= out($setup_sql_status) ?></div>
-            </div>
-            <div class="detail-block">
-                <div class="detail-label">Setup Sql Error</div>
-                <div class="detail-content"><?= nl2br(out($setup_sql_error)) ?></div>
-            </div>
-            <div class="detail-row">
                 <div class="detail-label">Database Server Id</div>
                 <div class="detail-value"><?= out($database_server_id) ?></div>
             </div>

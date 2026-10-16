@@ -272,15 +272,6 @@ CREATE TABLE app (
   auto_deploy TINYINT(1) NOT NULL DEFAULT 1,
   reconciled_at TIMESTAMP NULL DEFAULT NULL COMMENT 'Last deploy reconcile check',
 
-  -- From the new-app wizard (Setup_sql), encrypted with APP_KEY, run by the
-  -- first deploy and then cleared; when it failed, the statements from the
-  -- failed one on
-  setup_sql LONGTEXT NULL,
-  -- NULL when the wizard had none
-  -- dismissed: failed, then dismissed from the app page (its SQL cleared)
-  setup_sql_status ENUM('pending', 'done', 'failed', 'dismissed') NULL,
-  -- Why it stopped; it is not run again
-  setup_sql_error TEXT NULL,
   database_server_id INT NULL,
   current_deployment_id INT NULL,
 
@@ -316,6 +307,23 @@ CREATE TABLE app_runtime (
   health_check_path VARCHAR(200) NOT NULL DEFAULT '',
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_app_runtime_app FOREIGN KEY (app_id) REFERENCES app (id) ON DELETE CASCADE
+);
+
+-- The SQL a new app's database is set up with, chosen in the new-app wizard
+-- (Setup_sql); no row when the wizard had none. The first deploy runs it
+-- right after the database is created (Platform_task::run_setup_sql).
+CREATE TABLE app_setup_sql (
+  app_id INT PRIMARY KEY,
+  -- Encrypted with APP_KEY (Setup_sql::encrypt) and cleared once they ran;
+  -- when one failed, the statements from that one on
+  statements LONGTEXT NULL,
+  -- dismissed: failed, then dismissed from the app page (its statements cleared)
+  status ENUM('pending', 'done', 'failed', 'dismissed') NOT NULL DEFAULT 'pending',
+  -- Why it stopped; it is not run again
+  error TEXT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_app_setup_sql_app FOREIGN KEY (app_id) REFERENCES app (id) ON DELETE CASCADE
 );
 
 -- Messages the inbox captured (Mail_store), kept per Mail_capture's limits
@@ -554,4 +562,5 @@ INSERT INTO schema_migrations (name) VALUES
   ('0011_app_setup_sql_dismissed'),
   ('0012_app_sql_import'),
   ('0013_app_build_commands'),
-  ('0014_app_runtime');
+  ('0014_app_runtime'),
+  ('0015_app_setup_sql');

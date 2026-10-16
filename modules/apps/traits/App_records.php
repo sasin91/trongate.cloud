@@ -1,6 +1,7 @@
 <?php
 
 require_once APPPATH . 'modules/platform/manifests/Build_commands.php';
+require_once APPPATH . 'modules/apps/setup_sql/traits/Setup_sql_records.php';
 
 /**
  * App writes shared by onboarding and the apps module.
@@ -9,6 +10,7 @@ require_once APPPATH . 'modules/platform/manifests/Build_commands.php';
  * @property-read Db $db
  */
 trait App_records {
+    use Setup_sql_records;
 
     /**
      * Create an app with a unique slug and the default runtime settings
@@ -90,22 +92,6 @@ trait App_records {
                 ['app_id' => $app_id, 'name' => $process['name'], 'command' => $process['command'], 'replicas' => $process['replicas']]
             );
         }
-    }
-
-    /**
-     * The SQL the app's database starts with (Setup_sql); its first
-     * deploy runs it
-     */
-    function set_setup_sql(int $app_id, string $sql): void {
-        $this->db->query_bind("UPDATE app SET setup_sql = :sql, setup_sql_status = 'pending' WHERE id = :app_id", ['app_id' => $app_id, 'sql' => $sql]);
-    }
-
-    /**
-     * Hide a failed setup SQL's alert: the SQL that did not run is cleared,
-     * the error kept
-     */
-    function dismiss_setup_sql(int $app_id): void {
-        $this->db->query_bind("UPDATE app SET setup_sql = NULL, setup_sql_status = 'dismissed' WHERE id = :app_id AND setup_sql_status = 'failed'", ['app_id' => $app_id]);
     }
 
     /**

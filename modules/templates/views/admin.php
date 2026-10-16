@@ -29,6 +29,7 @@ $admin_nav = [
         'deployment/manage' => 'Deployments',
         'app_process/manage' => 'Processes',
         'app_runtime/manage' => 'Runtime settings',
+        'app_setup_sql/manage' => 'Setup SQL',
         'service/manage' => 'Services',
         'app_upgrade/manage' => 'Upgrades',
         'app_mail/manage' => 'Captured mail',

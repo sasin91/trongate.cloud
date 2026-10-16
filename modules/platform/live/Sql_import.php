@@ -1,6 +1,6 @@
 <?php
 
-require_once __DIR__ . '/Setup_sql.php';
+require_once __DIR__ . '/Setup_sql_plan.php';
 require_once __DIR__ . '/Sql_stream.php';
 
 /**
@@ -17,7 +17,7 @@ require_once __DIR__ . '/Sql_stream.php';
  * deploys and builds are not held up behind a long import, and it carries
  * on after the worker restarts.
  *
- * Statements are checked like the new app's setup SQL (Setup_sql): changes
+ * Statements are checked like the new app's setup SQL (Setup_sql_plan): changes
  * allowed, the transaction and lock statements a dump wraps itself in
  * skipped. On top of that, for dumps:
  *  - the session settings a dump hides in executable comments
@@ -92,7 +92,7 @@ final class Sql_import {
             return self::comment_step($statement, $step);
         }
 
-        if (preg_match(Setup_sql::SKIPPED, $start) || preg_match(self::DATABASE_STATEMENTS, $start)) {
+        if (preg_match(Setup_sql_plan::SKIPPED, $start) || preg_match(self::DATABASE_STATEMENTS, $start)) {
             return $step;
         }
 
@@ -107,7 +107,7 @@ final class Sql_import {
             return $step;
         }
 
-        $refusal = Setup_sql::statement_refusal($start, $start);
+        $refusal = Setup_sql_plan::statement_refusal($start, $start);
 
         if ($refusal !== null) {
             $step['action'] = 'refuse';
@@ -279,14 +279,14 @@ final class Sql_import {
      * One part of the file as stored: encrypted with APP_KEY (nonce + ciphertext, binary)
      */
     static function seal(string $bytes): string {
-        return (string) base64_decode(Encryptor::encrypt($bytes, Setup_sql::key()));
+        return (string) base64_decode(Encryptor::encrypt($bytes, Setup_sql_plan::key()));
     }
 
     /**
      * A stored part as uploaded, or null when it cannot be decrypted (APP_KEY changed)
      */
     static function unseal(string $stored): ?string {
-        $bytes = Encryptor::decrypt(base64_encode($stored), Setup_sql::key());
+        $bytes = Encryptor::decrypt(base64_encode($stored), Setup_sql_plan::key());
 
         return $bytes === false ? null : $bytes;
     }

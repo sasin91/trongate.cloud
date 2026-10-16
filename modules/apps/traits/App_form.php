@@ -4,7 +4,7 @@ require_once APPPATH . 'modules/platform/manifests/Manifests.php';
 require_once APPPATH . 'modules/platform/manifests/App_env_suggestions.php';
 require_once APPPATH . 'modules/platform/manifests/Build_commands.php';
 require_once __DIR__ . '/App_rules.php';
-require_once __DIR__ . '/App_setup_sql.php';
+require_once APPPATH . 'modules/apps/setup_sql/traits/Setup_sql_step.php';
 require_once APPPATH . 'modules/services/clients/Client.php';
 require_once APPPATH . 'modules/services/clients/Github.php';
 
@@ -23,7 +23,7 @@ require_once APPPATH . 'modules/services/clients/Github.php';
  */
 trait App_form {
     use App_rules;
-    use App_setup_sql;
+    use Setup_sql_step;
 
     /** GitHub is the only source provider (Services::PROVIDERS) */
     const SOURCE_PROVIDER = 'github';

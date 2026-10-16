@@ -43,7 +43,7 @@ echo Modules::run('pagination/display', $pagination_data);
                 <th class="text-left">App Id</th>
             <th class="text-left">Always On</th>
             <th class="text-left">Trongate Env</th>
-            <th class="text-left">Mail Capture</th>
+            <th class="text-left">Captures Mail</th>
             <th class="text-left">Updated At</th>
             </tr>
         </thead>
