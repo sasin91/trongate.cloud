@@ -7,27 +7,11 @@
  * Run: php tests/Schema_diagram_test.php (exits non-zero on a failure)
  */
 
+require_once __DIR__ . '/bootstrap.php';
+
 define('APPPATH', dirname(__DIR__) . '/');
 
 require_once APPPATH . 'modules/platform/live/Schema_diagram.php';
-
-$failures = 0;
-
-$test = function (string $name, callable $body) use (&$failures): void {
-    try {
-        $body();
-        echo "ok   {$name}\n";
-    } catch (Throwable $e) {
-        $failures++;
-        echo "FAIL {$name}\n     {$e->getMessage()}\n";
-    }
-};
-
-$same = function ($expected, $actual): void {
-    if ($expected !== $actual) {
-        throw new RuntimeException("Expected:\n" . var_export($expected, true) . "\nGot:\n" . var_export($actual, true));
-    }
-};
 
 /** A table: 'id' is the primary key; other names are int columns */
 $table = function (string ...$columns): array {
@@ -74,7 +58,7 @@ $names = function (array $diagram, int $x): array {
 
 $column_x = fn(int $i) => Schema_diagram::PADDING + $i * (Schema_diagram::CARD_WIDTH + Schema_diagram::COLUMN_GAP);
 
-$test('Trongate _id columns become inferred relations, constraints stay declared', function () use ($same, $recruiter, $declared) {
+test('Trongate _id columns become inferred relations, constraints stay declared', function () use ($recruiter, $declared) {
     $relations = Schema_diagram::relations($recruiter, $declared);
     $inferred = [];
 
@@ -84,58 +68,58 @@ $test('Trongate _id columns become inferred relations, constraints stay declared
         }
     }
 
-    $same(5, count($relations) - count($inferred));
-    $same(['notes.applicant_id -> applicants', 'notes.user_id -> users', 'trongate_users.user_level_id -> trongate_user_levels'], $inferred);
+    assert_same(5, count($relations) - count($inferred));
+    assert_same(['notes.applicant_id -> applicants', 'notes.user_id -> users', 'trongate_users.user_level_id -> trongate_user_levels'], $inferred);
 });
 
-$test('inferred parents follow plural spellings and need an id key', function () use ($same, $table) {
+test('inferred parents follow plural spellings and need an id key', function () use ($table) {
     $tables = ['categories' => $table('id'), 'boxes' => $table('id'), 'staff' => $table('id'), 'logs' => ['rows' => 1, 'columns' => [['name' => 'uuid', 'column_type' => 'char(36)', 'key' => true]]]];
 
-    $same('categories', Schema_diagram::inferred_parent('things', 'category_id', $tables));
-    $same('boxes', Schema_diagram::inferred_parent('things', 'box_id', $tables));
-    $same('staff', Schema_diagram::inferred_parent('things', 'staff_id', $tables));
-    $same(null, Schema_diagram::inferred_parent('things', 'log_id', $tables));
-    $same(null, Schema_diagram::inferred_parent('things', '_id', $tables));
-    $same(null, Schema_diagram::inferred_parent('things', 'status', $tables));
-    $same('trongate_user_levels', Schema_diagram::inferred_parent('trongate_users', 'user_level_id', ['trongate_user_levels' => $table('id')]));
-    $same(null, Schema_diagram::inferred_parent('users', 'user_level_id', ['trongate_user_levels' => $table('id')]));
-    $same('trongate_users', Schema_diagram::inferred_parent('trongate_tokens', 'user_id', ['users' => $table('id'), 'trongate_users' => $table('id')]));
+    assert_same('categories', Schema_diagram::inferred_parent('things', 'category_id', $tables));
+    assert_same('boxes', Schema_diagram::inferred_parent('things', 'box_id', $tables));
+    assert_same('staff', Schema_diagram::inferred_parent('things', 'staff_id', $tables));
+    assert_same(null, Schema_diagram::inferred_parent('things', 'log_id', $tables));
+    assert_same(null, Schema_diagram::inferred_parent('things', '_id', $tables));
+    assert_same(null, Schema_diagram::inferred_parent('things', 'status', $tables));
+    assert_same('trongate_user_levels', Schema_diagram::inferred_parent('trongate_users', 'user_level_id', ['trongate_user_levels' => $table('id')]));
+    assert_same(null, Schema_diagram::inferred_parent('users', 'user_level_id', ['trongate_user_levels' => $table('id')]));
+    assert_same('trongate_users', Schema_diagram::inferred_parent('trongate_tokens', 'user_id', ['users' => $table('id'), 'trongate_users' => $table('id')]));
 });
 
-$test('pointed-at tables stand left, unrelated tables last, Trongate tables hidden', function () use ($same, $recruiter, $declared, $names, $column_x) {
+test('pointed-at tables stand left, unrelated tables last, Trongate tables hidden', function () use ($recruiter, $declared, $names, $column_x) {
     $diagram = Schema_diagram::layout($recruiter, Schema_diagram::relations($recruiter, $declared), 'users', false, false);
 
-    $same(['companies'], $names($diagram, $column_x(0)));
-    $same(['jobs', 'users', 'applicants'], $names($diagram, $column_x(1)));
-    $same(['interviews', 'notes'], $names($diagram, $column_x(2)));
-    $same(['sessions'], $names($diagram, $column_x(3)));
-    $same(2, $diagram['hidden']);
-    $same(7, $diagram['tables']);
-    $same(7, $diagram['relations']);
-    $same(2, $diagram['inferred']);
+    assert_same(['companies'], $names($diagram, $column_x(0)));
+    assert_same(['jobs', 'users', 'applicants'], $names($diagram, $column_x(1)));
+    assert_same(['interviews', 'notes'], $names($diagram, $column_x(2)));
+    assert_same(['sessions'], $names($diagram, $column_x(3)));
+    assert_same(2, $diagram['hidden']);
+    assert_same(7, $diagram['tables']);
+    assert_same(7, $diagram['relations']);
+    assert_same(2, $diagram['inferred']);
 });
 
-$test('around a table: its parents left, its children right', function () use ($same, $recruiter, $declared, $names, $column_x) {
+test('around a table: its parents left, its children right', function () use ($recruiter, $declared, $names, $column_x) {
     $diagram = Schema_diagram::layout($recruiter, Schema_diagram::relations($recruiter, $declared), 'users', true, false);
 
-    $same(['companies'], $names($diagram, $column_x(0)));
-    $same(['users'], $names($diagram, $column_x(1)));
-    $same(['interviews', 'notes'], $names($diagram, $column_x(2)));
-    $same(['users points to', 'Points to users'], array_column($diagram['headings'], 'text'));
+    assert_same(['companies'], $names($diagram, $column_x(0)));
+    assert_same(['users'], $names($diagram, $column_x(1)));
+    assert_same(['interviews', 'notes'], $names($diagram, $column_x(2)));
+    assert_same(['users points to', 'Points to users'], array_column($diagram['headings'], 'text'));
 });
 
-$test('a cycle and a self reference still lay out', function () use ($same, $table, $names, $column_x) {
+test('a cycle and a self reference still lay out', function () use ($table, $names, $column_x) {
     $tables = ['a' => $table('id', 'b_id'), 'b' => $table('id', 'a_id'), 'c' => $table('id', 'c_id')];
     $diagram = Schema_diagram::layout($tables, Schema_diagram::relations($tables, []), '', false, false);
 
-    $same(3, $diagram['tables']);
-    $same(3, $diagram['relations']);
-    $same(['a'], $names($diagram, $column_x(0)));
-    $same(['b'], $names($diagram, $column_x(1)));
-    $same(['c'], $names($diagram, $column_x(2)));
+    assert_same(3, $diagram['tables']);
+    assert_same(3, $diagram['relations']);
+    assert_same(['a'], $names($diagram, $column_x(0)));
+    assert_same(['b'], $names($diagram, $column_x(1)));
+    assert_same(['c'], $names($diagram, $column_x(2)));
 });
 
-$test('a card lists keys and relation columns even past the column cap', function () use ($same) {
+test('a card lists keys and relation columns even past the column cap', function () {
     $columns = [['name' => 'id', 'column_type' => 'int', 'key' => true]];
 
     for ($i = 1; $i <= 20; $i++) {
@@ -147,11 +131,11 @@ $test('a card lists keys and relation columns even past the column cap', functio
     $diagram = Schema_diagram::layout($tables, Schema_diagram::relations($tables, []), '', false, false);
     $card = $diagram['cards'][1];
 
-    $same('things', $card['name']);
-    $same(Schema_diagram::MAX_CARD_COLUMNS, count($card['columns']));
-    $same(['name' => 'owner_id', 'type' => 'int', 'marker' => 'link'], $card['columns'][11]);
-    $same(10, $card['more']);
-    $same('', $card['rows']);
+    assert_same('things', $card['name']);
+    assert_same(Schema_diagram::MAX_CARD_COLUMNS, count($card['columns']));
+    assert_same(['name' => 'owner_id', 'type' => 'int', 'marker' => 'link'], $card['columns'][11]);
+    assert_same(10, $card['more']);
+    assert_same('', $card['rows']);
 });
 
-exit($failures === 0 ? 0 : 1);
+finish_tests();

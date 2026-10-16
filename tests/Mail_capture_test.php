@@ -9,29 +9,13 @@
  * Run: php tests/Mail_capture_test.php (exits non-zero on a failure)
  */
 
+require_once __DIR__ . '/bootstrap.php';
+
 putenv('MAIL_KEY=test-key-for-mail-capture');
 
 require_once __DIR__ . '/../modules/platform/mail/Mail_capture.php';
 require_once __DIR__ . '/../modules/platform/mail/Mail_message.php';
 require_once __DIR__ . '/../modules/platform/mail/Mail_server.php';
-
-$failures = 0;
-
-$test = function (string $name, callable $body) use (&$failures): void {
-    try {
-        $body();
-        echo "ok   {$name}\n";
-    } catch (Throwable $e) {
-        $failures++;
-        echo "FAIL {$name}\n     {$e->getMessage()}\n";
-    }
-};
-
-$same = function ($expected, $actual): void {
-    if ($expected !== $actual) {
-        throw new RuntimeException("Expected:\n" . var_export($expected, true) . "\nGot:\n" . var_export($actual, true));
-    }
-};
 
 /**
  * A session for app 7 (password "good") that keeps what it delivers; send
@@ -54,66 +38,66 @@ $session = function (?array &$delivered = null, int $max_bytes = 1000): Smtp_ses
 
 $codes = fn(Smtp_session $session, array $lines): array => array_map(fn(string $line) => substr($session->line($line), 0, 3), $lines);
 
-$test('passwords carry the app id and only check out with the key', function () use ($same) {
+test('passwords carry the app id and only check out with the key', function () {
     $password = Mail_capture::password(42);
 
-    $same(42, Mail_capture::app_id($password));
-    $same(null, Mail_capture::app_id(str_replace('tc42.', 'tc43.', $password)));
-    $same(null, Mail_capture::app_id(substr($password, 0, -1) . (str_ends_with($password, '0') ? '1' : '0')));
-    $same(null, Mail_capture::app_id('tc0.' . str_repeat('a', Mail_capture::PASSWORD_HASH_LENGTH)));
-    $same(null, Mail_capture::app_id(''));
+    assert_same(42, Mail_capture::app_id($password));
+    assert_same(null, Mail_capture::app_id(str_replace('tc42.', 'tc43.', $password)));
+    assert_same(null, Mail_capture::app_id(substr($password, 0, -1) . (str_ends_with($password, '0') ? '1' : '0')));
+    assert_same(null, Mail_capture::app_id('tc0.' . str_repeat('a', Mail_capture::PASSWORD_HASH_LENGTH)));
+    assert_same(null, Mail_capture::app_id(''));
 });
 
-$test('the inbox entrypoint loads its classes and stops without MAIL_KEY', function () use ($same) {
+test('the inbox entrypoint loads its classes and stops without MAIL_KEY', function () {
     $process = proc_open([PHP_BINARY, __DIR__ . '/../modules/platform/mail/server.php'], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, null, ['MAIL_KEY' => '']);
     $output = stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
     $code = proc_close($process);
 
-    $same([1, true], [$code, str_contains($output, 'MAIL_KEY is required')]);
+    assert_same([1, true], [$code, str_contains($output, 'MAIL_KEY is required')]);
 });
 
-$test('capture is on unless the app turned it off', function () use ($same) {
-    $same([true, true, false], [Runtime_settings::captures_mail([]), Runtime_settings::captures_mail(['captures_mail' => '1']), Runtime_settings::captures_mail(['captures_mail' => 0])]);
+test('capture is on unless the app turned it off', function () {
+    assert_same([true, true, false], [Runtime_settings::captures_mail([]), Runtime_settings::captures_mail(['captures_mail' => '1']), Runtime_settings::captures_mail(['captures_mail' => 0])]);
 });
 
-$test('mail needs AUTH first', function () use ($session, $codes, $same) {
-    $same(['250', '530'], $codes($session(), ['EHLO app', 'MAIL FROM:<a@b.c>']));
+test('mail needs AUTH first', function () use ($session, $codes) {
+    assert_same(['250', '530'], $codes($session(), ['EHLO app', 'MAIL FROM:<a@b.c>']));
 });
 
-$test('AUTH LOGIN, then a message with dot-stuffing', function () use ($session, $codes, $same) {
+test('AUTH LOGIN, then a message with dot-stuffing', function () use ($session, $codes) {
     $smtp = $session($delivered);
-    $same(
+    assert_same(
         ['250', '334', '334', '235', '250', '250', '250', '354', '', '', '', '', '250', '221'],
         $codes($smtp, ['EHLO app', 'AUTH LOGIN', base64_encode('me@shop.test'), base64_encode('good'), 'MAIL FROM:<me@shop.test> SIZE=100', 'RCPT TO:<a@x.test>', 'RCPT TO:<b@x.test>', 'DATA', 'Subject: Hi', '', '..leading dot', 'body', '.', 'QUIT']),
     );
-    $same([['app_id' => 7, 'from' => 'me@shop.test', 'recipients' => ['a@x.test', 'b@x.test'], 'raw' => "Subject: Hi\r\n\r\n.leading dot\r\nbody\r\n"]], $delivered);
-    $same(true, $smtp->closed);
+    assert_same([['app_id' => 7, 'from' => 'me@shop.test', 'recipients' => ['a@x.test', 'b@x.test'], 'raw' => "Subject: Hi\r\n\r\n.leading dot\r\nbody\r\n"]], $delivered);
+    assert_same(true, $smtp->closed);
 });
 
-$test('AUTH PLAIN, inline and on the next line', function () use ($session, $codes, $same) {
-    $same(['235'], $codes($session(), ['AUTH PLAIN ' . base64_encode("\0me\0good")]));
-    $same(['334', '235'], $codes($session(), ['AUTH PLAIN', base64_encode("\0me\0good")]));
-    $same(['535'], $codes($session(), ['AUTH PLAIN ' . base64_encode("\0me\0bad")]));
+test('AUTH PLAIN, inline and on the next line', function () use ($session, $codes) {
+    assert_same(['235'], $codes($session(), ['AUTH PLAIN ' . base64_encode("\0me\0good")]));
+    assert_same(['334', '235'], $codes($session(), ['AUTH PLAIN', base64_encode("\0me\0good")]));
+    assert_same(['535'], $codes($session(), ['AUTH PLAIN ' . base64_encode("\0me\0bad")]));
 });
 
-$test('three wrong passwords close the session', function () use ($session, $codes, $same) {
+test('three wrong passwords close the session', function () use ($session, $codes) {
     $smtp = $session();
-    $same(['535', '535', '421'], $codes($smtp, array_fill(0, 3, 'AUTH PLAIN ' . base64_encode("\0me\0bad"))));
-    $same(true, $smtp->closed);
+    assert_same(['535', '535', '421'], $codes($smtp, array_fill(0, 3, 'AUTH PLAIN ' . base64_encode("\0me\0bad"))));
+    assert_same(true, $smtp->closed);
 });
 
-$test('a message over the size limit is refused, and the session goes on', function () use ($session, $codes, $same) {
+test('a message over the size limit is refused, and the session goes on', function () use ($session, $codes) {
     $smtp = $session($delivered, 100);
-    $same(['235', '552'], $codes($smtp, ['AUTH PLAIN ' . base64_encode("\0me\0good"), 'MAIL FROM:<a@b.c> SIZE=101']));
-    $same(['250', '250', '354', '', '', '552', '250'], $codes($smtp, ['MAIL FROM:<a@b.c>', 'RCPT TO:<x@y.z>', 'DATA', str_repeat('x', 60), str_repeat('x', 60), '.', 'NOOP']));
-    $same([], $delivered);
+    assert_same(['235', '552'], $codes($smtp, ['AUTH PLAIN ' . base64_encode("\0me\0good"), 'MAIL FROM:<a@b.c> SIZE=101']));
+    assert_same(['250', '250', '354', '', '', '552', '250'], $codes($smtp, ['MAIL FROM:<a@b.c>', 'RCPT TO:<x@y.z>', 'DATA', str_repeat('x', 60), str_repeat('x', 60), '.', 'NOOP']));
+    assert_same([], $delivered);
 });
 
-$test('order and unknown commands', function () use ($session, $codes, $same) {
-    $same(['503', '503', '502', '454'], $codes($session(), ['RCPT TO:<a@b.c>', 'DATA', 'TURN', 'STARTTLS']));
+test('order and unknown commands', function () use ($session, $codes) {
+    assert_same(['503', '503', '502', '454'], $codes($session(), ['RCPT TO:<a@b.c>', 'DATA', 'TURN', 'STARTTLS']));
 });
 
-$test('Mail_message reads a multipart message with encoded headers', function () use ($same) {
+test('Mail_message reads a multipart message with encoded headers', function () {
     $raw = implode("\r\n", [
         'From: =?UTF-8?B?' . base64_encode('Søren Shop') . '?= <shop@example.test>',
         'To: buyer@example.test',
@@ -145,14 +129,14 @@ $test('Mail_message reads a multipart message with encoded headers', function ()
     ]);
     $message = Mail_message::parse($raw);
 
-    $same('Søren Shop <shop@example.test>', $message['from']);
-    $same('Ordre bekræftet', $message['subject']);
-    $same('Tak for din ordre, søde', $message['text']);
-    $same('<p>Tak</p>', $message['html']);
-    $same(['invoice.pdf'], $message['attachments']);
+    assert_same('Søren Shop <shop@example.test>', $message['from']);
+    assert_same('Ordre bekræftet', $message['subject']);
+    assert_same('Tak for din ordre, søde', $message['text']);
+    assert_same('<p>Tak</p>', $message['html']);
+    assert_same(['invoice.pdf'], $message['attachments']);
 });
 
-$test("Trongate's email module sends through the inbox", function () use ($same) {
+test("Trongate's email module sends through the inbox", function () {
     $dir = sys_get_temp_dir() . '/mail-capture-' . getmypid();
     @mkdir("{$dir}/config", 0777, true);
     $out = "{$dir}/captured.jsonl";
@@ -192,15 +176,15 @@ $test("Trongate's email module sends through the inbox", function () use ($same)
             'subject' => 'Your order',
             'body_html' => "<p>Thanks!</p>\n.<p>Line starting with a dot</p>",
         ]);
-        $same(true, $sent);
+        assert_same(true, $sent);
 
         $config['smtp_pass'] = 'tc7.' . str_repeat('0', Mail_capture::PASSWORD_HASH_LENGTH);
         file_put_contents("{$dir}/config/trongate_email.php", "<?php\n\$config['trongate_email'] = " . var_export($config, true) . ";\n");
-        $same(false, (new Trongate_email())->send(['to_email' => 'x@example.test', 'subject' => 'x', 'body_html' => 'x']));
+        assert_same(false, (new Trongate_email())->send(['to_email' => 'x@example.test', 'subject' => 'x', 'body_html' => 'x']));
 
         $captured = array_map(fn(string $line) => json_decode($line, true), file($out, FILE_IGNORE_NEW_LINES) ?: []);
-        $same(1, count($captured));
-        $same([7, 'hello@shop.test', ['buyer@example.test']], [$captured[0]['app_id'], $captured[0]['from'], $captured[0]['recipients']]);
+        assert_same(1, count($captured));
+        assert_same([7, 'hello@shop.test', ['buyer@example.test']], [$captured[0]['app_id'], $captured[0]['from'], $captured[0]['recipients']]);
 
         // A fourth signed-in connection of the same app is turned away
         $replies = [];
@@ -213,11 +197,11 @@ $test("Trongate's email module sends through the inbox", function () use ($same)
             $open[] = $conn;
         }
 
-        $same(['235', '235', '235', '421'], $replies);
+        assert_same(['235', '235', '235', '421'], $replies);
 
         $message = Mail_message::parse($captured[0]['raw']);
-        $same(['Shop <hello@shop.test>', 'buyer@example.test', 'Your order'], [$message['from'], $message['to'], $message['subject']]);
-        $same("<p>Thanks!</p>\n.<p>Line starting with a dot</p>", $message['html']);
+        assert_same(['Shop <hello@shop.test>', 'buyer@example.test', 'Your order'], [$message['from'], $message['to'], $message['subject']]);
+        assert_same("<p>Thanks!</p>\n.<p>Line starting with a dot</p>", $message['html']);
     } finally {
         proc_terminate($process);
         proc_close($process);
@@ -228,4 +212,4 @@ $test("Trongate's email module sends through the inbox", function () use ($same)
     }
 });
 
-exit($failures === 0 ? 0 : 1);
+finish_tests();

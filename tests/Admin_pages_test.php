@@ -7,13 +7,9 @@
  * Run: php tests/Admin_pages_test.php (exits non-zero on a failure)
  */
 
-$root = __DIR__ . '/..';
-$failures = 0;
+require_once __DIR__ . '/bootstrap.php';
 
-$fail = function (string $message) use (&$failures): void {
-    $failures++;
-    echo "FAIL {$message}\n";
-};
+$root = __DIR__ . '/..';
 
 preg_match_all('/^CREATE TABLE (\w+) \(/m', file_get_contents("$root/db/schema.sql"), $m);
 $tables = $m[1];
@@ -44,34 +40,34 @@ $modules['trongate_administrators'] = "$root/modules/trongate_administrators";
 $admin = file_get_contents("$root/modules/templates/views/admin.php");
 foreach ($tables as $table) {
     if (!isset($modules[$table])) {
-        $fail("$table has no admin module");
+        fail("$table has no admin module");
         continue;
     }
     $dir = $modules[$table];
     if (!is_file("$dir/views/manage.php")) {
-        $fail("$table has no manage page");
+        fail("$table has no manage page");
     }
     $url = str_replace('/', '-', substr($dir, strlen("$root/modules/"))) . '/manage';
     if (!str_contains($admin, "'$url'")) {
-        $fail("$table ($url) isn't in the admin menu");
+        fail("$table ($url) isn't in the admin menu");
     }
     if (!isset($hidden[$table])) {
         continue;
     }
     $model = file_get_contents(glob("$dir/*_model.php")[0]);
     if (str_contains($model, 'SELECT *') || str_contains($model, 'get_where(')) {
-        $fail("$table: the model selects every column");
+        fail("$table: the model selects every column");
     }
     $columns = implode('|', $hidden[$table]);
     if (preg_match('/`(' . $columns . ')`/', $model, $s)) {
-        $fail("$table: the model selects $s[1]");
+        fail("$table: the model selects $s[1]");
     }
     foreach (glob("$dir/views/*.php") as $view) {
         if (preg_match('/\$(?:row->)?(' . $columns . ')\b/', file_get_contents($view), $s)) {
-            $fail("$table: " . basename($view) . " shows $s[1]");
+            fail("$table: " . basename($view) . " shows $s[1]");
         }
     }
 }
 
 echo count($tables), " tables checked\n";
-exit($failures > 0 ? 1 : 0);
+finish_tests();
