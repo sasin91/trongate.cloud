@@ -3,8 +3,9 @@ require_once APPPATH . 'modules/customer/traits/Customer_guard.php';
 require_once __DIR__ . '/Deploy_steps.php';
 
 /**
- * Deployment detail page with live build/rollout logs. Any member of
- * the deployment's project may read it.
+ * Deployment detail page: the deploy's steps as a timeline, each with its
+ * live log lines (Deploy_steps). Any member of the deployment's project
+ * may read it.
  *
  * @property-read Deployments_model $model
  * @property-read Templates $templates
@@ -22,18 +23,22 @@ class Deployments extends Trongate {
 
         $deployment = $this->_find_or_redirect((int) $customer->id, segment(3, 'int'));
         $logs = $this->model->deployment_logs((int) $deployment->project_id, (int) $deployment->id, 0, 1000);
-        $steps = $this->_steps((int) $customer->id, $deployment);
+        $marks = $this->model->deployment_step_marks((int) $deployment->project_id, (int) $deployment->id);
+        $steps = Deploy_steps::steps($this->_app_row((int) $customer->id, $deployment), (array) $deployment, $marks);
 
         $data = [
             'view_module' => 'deployments',
             'view_file' => 'show',
             'deployment' => $deployment,
-            'logs' => $logs,
+            'steps' => $steps,
+            'step_logs' => Deploy_steps::group_logs($logs, $marks),
+            'step_now' => Deploy_steps::now($steps),
+            // Finished before the worker marked steps: one plain log instead
+            'unsorted_logs' => Deploy_steps::is_unsorted((array) $deployment, $marks) ? $logs : [],
             'last_log_id' => $this->_last_log_id($logs, 0),
             'is_finished' => in_array($deployment->status, self::FINISHED, true),
             'failure' => $this->_failure($deployment),
-            'steps' => $steps,
-            'step_now' => Deploy_steps::now($steps),
+            'poll_swaps' => $this->_poll_swaps(),
             'additional_includes_top' => ['deployments_module/css/deployments.css'],
             'additional_includes_btm' => ['deployments_module/js/follow_log.js'],
         ];
@@ -43,7 +48,8 @@ class Deployments extends Trongate {
     }
 
     /**
-     * HTML partial polled by MX: new log lines, the log cursor and the status pill.
+     * HTML partial polled by MX: new log lines under their steps, the steps'
+     * states, the log cursor and the status pill (see _logs_partial.php).
      */
     function logs_partial(): void {
         $this->_make_sure_allowed();
@@ -58,18 +64,54 @@ class Deployments extends Trongate {
 
         $last_log_id = max(0, (int) ($_GET['last_log_id'] ?? 0));
         $logs = $this->model->deployment_logs((int) $deployment->project_id, (int) $deployment->id, $last_log_id);
-
-        $steps = $this->_steps((int) $customer->id, $deployment);
+        $marks = $this->model->deployment_step_marks((int) $deployment->project_id, (int) $deployment->id);
+        $steps = Deploy_steps::steps($this->_app_row((int) $customer->id, $deployment), (array) $deployment, $marks);
 
         $this->view('_logs_partial', [
             'deployment' => $deployment,
-            'logs' => $logs,
+            'steps' => $steps,
+            'step_logs' => Deploy_steps::group_logs($logs, $marks),
+            'step_now' => Deploy_steps::now($steps),
             'last_log_id' => $this->_last_log_id($logs, $last_log_id),
             'is_finished' => in_array($deployment->status, self::FINISHED, true),
             'failure' => $this->_failure($deployment),
-            'steps' => $steps,
-            'step_now' => Deploy_steps::now($steps),
         ]);
+    }
+
+    /**
+     * The deployment's app with its settings, for the steps; only its id and
+     * slug once the app is deleted
+     */
+    function _app_row(int $customer_id, object $deployment): array {
+        $app = $this->model->find_member_app($customer_id, (int) $deployment->app_id);
+
+        if ($app === false) {
+            return ['id' => (int) $deployment->app_id, 'slug' => (string) $deployment->app_slug];
+        }
+
+        return (array) $app;
+    }
+
+    /**
+     * The log poller's mx-select-oob (show.php): each step's new lines are
+     * appended to its log and its heading replaced, then the cursor, status,
+     * failure card and the stop signal (_logs_partial.php)
+     */
+    function _poll_swaps(): string {
+        $swaps = [];
+
+        foreach (Deploy_steps::KEYS as $key) {
+            $swaps[] = ['select' => "#new-logs-{$key}", 'target' => "#step-logs-{$key}", 'swap' => 'beforeend'];
+            $swaps[] = ['select' => "#step-head-{$key}", 'target' => "#step-head-{$key}", 'swap' => 'outerHTML'];
+        }
+
+        $swaps[] = ['select' => '#step-now', 'target' => '#step-now', 'swap' => 'outerHTML'];
+        $swaps[] = ['select' => '#log-cursor', 'target' => '#log-poller', 'swap' => 'value'];
+        $swaps[] = ['select' => '#deployment-status', 'target' => '#deployment-status', 'swap' => 'outerHTML'];
+        $swaps[] = ['select' => '#deploy-failure', 'target' => '#deploy-failure', 'swap' => 'outerHTML'];
+        $swaps[] = ['select' => '#log-poller-stop', 'target' => '.log-poller-keepalive, #log-poller', 'swap' => 'delete'];
+
+        return (string) json_encode($swaps);
     }
 
     /**
@@ -107,20 +149,6 @@ class Deployments extends Trongate {
             : null;
 
         return $failure;
-    }
-
-    /**
-     * What happens in a deploy of the deployment's app (Deploy_steps), with
-     * the app's current settings; none once the app is deleted
-     */
-    function _steps(int $customer_id, object $deployment): array {
-        $app = $this->model->find_member_app($customer_id, (int) $deployment->app_id);
-
-        if ($app === false) {
-            return [];
-        }
-
-        return Deploy_steps::steps((array) $app, (array) $deployment);
     }
 
     function _last_log_id(array $logs, int $default): int {

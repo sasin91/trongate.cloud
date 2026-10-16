@@ -32,36 +32,30 @@
 
     <?php require __DIR__ . '/_failure.php'; ?>
 
-    <?php if ($steps): ?>
-        <details class="card what-happens">
-            <summary>
-                <span class="what-happens-title">What happens during a deploy</span>
-                <?php require __DIR__ . '/_step_now.php'; ?>
-            </summary>
-            <?php require __DIR__ . '/_step_list.php'; ?>
-        </details>
-    <?php endif; ?>
-
-    <h3>Logs</h3>
-    <div id="log-container" class="card log-container">
-        <div id="logs-content"><?php require __DIR__ . '/_log_lines.php'; ?></div>
+    <div class="card steps-card">
+        <div class="steps-heading">
+            <h3>Steps</h3>
+            <?php require __DIR__ . '/_step_now.php'; ?>
+        </div>
+        <?php require __DIR__ . '/_steps.php'; ?>
+        <p class="steps-later">Later, without a build: step 3 runs again for this deployment when it is rolled back to, when your custom domain gets its certificate (BASE_URL moves to the domain), and when trongate.cloud changes what it sets. Changes in Settings take effect on the next deployment.</p>
     </div>
 
+    <?php if ($unsorted_logs): ?>
+        <h3>Logs</h3>
+        <div class="card log-container">
+            <?php $logs = $unsorted_logs; ?>
+            <?php require __DIR__ . '/_log_lines.php'; ?>
+        </div>
+    <?php endif; ?>
+
     <?php if (!$is_finished): ?>
-        <!-- Polls for new log lines; removed by _logs_partial.php once the deployment finishes -->
+        <!-- Polls for new log lines and step states; removed by _logs_partial.php once the deployment finishes -->
         <input type="hidden" id="log-poller" value="<?= $last_log_id ?>"
                mx-get="deployments/<?= $deployment->id ?>/logs?last_log_id=${this.value}"
                mx-trigger="every 2s"
                mx-target="none"
-               mx-select-oob='[
-                   {"select": "#new-logs", "target": "#logs-content", "swap": "beforeend"},
-                   {"select": "#log-cursor", "target": "#log-poller", "swap": "value"},
-                   {"select": "#deployment-status", "target": "#deployment-status", "swap": "outerHTML"},
-                   {"select": "#deploy-failure", "target": "#deploy-failure", "swap": "outerHTML"},
-                   {"select": "#deploy-step-now", "target": "#deploy-step-now", "swap": "outerHTML"},
-                   {"select": "#deploy-steps", "target": "#deploy-steps", "swap": "outerHTML"},
-                   {"select": "#log-poller-stop", "target": ".log-poller-keepalive, #log-poller", "swap": "delete"}
-               ]'>
+               mx-select-oob='<?= htmlspecialchars($poll_swaps, ENT_QUOTES) ?>'>
     <?php endif; ?>
 
     <?php if ($deployment->status === 'success' && !in_array($deployment->trigger_type, ['webhook', 'reconcile', 'platform'], true)): ?>

@@ -1,9 +1,10 @@
 <?php
 
 /**
- * Tests for Deploy_steps, the "What happens" card on a deployment page: its
- * config rows must name exactly what Trongate_config::rules() sets, and
- * never show a secret.
+ * Tests for Deploy_steps, the timeline on a deployment page: step states
+ * from the worker's 'step' log lines, log lines grouped under their steps,
+ * and config rows that name exactly what Trongate_config::rules() sets
+ * without showing a secret.
  *
  * Run: php tests/Deploy_steps_test.php (exits non-zero on a failure)
  */
@@ -62,29 +63,84 @@ test('config rows show the values, never the secrets', function () use ($app) {
     assert_same(false, str_contains($shown, 'secret-db-password'));
 });
 
-test('steps follow the deployment status', function () use ($app) {
-    $states = fn(string $status) => array_column(Deploy_steps::steps($app(), ['status' => $status, 'config_files' => null]), 'state');
+/** 'step' log lines for the given keys, one second apart */
+$marks = function (string ...$keys): array {
+    $marks = [];
 
-    assert_same(['waiting', 'waiting', 'waiting', 'waiting', 'waiting', ''], $states('pending'));
-    assert_same(['current', 'current', 'waiting', 'waiting', 'waiting', ''], $states('building'));
-    assert_same(['done', 'done', 'current', 'current', 'current', ''], $states('deploying'));
-    assert_same(['done', 'done', 'done', 'done', 'done', ''], $states('success'));
-    // Where a failed deploy stopped is not known: no step claims it
-    assert_same(['', '', '', '', '', ''], $states('failed'));
+    foreach ($keys as $i => $key) {
+        $marks[] = (object) ['id' => ($i + 1) * 10, 'message' => $key, 'created_at' => '2026-10-16 22:00:0' . $i];
+    }
+
+    return $marks;
+};
+
+$states = function (string $status, array $marks) use ($app): array {
+    return array_column(Deploy_steps::steps($app(), ['status' => $status], $marks), 'state', 'key');
+};
+
+test('a running deployment is on its latest step', function () use ($states, $marks) {
+    assert_same(
+        ['source' => 'waiting', 'build' => 'waiting', 'config' => 'waiting', 'start' => 'waiting', 'check' => 'waiting', 'restore' => 'hidden'],
+        $states('pending', []),
+    );
+    assert_same(
+        ['source' => 'done', 'build' => 'current', 'config' => 'waiting', 'start' => 'waiting', 'check' => 'waiting', 'restore' => 'hidden'],
+        $states('building', $marks('source', 'build')),
+    );
 });
 
-test('now names the current steps', function () use ($app) {
-    assert_same('Now: steps 1 to 2', Deploy_steps::now(Deploy_steps::steps($app(), ['status' => 'building'])));
-    assert_same('Now: steps 3 to 5', Deploy_steps::now(Deploy_steps::steps($app(), ['status' => 'deploying'])));
-    assert_same('Now: 1. Read your repository', Deploy_steps::now([['title' => 'Read your repository', 'state' => 'current'], ['title' => 'Build', 'state' => 'waiting']]));
-    assert_same('', Deploy_steps::now(Deploy_steps::steps($app(), ['status' => 'success'])));
+test('a successful deployment has every step done', function () use ($states, $marks) {
+    assert_same(
+        ['source' => 'done', 'build' => 'done', 'config' => 'done', 'start' => 'done', 'check' => 'done', 'restore' => 'hidden'],
+        $states('success', $marks('source', 'build', 'config', 'start', 'check')),
+    );
+});
+
+test('a failed deployment fails on its latest step', function () use ($states, $marks) {
+    assert_same(
+        ['source' => 'done', 'build' => 'failed', 'config' => 'waiting', 'start' => 'waiting', 'check' => 'waiting', 'restore' => 'hidden'],
+        $states('failed', $marks('source', 'build')),
+    );
+});
+
+test('the step before a restore failed, and the restore shows', function () use ($states, $marks) {
+    assert_same(
+        ['source' => 'done', 'build' => 'done', 'config' => 'done', 'start' => 'failed', 'check' => 'waiting', 'restore' => 'done'],
+        $states('failed', $marks('source', 'build', 'config', 'start', 'restore')),
+    );
+});
+
+test('a rollback skips reading and building', function () use ($states, $marks) {
+    assert_same(
+        ['source' => 'skipped', 'build' => 'skipped', 'config' => 'done', 'start' => 'done', 'check' => 'done', 'restore' => 'hidden'],
+        $states('success', $marks('config', 'start', 'check')),
+    );
+});
+
+test('a deployment from before steps were logged has no states and unsorted logs', function () use ($states) {
+    assert_same(['source' => '', 'build' => '', 'config' => '', 'start' => '', 'check' => '', 'restore' => 'hidden'], $states('success', []));
+    assert_same(true, Deploy_steps::is_unsorted(['status' => 'success'], []));
+    assert_same(false, Deploy_steps::is_unsorted(['status' => 'building'], []));
+});
+
+test('log lines go under the step they were written in', function () use ($marks) {
+    $line = fn(int $id, string $level = 'info') => (object) ['id' => $id, 'level' => $level, 'message' => "line {$id}", 'created_at' => '2026-10-16 22:00:00'];
+    $logs = [$line(5), $line(10, 'step'), $line(11), $line(20, 'step'), $line(21), $line(22)];
+    $ids = array_map(fn(array $lines) => array_map(fn(object $l) => $l->id, $lines), Deploy_steps::group_logs($logs, $marks('source', 'build')));
+
+    assert_same(['source' => [5, 11], 'build' => [21, 22], 'config' => [], 'start' => [], 'check' => [], 'restore' => []], $ids);
+});
+
+test('now names the current step', function () use ($app, $marks) {
+    assert_same('Now: 2. Build the image', Deploy_steps::now(Deploy_steps::steps($app(), ['status' => 'building'], $marks('source', 'build'))));
+    assert_same('', Deploy_steps::now(Deploy_steps::steps($app(), ['status' => 'success'], $marks('source'))));
 });
 
 test('the kept config files and persistent paths are listed', function () use ($app) {
     $steps = Deploy_steps::steps($app(['persistent_paths' => '["public/uploads"]']), [
         'status' => 'success',
         'config_files' => json_encode(['config.php' => '<?php', 'database.php' => '<?php']),
-    ]);
+    ], []);
     $text = implode("\n", array_merge(...array_column($steps, 'text')));
 
     assert_contains('config/config.php, config/database.php', $text);

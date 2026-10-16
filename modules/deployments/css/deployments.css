@@ -9,11 +9,6 @@
     overflow-y: auto;
 }
 
-#logs-content:empty::before {
-    content: 'Waiting for logs...';
-    color: #666;
-}
-
 .log-line {
     margin-bottom: 2px;
     white-space: pre-wrap;
@@ -128,57 +123,45 @@
     word-break: break-all;
 }
 
-/* "What happens during a deploy" (Deploy_steps, views/_step_list.php) */
-.what-happens {
+/* The deploy's steps as a timeline (Deploy_steps, views/_steps.php) */
+.steps-card {
     margin-bottom: 1.5rem;
 }
 
-.what-happens summary {
+.steps-heading {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
     gap: 0.25rem 1rem;
-    cursor: pointer;
-    list-style: none;
 }
 
-.what-happens summary::-webkit-details-marker {
-    display: none;
+.steps-heading h3 {
+    margin: 0;
 }
 
-.what-happens summary::before {
-    content: '\25B8';
-    color: var(--text-muted);
-}
-
-.what-happens[open] summary::before {
-    content: '\25BE';
-}
-
-.what-happens-title {
-    font-weight: 600;
-}
-
-.deploy-step-now {
+.step-now {
     color: var(--accent);
     font-size: 0.875rem;
 }
 
-.deploy-steps {
+.steps {
     list-style: none;
-    counter-reset: deploy-step;
     margin: 1.25rem 0 0 0;
     padding: 0;
 }
 
-.deploy-step {
-    counter-increment: deploy-step;
+.step {
     position: relative;
     padding: 0 0 1.25rem 2.5rem;
 }
 
-/* The line between the numbers */
-.deploy-step::after {
+/* An optional step (Deploy_steps::OPTIONAL) the deployment did not reach */
+.step:has(> .step-hidden) {
+    display: none;
+}
+
+/* The line down to the next step */
+.step::after {
     content: '';
     position: absolute;
     left: 0.8rem;
@@ -187,12 +170,26 @@
     border-left: 2px solid var(--border);
 }
 
-.deploy-step:last-child::after {
+.step:last-child::after {
     display: none;
 }
 
-.deploy-step::before {
-    content: counter(deploy-step);
+.step:has(> .step-done)::after {
+    border-left-color: #6ee7b7;
+}
+
+.step-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 0.75rem;
+}
+
+.step-head h4 {
+    margin: 0.15rem 0 0.25rem 0;
+}
+
+.step-dot {
     position: absolute;
     left: 0;
     top: 0;
@@ -210,82 +207,125 @@
     box-sizing: border-box;
 }
 
-.deploy-step-done::before {
-    content: '\2713';
+.step-label,
+.step-time {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.step-done .step-dot {
+    font-size: 0;
     background: #d1fae5;
-    color: #065f46;
     border-color: #6ee7b7;
 }
 
-.deploy-step-done::after {
-    border-left-color: #6ee7b7;
+.step-done .step-dot::before {
+    content: '\2713';
+    font-size: 0.8rem;
+    color: #065f46;
 }
 
-.deploy-step-current::before {
+.step-current .step-dot {
     background: var(--accent);
     color: var(--white);
     border-color: var(--accent);
 }
 
-.deploy-step-waiting h4,
-.deploy-step-waiting p {
+.step-current .step-label {
+    color: var(--accent);
+}
+
+.step-failed .step-dot {
+    background: #fee2e2;
+    color: #991b1b;
+    border-color: #fca5a5;
+}
+
+.step-failed .step-label {
+    color: #991b1b;
+}
+
+.step-waiting h4,
+.step-skipped h4 {
     color: var(--text-muted);
 }
 
-.deploy-step h4 {
-    margin: 0.15rem 0 0.35rem 0;
+.step-skipped .step-dot {
+    border-style: dashed;
 }
 
-.deploy-step p {
-    margin: 0 0 0.35rem 0;
+.step-about summary {
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    width: max-content;
+}
+
+.step-about p {
+    margin: 0.35rem 0;
     font-size: 0.9rem;
 }
 
-.deploy-config {
+.step-logs {
+    margin-top: 0.5rem;
+    min-height: 0;
+    max-height: 320px;
+    padding: 0.6rem 0.75rem;
+    border-radius: 6px;
+}
+
+.step-logs:empty {
+    display: none;
+}
+
+.step-config {
     overflow-x: auto;
     margin-top: 0.5rem;
 }
 
-.deploy-config table {
+.step-config table {
     border-collapse: collapse;
     font-size: 0.85rem;
     width: 100%;
 }
 
-.deploy-config th,
-.deploy-config td {
+.step-config th,
+.step-config td {
     text-align: left;
     padding: 0.35rem 0.75rem 0.35rem 0;
     border-bottom: 1px solid var(--border);
     vertical-align: top;
+    overflow-wrap: anywhere;
 }
 
-.deploy-config th {
+.step-config th {
     color: var(--text-muted);
     font-weight: 500;
 }
 
-.deploy-config td {
-    overflow-wrap: anywhere;
+.steps-later {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--text-muted);
 }
 
 /* Phones: each setting is a small block instead of a row */
 @media (max-width: 550px) {
-    .deploy-config thead {
+    .step-config thead {
         display: none;
     }
 
-    .deploy-config tr,
-    .deploy-config td {
+    .step-config tr,
+    .step-config td {
         display: block;
     }
 
-    .deploy-config tr {
+    .step-config tr {
         padding: 0.5rem 0;
         border-bottom: 1px solid var(--border);
     }
 
-    .deploy-config td {
+    .step-config td {
         border-bottom: none;
         padding: 0.1rem 0;
     }

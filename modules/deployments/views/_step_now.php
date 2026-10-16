@@ -1,1 +1,1 @@
-<span id="deploy-step-now" class="deploy-step-now"><?= htmlspecialchars($step_now) ?></span>
+<span id="step-now" class="step-now"><?= htmlspecialchars($step_now) ?></span>

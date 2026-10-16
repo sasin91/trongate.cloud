@@ -4,72 +4,122 @@ require_once __DIR__ . '/../platform/manifests/Manifests.php';
 require_once __DIR__ . '/../platform/mail/Mail_capture.php';
 
 /**
- * "What happens" on a deployment page: what the platform does with an app,
- * step by step, filled in with the app's own settings. The config rows say
- * in words what Trongate_config::rules() sets (tests/Deploy_steps_test.php
- * keeps the keys in step), never the secrets themselves.
+ * The deployment page's timeline: the steps of a deploy, how far this
+ * deployment got (the worker logs a 'step' line as it enters each one,
+ * Task_log::step), its log lines under the step they belong to, and what
+ * the platform does in each step, filled in with the app's settings. The
+ * config rows say in words what Trongate_config::rules() sets
+ * (tests/Deploy_steps_test.php keeps the keys in step), never the secrets.
  *
  * Framework-free: the deployment page builds it, the test loads it.
  */
 final class Deploy_steps {
 
-    /** Where a deployment's status is in the steps; finished ones have no current step */
-    const PHASES = ['pending' => 0, 'building' => 1, 'deploying' => 2, 'success' => 3];
+    /** The steps in order; the keys are what the worker logs (deploy.php, Platform_task::roll_out) */
+    const KEYS = ['source', 'build', 'config', 'start', 'check', 'restore'];
+
+    const TITLES = [
+        'source' => 'Read your repository',
+        'build' => 'Build the image',
+        'config' => 'Set your config',
+        'start' => 'Start the new version',
+        'check' => 'Check it before it takes traffic',
+        'restore' => 'Put the previous version back',
+    ];
+
+    /** Only shown once the deployment reaches it */
+    const OPTIONAL = ['restore'];
+
+    const RUNNING = ['pending', 'building', 'deploying'];
+
+    const STATE_LABELS = ['done' => 'Done', 'current' => 'Running', 'failed' => 'Failed', 'skipped' => 'Skipped', 'waiting' => '', 'hidden' => '', '' => ''];
 
     /**
      * @param array $app the app row with its app_runtime settings (find_member_app)
      * @param array $deployment the deployment row (find_member_deployment)
-     * @return list<array{title: string, state: string, text: list<string>, config: list<array{file: string, setting: string, value: string}>}>
-     *         state is done, current, waiting, or '' when the deployment's status says nothing about it
+     * @param list<object> $marks the deployment's 'step' log lines, oldest first (id, message, created_at)
+     * @return list<array{key: string, number: int, title: string, state: string, label: string, time: string, text: list<string>, config: list<array{file: string, setting: string, value: string}>}>
      */
-    static function steps(array $app, array $deployment): array {
+    static function steps(array $app, array $deployment, array $marks): array {
         $status = (string) ($deployment['status'] ?? '');
-
-        return [
-            self::step('Read your repository', 'building', $status, self::read_text($deployment)),
-            self::step('Build the image', 'building', $status, self::build_text($app)),
-            self::step('Set your config', 'deploying', $status, [
-                'We edit copies of your config files; your repository is not changed. These values replace yours wherever you set them, also when you read them with getenv():',
-            ], self::config_rows($app)),
-            self::step('Start the new version', 'deploying', $status, self::start_text($app)),
-            self::step('Check it before it takes traffic', 'deploying', $status, [
-                'Your current version keeps serving until the new one answers ' . Runtime_settings::health_check_path($app) . ' with a 2xx or 3xx status (the Health Check Path in Settings).',
-                'If it never does, or a test request after that fails, the previous deployment is put back.',
-            ]),
-            self::step('Later, without a build', '', $status, [
-                'Step 3 runs again for this deployment when it is rolled back to, when your custom domain gets its certificate (BASE_URL moves to the domain), and when trongate.cloud changes what it sets.',
-                'Changes in Settings take effect on the next deployment.',
-            ]),
+        $reached = self::reached($marks);
+        $texts = [
+            'source' => self::source_text($deployment),
+            'build' => self::build_text($app),
+            'config' => ['We edit copies of your config files; your repository is not changed. These values replace yours wherever you set them, also when you read them with getenv():'],
+            'start' => self::start_text($app),
+            'check' => [
+                'Your current version keeps serving until the new one answers ' . Runtime_settings::health_check_path($app) . ' with a 2xx or 3xx status (the Health Check Path in Settings), and a test request to it passes.',
+            ],
+            'restore' => ['The new version did not pass, so the deployment that was live before is set up again and keeps serving.'],
         ];
+        $steps = [];
+
+        foreach (self::KEYS as $index => $key) {
+            $state = self::state($key, $reached, $status);
+
+            $steps[] = [
+                'key' => $key,
+                'number' => $index + 1,
+                'title' => self::TITLES[$key],
+                'state' => $state,
+                'label' => self::STATE_LABELS[$state],
+                'time' => isset($reached[$key]) ? date('H:i:s', strtotime($reached[$key])) : '',
+                'text' => $texts[$key],
+                'config' => $key === 'config' ? self::config_rows($app) : [],
+            ];
+        }
+
+        return $steps;
     }
 
     /**
-     * One line for the closed card: the step the deployment is on (the
-     * status covers several steps while deploying), or '' when it is not on one
+     * Whether the deployment's log has no steps to put its lines under: it
+     * finished before the worker logged them
      *
-     * @param list<array{title: string, state: string}> $steps
+     * @param list<object> $marks
+     */
+    static function is_unsorted(array $deployment, array $marks): bool {
+        return $marks === [] && !in_array((string) ($deployment['status'] ?? ''), self::RUNNING, true);
+    }
+
+    /**
+     * The log lines under the step they were written in: each line belongs
+     * to the last 'step' line before it, lines before any to the first step.
+     * The 'step' lines themselves are left out.
+     *
+     * @param list<object> $logs log lines, oldest first (id, level, message, created_at)
+     * @param list<object> $marks the deployment's 'step' lines, oldest first
+     * @return array<string, list<object>> every step key, with its lines
+     */
+    static function group_logs(array $logs, array $marks): array {
+        $groups = array_fill_keys(self::KEYS, []);
+
+        foreach ($logs as $line) {
+            if ($line->level === 'step') {
+                continue;
+            }
+
+            $groups[self::step_of((int) $line->id, $marks)][] = $line;
+        }
+
+        return $groups;
+    }
+
+    /**
+     * One line for the timeline's heading: the step the deployment is on,
+     * or '' when it is not on one
+     *
+     * @param list<array{number: int, title: string, state: string}> $steps
      */
     static function now(array $steps): string {
-        $current = [];
-
-        foreach ($steps as $index => $step) {
+        foreach ($steps as $step) {
             if ($step['state'] === 'current') {
-                $current[] = $index;
+                return "Now: {$step['number']}. {$step['title']}";
             }
         }
 
-        if ($current === []) {
-            return '';
-        }
-
-        $first = $current[0] + 1;
-        $last = end($current) + 1;
-
-        if ($first === $last) {
-            return "Now: {$first}. {$steps[$current[0]]['title']}";
-        }
-
-        return "Now: steps {$first} to {$last}";
+        return '';
     }
 
     /**
@@ -110,32 +160,100 @@ final class Deploy_steps {
     }
 
     /**
-     * @param list<string> $text
-     * @param list<array{file: string, setting: string, value: string}> $config
+     * The steps the deployment's log marks it entering, in that order, with
+     * when it did: key => created_at
+     *
+     * @param list<object> $marks
+     * @return array<string, string>
      */
-    private static function step(string $title, string $phase, string $status, array $text, array $config = []): array {
-        return ['title' => $title, 'state' => self::state($phase, $status), 'text' => $text, 'config' => $config];
+    private static function reached(array $marks): array {
+        $reached = [];
+
+        foreach ($marks as $mark) {
+            if (in_array($mark->message, self::KEYS, true)) {
+                $reached[$mark->message] = (string) $mark->created_at;
+            }
+        }
+
+        return $reached;
     }
 
     /**
-     * done, current or waiting for a step in $phase while the deployment has
-     * $status; '' for a failed or rolled back deployment (it is not known
-     * which step it stopped at) and for steps outside the deploy
+     * done, current, failed, skipped (a later step was reached without it,
+     * as in a rollback, which builds nothing), waiting, hidden (an optional
+     * step not reached), or '' when the log has no steps
+     *
+     * @param array<string, string> $reached
      */
-    private static function state(string $phase, string $status): string {
-        if ($phase === '' || !isset(self::PHASES[$status])) {
-            return '';
+    private static function state(string $key, array $reached, string $status): string {
+        $is_running = in_array($status, self::RUNNING, true);
+
+        if ($reached === [] && !$is_running) {
+            return in_array($key, self::OPTIONAL, true) ? 'hidden' : '';
         }
 
-        if (self::PHASES[$phase] < self::PHASES[$status]) {
-            return 'done';
+        if (!isset($reached[$key])) {
+            return self::state_not_reached($key, $reached);
         }
 
-        if (self::PHASES[$phase] === self::PHASES[$status]) {
+        $order = array_keys($reached);
+        $position = (int) array_search($key, $order, true);
+        $is_latest = $position === count($order) - 1;
+
+        if ($is_latest && $is_running) {
             return 'current';
         }
 
+        if ($is_latest && $status === 'failed' && $key !== 'restore') {
+            return 'failed';
+        }
+
+        // The step that did not pass is the one before the restore
+        if (($order[$position + 1] ?? '') === 'restore') {
+            return 'failed';
+        }
+
+        return 'done';
+    }
+
+    /**
+     * @param array<string, string> $reached
+     */
+    private static function state_not_reached(string $key, array $reached): string {
+        if (in_array($key, self::OPTIONAL, true)) {
+            return 'hidden';
+        }
+
+        $index = array_search($key, self::KEYS, true);
+
+        foreach (array_keys($reached) as $reached_key) {
+            if (array_search($reached_key, self::KEYS, true) > $index && !in_array($reached_key, self::OPTIONAL, true)) {
+                return 'skipped';
+            }
+        }
+
         return 'waiting';
+    }
+
+    /**
+     * The key of the last 'step' line before the log line $id
+     *
+     * @param list<object> $marks
+     */
+    private static function step_of(int $id, array $marks): string {
+        $key = self::KEYS[0];
+
+        foreach ($marks as $mark) {
+            if ((int) $mark->id > $id) {
+                break;
+            }
+
+            if (in_array($mark->message, self::KEYS, true)) {
+                $key = $mark->message;
+            }
+        }
+
+        return $key;
     }
 
     private static function row(string $file, string $setting, string $value, array $keys): array {
@@ -145,7 +263,7 @@ final class Deploy_steps {
     /**
      * @return list<string>
      */
-    private static function read_text(array $deployment): array {
+    private static function source_text(array $deployment): array {
         $text = ['We download your branch from GitHub. It needs public/index.php and config/config.php.'];
         $files = json_decode((string) ($deployment['config_files'] ?? ''), true);
 
