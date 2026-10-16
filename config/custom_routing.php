@@ -29,7 +29,7 @@ $routes = [
     'onboarding/env-suggestions' => 'customer-onboarding/env_suggestion_fields',
     'onboarding/sql-files' => 'customer-onboarding/sql_file_options',
     'onboarding/build-suggestions' => 'customer-onboarding/build_suggestion_fields',
-    'onboarding/app/start-over' => 'customer-onboarding/start_over',
+    'onboarding/app/reset' => 'customer-onboarding/reset',
     'onboarding/app/(:any)' => 'customer-onboarding/app/$1',
     'onboarding/(:any)' => 'customer-onboarding/$1',
 
@@ -37,7 +37,7 @@ $routes = [
     'projects/new' => 'projects/create',
     'projects/new/submit' => 'projects/submit',
     'projects/(:num)/apps/new' => 'apps/create/$1',
-    'projects/(:num)/apps/new/start-over' => 'apps/start_over/$1',
+    'projects/(:num)/apps/new/reset' => 'apps/reset/$1',
     'projects/(:num)/apps/new/(:any)' => 'apps/create/$1/$2',
     'projects/(:num)/apps/submit' => 'apps/submit/$1',
     'projects/(:num)/apps/draft' => 'apps/save_draft/$1',

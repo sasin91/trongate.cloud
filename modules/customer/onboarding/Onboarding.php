@@ -69,7 +69,7 @@ class Onboarding extends Trongate {
             $this->view('continue', [
                 'draft_name' => $this->_wizard_draft_name(self::WIZARD_DRAFT_KEY),
                 'continue_url' => 'onboarding/app/' . $this->_wizard_draft_step(self::WIZARD_DRAFT_KEY),
-                'start_over_action' => 'onboarding/app/start-over',
+                'reset_action' => 'onboarding/app/reset',
             ]);
             return;
         }
@@ -80,9 +80,9 @@ class Onboarding extends Trongate {
     }
 
     /**
-     * POST onboarding/app/start-over: forget the draft and open the first question
+     * POST onboarding/app/reset: forget the draft and open the first question
      */
-    function start_over(): void {
+    function reset(): void {
         $this->_customer_or_redirect();
         $this->_require_post_with_csrf();
 

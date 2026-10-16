@@ -122,7 +122,7 @@ class Apps extends Trongate {
             'project' => $project,
             'draft_name' => $this->_wizard_draft_name($draft_key),
             'continue_url' => 'projects/' . (int) $project->id . '/apps/new/' . $this->_wizard_draft_step($draft_key),
-            'start_over_action' => 'projects/' . (int) $project->id . '/apps/new/start-over',
+            'reset_action' => 'projects/' . (int) $project->id . '/apps/new/reset',
             'crumbs' => [['projects/' . $project->id, (string) $project->name], ['projects/' . $project->id . '/apps/new', 'New app']],
             'additional_includes_top' => ['apps_module/css/wizard.css'],
         ];
@@ -131,9 +131,9 @@ class Apps extends Trongate {
     }
 
     /**
-     * POST projects/{id}/apps/new/start-over: forget the draft and open the first question
+     * POST projects/{id}/apps/new/reset: forget the draft and open the first question
      */
-    function start_over(): void {
+    function reset(): void {
         $this->_make_sure_allowed();
         $project = $this->_member_project_or_redirect(segment(3, 'int'));
         $this->_require_post_with_csrf();

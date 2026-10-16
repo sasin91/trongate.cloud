@@ -5,13 +5,13 @@
  * Shared by projects/{id}/apps/new and onboarding/app.
  *
  * Expects: $draft_name, $continue_url (the question the answers stopped at),
- * $start_over_action (forgets them, then opens the first question).
+ * $reset_action (forgets them, then opens the first question).
  */
 $e = fn($value) => htmlspecialchars((string) $value);
 ?>
 <div class="wz-wrap">
     <main class="wz-main">
-        <?= form_open($start_over_action, ['class' => 'wz-stage']) ?>
+        <?= form_open($reset_action, ['class' => 'wz-stage']) ?>
             <div class="wz-q">
                 <h1>Pick up where you left off?</h1>
                 <p>You were setting up <strong><?= $e($draft_name) ?></strong>.</p>
