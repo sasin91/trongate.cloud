@@ -61,7 +61,7 @@ Customer tools act as the signed-in customer. Write tools carry `destructiveHint
 | `list_apps` | both | `project_id?` |
 | `get_app` | both | Settings, custom domain status and its TXT record, live state, current deployment, database name, env var names (customer) |
 | `create_app` | customer | From a repository the GitHub App can read for the customer (needs their GitHub sign-in); deploys it unless `deploy: false` |
-| `update_app_settings` | customer | Only the fields passed change (`domain`, `persistent_paths`, `php_extensions`, `build_commands`, `always_on`, `auto_deploy`, `trongate_env`, `mail_capture`, `health_path`); same rules as the Settings page (`App_rules`) |
+| `update_app_settings` | customer | Only the fields passed change (`domain`, `persistent_paths`, `php_extensions`, `build_commands`, `always_on`, `auto_deploy`, `trongate_env`, `captures_mail`, `health_check_path`); same rules as the Settings page (`App_rules`) |
 | `verify_domain` | customer | Checks the TXT record |
 | `list_deployments`, `get_deployment_logs` | both | Build and rollout logs, followable with `after_id` |
 | `deploy_app`, `rollback_app` | both | Recorded as `trigger_type = mcp`, with the customer |

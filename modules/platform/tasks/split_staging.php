@@ -91,16 +91,24 @@ return function (Task_log $log) use ($payload, $runtime): int {
         Platform_task::execute(
             $db,
             "INSERT INTO app (project_id, label, slug, type, environment, production_app_id,
-                source_url, source_provider, source_branch, auto_deploy,
-                persistent_paths, php_extensions, build_commands, always_on, trongate_env, mail_capture, health_path)
+                source_url, source_provider, source_branch, auto_deploy)
              SELECT project_id, label, slug, type, 'staging', id,
-                source_url, source_provider, ?, auto_deploy,
-                persistent_paths, php_extensions, build_commands, 0, trongate_env, 1, health_path
+                source_url, source_provider, ?, auto_deploy
              FROM app
              WHERE id = ?",
             [$staging_branch, $app_id],
         );
         $staging_id = (int) $db->lastInsertId();
+
+        // Built and run like production, but sleeps when idle and captures mail
+        Platform_task::execute(
+            $db,
+            'INSERT INTO app_runtime (app_id, php_extensions, build_commands, persistent_paths, always_on, trongate_env, captures_mail, health_check_path)
+             SELECT ?, php_extensions, build_commands, persistent_paths, 0, trongate_env, 1, health_check_path
+             FROM app_runtime
+             WHERE app_id = ?',
+            [$staging_id, $app_id],
+        );
 
         // App_env: still encrypted, so the values never pass through here
         Platform_task::execute(

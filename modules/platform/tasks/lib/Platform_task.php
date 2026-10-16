@@ -62,14 +62,18 @@ class Platform_task {
     }
 
     /**
-     * The app row plus its project's namespace and owner_id (project_owner_id);
-     * fails unless it belongs to the project and neither is deleted
+     * The app row with its runtime settings (app_runtime; NULL, so the
+     * defaults, when it has none) plus its project's namespace and owner_id
+     * (project_owner_id); fails unless it belongs to the project and neither
+     * is deleted
      */
     static function app(PDO $db, int $project_id, int $app_id): array {
         $sql = <<<SQL
-            SELECT a.*, p.namespace, p.owner_id AS project_owner_id
+            SELECT a.*, r.php_extensions, r.build_commands, r.persistent_paths, r.always_on, r.trongate_env, r.captures_mail, r.health_check_path,
+                p.namespace, p.owner_id AS project_owner_id
             FROM app a
             JOIN project p ON p.id = a.project_id
+            LEFT JOIN app_runtime r ON r.app_id = a.id
             WHERE a.id = ? AND a.project_id = ? AND a.deleted_at IS NULL AND p.deleted_at IS NULL
             SQL;
 
@@ -643,7 +647,7 @@ class Platform_task {
     }
 
     /**
-     * Request the app's public URL (at its health check path, Manifests::health_path)
+     * Request the app's public URL (at its health check path, Runtime_settings::health_check_path)
      * until it answers 200 with a page of its own.
      *
      * A 200 that is only the router's fallback text (FALLBACK_BODIES) does not
@@ -654,7 +658,7 @@ class Platform_task {
      * go to the deploy log.
      */
     static function smoke_test(Runtime $runtime, Task_log $log, array $app): bool {
-        $url = rtrim(Trongate_config::base_url($app), '/') . Manifests::health_path($app);
+        $url = rtrim(Trongate_config::base_url($app), '/') . Runtime_settings::health_check_path($app);
         $kube = $runtime->kube();
         $namespace = Manifests::namespace_name($app);
         $name = Manifests::app_name((int) $app['id']);

@@ -14,11 +14,12 @@ class Overview_model extends Model {
      */
     function apps(): array {
         $sql = <<<SQL
-            SELECT a.id, a.label, a.slug, a.always_on, a.project_id, p.name AS project_name,
+            SELECT a.id, a.label, a.slug, r.always_on, a.project_id, p.name AS project_name,
                    d.status AS deployment_status, d.created_at AS deployed_at,
                    (SELECT COUNT(*) FROM app_process ap WHERE ap.app_id = a.id) AS processes
             FROM app a
             JOIN project p ON p.id = a.project_id
+            LEFT JOIN app_runtime r ON r.app_id = a.id
             LEFT JOIN deployment d ON d.id = (SELECT MAX(id) FROM deployment WHERE app_id = a.id)
             WHERE a.deleted_at IS NULL
             ORDER BY p.name, a.label

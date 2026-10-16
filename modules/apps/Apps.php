@@ -289,7 +289,7 @@ class Apps extends Trongate {
         $app = $this->_member_app_or_redirect(segment(3, 'int'));
 
         $is_resubmit = REQUEST_TYPE === 'POST' && !$this->env_form_posted;
-        $paths = Manifests::persistent_paths((array) $app);
+        $paths = Runtime_settings::persistent_paths((array) $app);
 
         $data = [
             'view_module' => 'apps',
@@ -297,15 +297,15 @@ class Apps extends Trongate {
             'app' => $app,
             'urls' => $this->_app_urls($app),
             'persistent_paths' => $is_resubmit ? (string) post('persistent_paths') : implode("\n", $paths),
-            'php_extensions' => $is_resubmit ? (string) post('php_extensions', true) : (string) $app->php_extensions,
-            'build_commands' => $is_resubmit ? (string) post('build_commands') : (string) $app->build_commands,
+            'php_extensions' => $is_resubmit ? (string) post('php_extensions', true) : implode(', ', Runtime_settings::php_extensions((array) $app)),
+            'build_commands' => $is_resubmit ? (string) post('build_commands') : Runtime_settings::build_commands((array) $app),
             'processes' => $is_resubmit ? $this->_processes_from_post() : $this->model->app_processes((int) $app->id),
-            'always_on' => $is_resubmit ? (bool) post('always_on') : (bool) $app->always_on,
-            'trongate_env' => $is_resubmit ? (string) post('trongate_env', true) : Trongate_config::env((array) $app),
+            'always_on' => $is_resubmit ? (bool) post('always_on') : Runtime_settings::always_on((array) $app),
+            'trongate_env' => $is_resubmit ? (string) post('trongate_env', true) : Runtime_settings::trongate_env((array) $app),
             'auto_deploy' => $is_resubmit ? (bool) post('auto_deploy') : (bool) $app->auto_deploy,
             'source_branch' => $is_resubmit ? (string) post('source_branch', true) : (string) $app->source_branch,
-            'mail_capture' => $is_resubmit ? (bool) post('mail_capture') : Mail_capture::enabled((array) $app),
-            'health_path' => $is_resubmit ? (string) post('health_path', true) : Manifests::health_path((array) $app),
+            'captures_mail' => $is_resubmit ? (bool) post('captures_mail') : Runtime_settings::captures_mail((array) $app),
+            'health_check_path' => $is_resubmit ? (string) post('health_check_path', true) : Runtime_settings::health_check_path((array) $app),
             'env_names' => array_keys($this->_app_env($app)),
             'env_name' => $this->env_form_posted ? (string) post('env_name', true) : '',
             'can_delete' => $this->_is_owner($app),
@@ -376,7 +376,7 @@ class Apps extends Trongate {
         $this->validation->set_rules('processes', 'Processes', 'callback__validate_processes');
         $this->validation->set_rules('trongate_env', 'Environment', 'required|callback__validate_trongate_env');
         $this->validation->set_rules('source_branch', 'Branch', 'required|max_length[100]|callback__validate_branch');
-        $this->validation->set_rules('health_path', 'Health Check Path', 'max_length[200]|callback__validate_health_path');
+        $this->validation->set_rules('health_check_path', 'Health Check Path', 'max_length[200]|callback__validate_health_check_path');
 
         if ($this->validation->run() !== true) {
             $this->settings();
@@ -387,14 +387,14 @@ class Apps extends Trongate {
             // The custom domain has its own tab (apps-domain)
             'domain' => !empty($app->domain) ? (string) $app->domain : null,
             'persistent_paths' => $this->_parse_persistent_paths((string) post('persistent_paths')),
-            'php_extensions' => implode(',', $this->_parse_php_extensions((string) post('php_extensions', true))),
+            'php_extensions' => $this->_parse_php_extensions((string) post('php_extensions', true)),
             'build_commands' => (string) post('build_commands'),
             'always_on' => (bool) post('always_on'),
             'auto_deploy' => (bool) post('auto_deploy'),
             'source_branch' => trim((string) post('source_branch', true)),
             'trongate_env' => trim((string) post('trongate_env', true)),
-            'mail_capture' => (bool) post('mail_capture'),
-            'health_path' => $this->_parse_health_path((string) post('health_path', true)),
+            'captures_mail' => (bool) post('captures_mail'),
+            'health_check_path' => $this->_parse_health_check_path((string) post('health_check_path', true)),
         ]);
 
         $this->model->save_app_processes((int) $app->id, $this->_processes_from_post());

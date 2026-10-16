@@ -11,11 +11,12 @@ require_once APPPATH . 'modules/platform/manifests/Build_commands.php';
 trait App_records {
 
     /**
-     * Create an app with a unique slug. The repository must be one the GitHub
-     * App is installed on: deploys read it with an installation token.
+     * Create an app with a unique slug and the default runtime settings
+     * (app_runtime). The repository must be one the GitHub App is installed
+     * on: deploys read it with an installation token.
      */
     function create_app(int $project_id, string $label, string $type, string $source_url, string $source_provider, string $source_branch = 'main', ?string $domain = null, bool $auto_deploy = true): int|false {
-        return $this->db->insert([
+        $app_id = $this->db->insert([
             'project_id' => $project_id,
             'label' => $label,
             'slug' => $this->generate_app_slug($label),
@@ -25,8 +26,15 @@ trait App_records {
             'source_branch' => $source_branch ?: 'main',
             'domain' => $domain,
             'auto_deploy' => $auto_deploy ? 1 : 0,
-            'persistent_paths' => '[]',
         ], 'app');
+
+        if ($app_id === false) {
+            return false;
+        }
+
+        $this->db->query_bind('INSERT INTO app_runtime (app_id) VALUES (:app_id)', ['app_id' => $app_id]);
+
+        return $app_id;
     }
 
     /**
@@ -104,36 +112,53 @@ trait App_records {
      * Update an app's platform settings (the app must be in the project).
      * The custom domain goes through update_app_domain().
      *
-     * @param array{domain: ?string, persistent_paths: list<string>, php_extensions: string, build_commands: string, always_on: bool, auto_deploy: bool, source_branch: string, trongate_env: string, mail_capture: bool, health_path: string} $settings
+     * No transaction of its own, so app creation can run it inside one.
+     *
+     * @param array{domain: ?string, persistent_paths: list<string>, php_extensions: list<string>, build_commands: string, always_on: bool, auto_deploy: bool, source_branch: string, trongate_env: string, captures_mail: bool, health_check_path: string} $settings
      */
     function update_app_settings(int $project_id, int $app_id, array $settings): void {
+        if ($this->find_project_app($project_id, $app_id) === false) {
+            return;
+        }
+
         $this->update_app_domain($project_id, $app_id, $settings['domain']);
 
+        $this->db->query_bind(
+            'UPDATE app SET auto_deploy = :auto_deploy, source_branch = :source_branch WHERE id = :app_id',
+            ['auto_deploy' => $settings['auto_deploy'] ? 1 : 0, 'source_branch' => $settings['source_branch'], 'app_id' => $app_id]
+        );
+
+        $this->save_app_runtime($app_id, $settings);
+    }
+
+    /**
+     * Write the app's runtime settings (app_runtime), creating its row if it
+     * has none
+     *
+     * @param array{persistent_paths: list<string>, php_extensions: list<string>, build_commands: string, always_on: bool, trongate_env: string, captures_mail: bool, health_check_path: string} $settings
+     */
+    function save_app_runtime(int $app_id, array $settings): void {
         $sql = <<<SQL
-            UPDATE app
-            SET persistent_paths = :persistent_paths,
-                php_extensions = :php_extensions,
-                build_commands = :build_commands,
-                always_on = :always_on,
-                trongate_env = :trongate_env,
-                mail_capture = :mail_capture,
-                health_path = :health_path,
-                auto_deploy = :auto_deploy,
-                source_branch = :source_branch
-            WHERE id = :app_id AND project_id = :project_id
+            INSERT INTO app_runtime (app_id, php_extensions, build_commands, persistent_paths, always_on, trongate_env, captures_mail, health_check_path)
+            VALUES (:app_id, :php_extensions, :build_commands, :persistent_paths, :always_on, :trongate_env, :captures_mail, :health_check_path)
+            ON DUPLICATE KEY UPDATE
+                php_extensions = VALUES(php_extensions),
+                build_commands = VALUES(build_commands),
+                persistent_paths = VALUES(persistent_paths),
+                always_on = VALUES(always_on),
+                trongate_env = VALUES(trongate_env),
+                captures_mail = VALUES(captures_mail),
+                health_check_path = VALUES(health_check_path)
         SQL;
         $this->db->query_bind($sql, [
-            'persistent_paths' => json_encode($settings['persistent_paths']),
-            'php_extensions' => $settings['php_extensions'],
+            'app_id' => $app_id,
+            'php_extensions' => json_encode(array_values($settings['php_extensions'])),
             'build_commands' => Build_commands::normalise($settings['build_commands']),
+            'persistent_paths' => json_encode(array_values($settings['persistent_paths'])),
             'always_on' => $settings['always_on'] ? 1 : 0,
             'trongate_env' => $settings['trongate_env'],
-            'mail_capture' => $settings['mail_capture'] ? 1 : 0,
-            'health_path' => $settings['health_path'] === '/' ? '' : $settings['health_path'],
-            'auto_deploy' => $settings['auto_deploy'] ? 1 : 0,
-            'source_branch' => $settings['source_branch'],
-            'app_id' => $app_id,
-            'project_id' => $project_id,
+            'captures_mail' => $settings['captures_mail'] ? 1 : 0,
+            'health_check_path' => $settings['health_check_path'] === '/' ? '' : $settings['health_check_path'],
         ]);
     }
 

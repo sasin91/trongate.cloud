@@ -275,10 +275,10 @@ trait App_rules {
     }
 
     /**
-     * Trongate's ENV constant for the app (Trongate_config::ENV_PATTERN)
+     * Trongate's ENV constant for the app (Runtime_settings::TRONGATE_ENV_PATTERN)
      */
     function _validate_trongate_env(string $value): bool|string {
-        if (!preg_match(Trongate_config::ENV_PATTERN, trim($value))) {
+        if (!preg_match(Runtime_settings::TRONGATE_ENV_PATTERN, trim($value))) {
             return 'The environment may only contain letters, numbers, dashes and underscores (at most 20).';
         }
 
@@ -288,17 +288,17 @@ trait App_rules {
     /**
      * The health check path as entered; empty is the home page
      */
-    function _parse_health_path(string $value): string {
+    function _parse_health_check_path(string $value): string {
         $path = trim($value);
 
         return $path === '' ? '/' : $path;
     }
 
     /**
-     * A health check path the rollout gate can request (Manifests::HEALTH_PATH_PATTERN)
+     * A health check path the rollout gate can request (Runtime_settings::HEALTH_CHECK_PATH_PATTERN)
      */
-    function _validate_health_path(string $value): bool|string {
-        if (!preg_match(Manifests::HEALTH_PATH_PATTERN, $this->_parse_health_path($value))) {
+    function _validate_health_check_path(string $value): bool|string {
+        if (!preg_match(Runtime_settings::HEALTH_CHECK_PATH_PATTERN, $this->_parse_health_check_path($value))) {
             return 'The health check path must start with / and may only contain letters, numbers and . _ ~ - / (at most 200, no query string).';
         }
 

@@ -187,7 +187,7 @@ $errors = validation_errors('<p>', '</p>');
                         <span class="wz-label">Trongate ENV</span>
                         <input type="text" name="trongate_env" class="wz-in mono" list="wz-trongate-envs" value="<?= $e($settings['trongate_env']) ?>" required>
                         <datalist id="wz-trongate-envs">
-                            <?php foreach (Trongate_config::ENV_SUGGESTIONS as $option): ?>
+                            <?php foreach (Runtime_settings::TRONGATE_ENV_SUGGESTIONS as $option): ?>
                                 <option value="<?= $e($option) ?>">
                             <?php endforeach; ?>
                         </datalist>
@@ -195,7 +195,7 @@ $errors = validation_errors('<p>', '</p>');
                     </label>
                     <label class="wz-field">
                         <span class="wz-label">Health check path</span>
-                        <input type="text" name="health_path" class="wz-in mono" placeholder="/" value="<?= $e($settings['health_path']) ?>">
+                        <input type="text" name="health_check_path" class="wz-in mono" placeholder="/" value="<?= $e($settings['health_check_path']) ?>">
                         <span class="wz-hint">A deploy goes live once this path answers with a 2xx or 3xx. The home page by default.</span>
                     </label>
                     <label class="wz-field">
@@ -225,8 +225,8 @@ $errors = validation_errors('<p>', '</p>');
                             <strong>Capture mail</strong>
                             <small>Mail your app sends shows up on its Mail tab instead of being delivered.</small>
                         </span>
-                        <input type="hidden" name="mail_capture" value="0">
-                        <input type="checkbox" name="mail_capture" value="1" class="wz-switch" <?= $settings['mail_capture'] ? 'checked' : '' ?>>
+                        <input type="hidden" name="captures_mail" value="0">
+                        <input type="checkbox" name="captures_mail" value="1" class="wz-switch" <?= $settings['captures_mail'] ? 'checked' : '' ?>>
                     </label>
                 </div>
             </fieldset>

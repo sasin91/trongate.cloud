@@ -115,18 +115,18 @@ trait App_form {
      * The last question's settings: the defaults a new app gets, or what was
      * posted when the form is shown again after a failed submit
      *
-     * @return array{trongate_env: string, health_path: string, persistent_paths: string, process_name: string, process_command: string, always_on: bool, mail_capture: bool}
+     * @return array{trongate_env: string, health_check_path: string, persistent_paths: string, process_name: string, process_command: string, always_on: bool, captures_mail: bool}
      */
     function _new_app_settings_form(): array {
         if (REQUEST_TYPE !== 'POST') {
             return [
-                'trongate_env' => Trongate_config::DEFAULT_ENV,
-                'health_path' => '',
+                'trongate_env' => Runtime_settings::DEFAULT_TRONGATE_ENV,
+                'health_check_path' => '',
                 'persistent_paths' => '',
                 'process_name' => '',
                 'process_command' => '',
                 'always_on' => false,
-                'mail_capture' => true,
+                'captures_mail' => true,
             ];
         }
 
@@ -135,12 +135,12 @@ trait App_form {
 
         return [
             'trongate_env' => (string) post('trongate_env', true),
-            'health_path' => (string) post('health_path', true),
+            'health_check_path' => (string) post('health_check_path', true),
             'persistent_paths' => (string) post('persistent_paths'),
             'process_name' => (string) ($process_names[0] ?? ''),
             'process_command' => (string) ($process_commands[0] ?? ''),
             'always_on' => post('always_on') === '1',
-            'mail_capture' => post('mail_capture') !== '0',
+            'captures_mail' => post('captures_mail') !== '0',
         ];
     }
 
@@ -160,7 +160,7 @@ trait App_form {
         $this->validation->set_rules('env', 'Environment variables', 'callback__validate_suggested_env');
         $this->validation->set_rules('setup_sql', 'Database', 'callback__validate_setup_sql');
         $this->validation->set_rules('trongate_env', 'Environment', 'required|callback__validate_trongate_env');
-        $this->validation->set_rules('health_path', 'Health Check Path', 'max_length[200]|callback__validate_health_path');
+        $this->validation->set_rules('health_check_path', 'Health Check Path', 'max_length[200]|callback__validate_health_check_path');
         $this->validation->set_rules('php_extensions', 'PHP Extensions', 'max_length[255]|callback__validate_php_extensions');
         $this->validation->set_rules('build_commands', 'Build Commands', 'callback__validate_build_commands');
         $this->validation->set_rules('persistent_paths', 'Persistent Paths', 'max_length[4000]|callback__validate_persistent_paths');
@@ -217,14 +217,14 @@ trait App_form {
         $this->model->update_app_settings($project_id, $app_id, [
             'domain' => $domain,
             'persistent_paths' => $this->_parse_persistent_paths((string) post('persistent_paths')),
-            'php_extensions' => implode(',', $this->_parse_php_extensions((string) post('php_extensions', true))),
+            'php_extensions' => $this->_parse_php_extensions((string) post('php_extensions', true)),
             'build_commands' => (string) post('build_commands'),
             'always_on' => post('always_on') === '1',
             'auto_deploy' => post('auto_deploy') !== '0',
             'source_branch' => trim((string) post('repository_branch', true)),
             'trongate_env' => trim((string) post('trongate_env', true)),
-            'mail_capture' => post('mail_capture') !== '0',
-            'health_path' => $this->_parse_health_path((string) post('health_path', true)),
+            'captures_mail' => post('captures_mail') !== '0',
+            'health_check_path' => $this->_parse_health_check_path((string) post('health_check_path', true)),
         ]);
 
         $this->model->add_app_processes($app_id, $this->_processes_from_post());

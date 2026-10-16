@@ -73,8 +73,8 @@ $test('the platform schema parses', function () use ($same) {
     $parsed = Schema_diff::parse((string) file_get_contents(APPPATH . 'db/schema.sql'));
 
     $same(0, $parsed['skipped']);
-    $same(true, isset($parsed['tables']['app']['columns']['health_path']));
-    $same("varchar(200) NOT NULL DEFAULT ''", $parsed['tables']['app']['columns']['health_path']['definition']);
+    $same(true, isset($parsed['tables']['app_runtime']['columns']['health_check_path']));
+    $same("varchar(200) NOT NULL DEFAULT ''", $parsed['tables']['app_runtime']['columns']['health_check_path']['definition']);
 });
 
 $test('each difference has the schema.sql side and the database side', function () use ($same, $diff, $sql, $live) {
