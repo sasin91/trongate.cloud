@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/App_database.php';
+require_once __DIR__ . '/App_password.php';
 require_once __DIR__ . '/Setup_sql_rules.php';
 require_once __DIR__ . '/../../encryption/Encryptor.php';
 
@@ -24,6 +25,17 @@ final class Setup_sql_plan {
 
     /** Trongate's own tables: v2's setup module, v1's administrators module */
     const TRONGATE_SETUP_PATHS = ['modules/setup/sql/setup.sql', 'modules/trongate_administrators/setup.sql'];
+
+    /**
+     * Trongate's default tables, offered in sets when the repository has no
+     * setup.sql (offers_trongate_tables). Each set's SQL is in
+     * modules/apps/setup_sql/sql/{set}.sql, and runs in this order
+     */
+    const TRONGATE_TABLE_SETS = [
+        'trongate_auth_core' => ['label' => 'Auth core', 'tables' => ['trongate_user_levels', 'trongate_users', 'trongate_tokens']],
+        'trongate_administrators' => ['label' => 'Administrators', 'tables' => ['trongate_administrators']],
+        'trongate_login' => ['label' => 'Login', 'tables' => ['login_attempts', 'password_resets']],
+    ];
 
     /**
      * Where else .sql files are offered: the repository root, database/, db/,
@@ -84,6 +96,66 @@ final class Setup_sql_plan {
         usort($rest, [self::class, 'compare_paths']);
 
         return array_merge($first, $rest);
+    }
+
+    /**
+     * Whether to offer Trongate's default tables (TRONGATE_TABLE_SETS):
+     * only when the repository has no Trongate setup.sql, which
+     * candidates() already ticks
+     *
+     * @param list<string> $paths every file in the repository
+     */
+    static function offers_trongate_tables(array $paths): bool {
+        foreach (self::TRONGATE_SETUP_PATHS as $path) {
+            if (in_array($path, $paths, true)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Why the wizard's first administrator cannot be added, or null when it
+     * can. The values go into SQL as they are, so each is limited to
+     * characters that need no escaping.
+     */
+    static function administrator_refusal(string $username, string $email, string $hash): ?string {
+        if (preg_match('/^[A-Za-z0-9_.@-]{1,65}$/', $username) !== 1) {
+            return 'The username may only use letters, digits and _ . @ - (up to 65).';
+        }
+
+        if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+            return 'The email address is not valid.';
+        }
+
+        // FILTER_VALIDATE_EMAIL allows quotes, which would need escaping
+        if ($email !== '' && preg_match('/^[A-Za-z0-9_.+@-]{1,255}$/', $email) !== 1) {
+            return 'The email address may only use letters, digits and _ . + @ -.';
+        }
+
+        if (!App_password::is_hash($hash)) {
+            return 'The password hash is not a password_hash() hash. Set the password again.';
+        }
+
+        return null;
+    }
+
+    /**
+     * The SQL that adds the wizard's first administrator: a level 1
+     * trongate_users row with a new $code, then its trongate_administrators
+     * row. Checked by administrator_refusal first.
+     */
+    static function administrator_sql(string $username, string $email, string $hash, string $code): string {
+        $email_value = 'NULL';
+
+        if ($email !== '') {
+            $email_value = "'" . $email . "'";
+        }
+
+        return "INSERT INTO `trongate_users` (`code`, `user_level_id`) VALUES ('" . $code . "', 1);\n"
+            . "INSERT INTO `trongate_administrators` (`username`, `email`, `password`, `trongate_user_id`, `active`) VALUES ('"
+            . $username . "', " . $email_value . ", '" . $hash . "', LAST_INSERT_ID(), 1);";
     }
 
     static function is_offered(string $path): bool {

@@ -43,6 +43,42 @@ test('a repository without .sql files offers nothing', function () {
     assert_same([], Setup_sql_plan::candidates(['index.php', 'config/config.php']));
 });
 
+test('Trongate default tables are offered only when the repository has no setup.sql', function () {
+    assert_same(true, Setup_sql_plan::offers_trongate_tables(['index.php', 'db/schema.sql']));
+    assert_same(true, Setup_sql_plan::offers_trongate_tables([]));
+    assert_same(false, Setup_sql_plan::offers_trongate_tables(['modules/setup/sql/setup.sql']));
+    assert_same(false, Setup_sql_plan::offers_trongate_tables(['modules/trongate_administrators/setup.sql']));
+});
+
+test('the first administrator is refused when a value would need escaping', function () {
+    $hash = password_hash('secret', PASSWORD_BCRYPT);
+
+    assert_same(null, Setup_sql_plan::administrator_refusal('admin', '', $hash));
+    assert_same(null, Setup_sql_plan::administrator_refusal('jonas.k', 'jonas+tg@example.com', $hash));
+    assert_contains('username', (string) Setup_sql_plan::administrator_refusal("x'; DROP TABLE users; --", '', $hash));
+    assert_contains('email', (string) Setup_sql_plan::administrator_refusal('admin', "o'brien@example.com", $hash));
+    assert_contains('hash', (string) Setup_sql_plan::administrator_refusal('admin', '', 'plain text'));
+});
+
+test('the first administrator SQL adds a level 1 user and its administrator', function () {
+    $hash = password_hash('secret', PASSWORD_BCRYPT);
+    $plan = Setup_sql_plan::plan(Setup_sql_plan::administrator_sql('admin', '', $hash, str_repeat('a', 32)));
+
+    assert_same(null, $plan['refusal']);
+    assert_same(2, count($plan['statements']));
+    assert_contains("VALUES ('" . str_repeat('a', 32) . "', 1)", $plan['statements'][0]);
+    assert_contains("('admin', NULL, '" . $hash . "', LAST_INSERT_ID(), 1)", $plan['statements'][1]);
+});
+
+test('each set of Trongate default tables passes the setup SQL rules', function () {
+    foreach (array_keys(Setup_sql_plan::TRONGATE_TABLE_SETS) as $set) {
+        $plan = Setup_sql_plan::plan(file_get_contents(dirname(__DIR__) . '/modules/apps/setup_sql/sql/' . $set . '.sql'));
+
+        assert_same(null, $plan['refusal']);
+        assert_same(true, count($plan['statements']) > 0);
+    }
+});
+
 test('a dump runs without its transaction and lock statements', function () {
     $sql = <<<'SQL'
     -- phpMyAdmin SQL Dump

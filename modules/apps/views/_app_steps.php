@@ -151,7 +151,12 @@ $errors = validation_errors('<p>', '</p>');
                 <p class="wz-hint">Your app gets its own MariaDB database, already set up in <code>config/database.php</code>. This SQL runs once, on the first deploy. Later deploys never change its tables; run SQL from the app's Database tab.</p>
                 <div data-sql-files data-loaded-for="<?= $e($setup_sql['sql_files_loaded_for']) ?>">
                     <?php if ($setup_sql['sql_files_loaded_for'] !== ''): ?>
-                        <?php $sql_files = $setup_sql['sql_files']; require APPPATH . 'modules/apps/setup_sql/views/_sql_file_options.php'; ?>
+                        <?php
+                        $sql_files = $setup_sql['sql_files'];
+                        $trongate_tables = $setup_sql['trongate_tables'];
+                        $administrator = $setup_sql['administrator'];
+                        require APPPATH . 'modules/apps/setup_sql/views/_sql_file_options.php';
+                        ?>
                     <?php else: ?>
                         <p class="wz-hint">Pick a repository and branch first.</p>
                     <?php endif; ?>
