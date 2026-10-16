@@ -531,19 +531,116 @@ class App_database {
         $statements = self::statements($sql);
 
         foreach ($statements as $i => $statement) {
-            $kind = self::keyword_kind($statement);
-            $which = count($statements) > 1 ? 'Statement ' . ($i + 1) . ': ' : '';
+            $refusal = self::statement_refusal($statement, $allow_changes);
 
-            if ($kind === null) {
-                return $which . 'Only SELECT, SHOW, DESCRIBE and EXPLAIN run here, or with "Allow changes" INSERT, UPDATE, DELETE, REPLACE, CREATE, ALTER, DROP, TRUNCATE and RENAME.';
+            if ($refusal === null) {
+                continue;
             }
 
-            if ($kind === 'write' && !$allow_changes) {
-                return $which . 'This changes your database. Tick "Allow changes" to run it.';
+            if (count($statements) > 1) {
+                return 'Statement ' . ($i + 1) . ': ' . $refusal;
             }
+
+            return $refusal;
         }
 
         return $statements === [] ? 'There is no statement to run.' : null;
+    }
+
+    /**
+     * Why one statement of refusal() may not run, or null when it may
+     */
+    static function statement_refusal(string $statement, bool $allow_changes): ?string {
+        $syntax_refusal = self::syntax_refusal($statement);
+
+        if ($syntax_refusal !== null) {
+            return $syntax_refusal;
+        }
+
+        $kind = self::keyword_kind($statement);
+
+        if ($kind === null) {
+            return 'Only SELECT, SHOW, DESCRIBE and EXPLAIN run here, or with "Allow changes" INSERT, UPDATE, DELETE, REPLACE, CREATE, ALTER, DROP, TRUNCATE and RENAME.';
+        }
+
+        if ($kind === 'write' && !$allow_changes) {
+            return 'This changes your database. Tick "Allow changes" to run it.';
+        }
+
+        return null;
+    }
+
+    /**
+     * Mistakes in one statement that MariaDB would refuse anyway, found
+     * without sending it anywhere: a quote or comment that is never closed,
+     * and brackets that do not pair up. Quotes, `quoted names` and comments
+     * are read the way statements() reads them.
+     */
+    static function syntax_refusal(string $statement): ?string {
+        $depth = 0;
+        $length = strlen($statement);
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $statement[$i];
+
+            if ($char === "'" || $char === '"' || $char === '`') {
+                $close = self::closing_quote($statement, $i);
+
+                if ($close === null) {
+                    return 'A ' . $char . ' is never closed.';
+                }
+
+                $i = $close;
+            } elseif ($char === '#' || ($char === '-' && substr($statement, $i, 2) === '--' && ctype_space($statement[$i + 2] ?? ' '))) {
+                $end = strpos($statement, "\n", $i);
+                $i = $end === false ? $length : $end;
+            } elseif ($char === '/' && ($statement[$i + 1] ?? '') === '*') {
+                $end = strpos($statement, '*/', $i + 2);
+
+                if ($end === false) {
+                    return 'A /* comment is never closed.';
+                }
+
+                $i = $end + 1;
+            } elseif ($char === '(') {
+                $depth++;
+            } elseif ($char === ')') {
+                $depth--;
+
+                if ($depth < 0) {
+                    return 'A ) has no ( before it.';
+                }
+            }
+        }
+
+        if ($depth > 0) {
+            return $depth === 1 ? 'A ( is never closed.' : $depth . ' ( are never closed.';
+        }
+
+        return null;
+    }
+
+    /**
+     * Where the quote opened at $open closes, or null when it never does. A
+     * doubled quote, or a backslash in a string, escapes.
+     */
+    static function closing_quote(string $sql, int $open): ?int {
+        $quote = $sql[$open];
+        $length = strlen($sql);
+
+        for ($i = $open + 1; $i < $length; $i++) {
+            if ($sql[$i] === '\\' && $quote !== '`') {
+                $i++;
+            } elseif ($sql[$i] === $quote) {
+                if (($sql[$i + 1] ?? '') !== $quote) {
+                    return $i;
+                }
+
+                $i++;
+            }
+        }
+
+        return null;
     }
 
     /**

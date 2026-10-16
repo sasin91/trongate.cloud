@@ -17,6 +17,7 @@
     $branches_url = 'onboarding/branches';
     $env_url = 'onboarding/env-suggestions';
     $sql_url = 'onboarding/sql-files';
+    $sql_check_url = 'onboarding/setup-sql-check';
     $build_url = 'onboarding/build-suggestions';
     $q_offset = 1;
     require APPPATH . 'modules/apps/views/_app_steps.php';

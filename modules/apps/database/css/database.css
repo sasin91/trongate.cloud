@@ -593,6 +593,53 @@ button.db-rownum:focus {
     background: #fcfcff;
 }
 
+/* Live SQL check under the editor (views/_sql_check.php) */
+.db-sql-check {
+    padding: 0.4rem 0.875rem;
+    font-size: 0.75rem;
+    border-bottom: 1px solid var(--border);
+    background: #fafbff;
+}
+
+.sql-check-summary,
+.sql-check-more {
+    margin: 0;
+    color: var(--text-muted);
+}
+
+.sql-check-summary.sql-check-refused {
+    color: #8a2a22;
+}
+
+.sql-check-problems {
+    list-style: none;
+    margin: 0.25rem 0 0;
+    padding: 0;
+}
+
+.sql-check-problems li {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 0 0.625rem;
+    padding: 0.2rem 0;
+}
+
+.sql-check-where {
+    color: var(--text-muted);
+}
+
+.sql-check-problems code {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-mono);
+}
+
+.sql-check-message {
+    grid-column: 2;
+    color: #8a2a22;
+}
+
 .db-sql-bar {
     display: flex;
     align-items: center;

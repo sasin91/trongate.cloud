@@ -9,6 +9,7 @@
     $branches_url = 'apps/branches';
     $env_url = 'apps/env-suggestions';
     $sql_url = 'apps/sql-files';
+    $sql_check_url = 'apps/setup-sql-check';
     $build_url = 'apps/build-suggestions';
     $q_offset = 0;
     $back_href = 'projects/' . (int) $project->id;

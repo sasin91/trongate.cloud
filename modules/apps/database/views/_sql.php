@@ -3,7 +3,7 @@
  * The SQL view of views/index.php: the editor and its toolbar, then Result,
  * History and Backups as tabs under it.
  *
- * Expects (Database::_workspace_data): $view (sql, history or backups), $query_url,
+ * Expects (Database::_workspace_data): $view (sql, history or backups), $query_url, $check_url,
  * $database_name, $sql, $sql_placeholder, $statement_seconds, $query_error,
  * $result_panels, $results_summary, $backup_link, $history, $backup_entries,
  * $sql_url, $history_url, $backups_url, $import_url, $base.
@@ -16,7 +16,8 @@ $e = fn($value) => htmlspecialchars((string) $value);
         . " ? 'Run this SQL with changes allowed? The tables it names are backed up first, so you can restore them under Backups.'"
         . " : 'Run this SQL with changes allowed and no backup? It can change or delete data in " . $e($database_name) . " for good.')",
 ]) ?>
-    <textarea name="sql" id="db-sql" aria-label="SQL statements" class="db-editor" rows="5" spellcheck="false" placeholder="<?= $e($sql_placeholder) ?>"><?= $e($sql) ?></textarea>
+    <textarea name="sql" id="db-sql" aria-label="SQL statements" aria-describedby="db-sql-check" class="db-editor" rows="5" spellcheck="false" placeholder="<?= $e($sql_placeholder) ?>" data-sql-check="<?= $e($check_url) ?>" data-sql-check-result="db-sql-check"><?= $e($sql) ?></textarea>
+    <div id="db-sql-check" class="sql-check db-sql-check" aria-live="polite" hidden></div>
     <div class="db-sql-bar">
         <button type="submit" class="btn-primary db-run">&#9654; Run</button>
         <label class="checkbox-label">

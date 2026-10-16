@@ -1,6 +1,7 @@
 <?php
 
 require_once APPPATH . 'modules/platform/live/Setup_sql_plan.php';
+require_once APPPATH . 'modules/apps/traits/Sql_check_response.php';
 
 /**
  * The new-app wizard's optional Database question: .sql files from the
@@ -14,6 +15,7 @@ require_once APPPATH . 'modules/platform/live/Setup_sql_plan.php';
  * using controller must also use Customer_guard and Provider_clients.
  */
 trait Setup_sql_step {
+    use Sql_check_response;
 
     /**
      * What _validate_setup_sql read and checked, for _save_setup_sql
@@ -75,6 +77,18 @@ trait Setup_sql_step {
 
         header('Content-Type: text/html');
         require APPPATH . 'modules/apps/setup_sql/views/_sql_file_options.php';
+    }
+
+    /**
+     * POST: what _validate_setup_sql would refuse in the typed SQL, per
+     * statement, checked while it is typed (apps_module/js/sql_check.js).
+     * Nothing is stored or run.
+     */
+    function check_setup_sql(): void {
+        $this->_make_sure_allowed();
+        $this->_require_post_with_csrf();
+
+        $this->_show_sql_check(Sql_check::setup(trim((string) post('sql'))));
     }
 
     /**
