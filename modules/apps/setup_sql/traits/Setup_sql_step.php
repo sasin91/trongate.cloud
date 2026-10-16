@@ -26,14 +26,14 @@ trait Setup_sql_step {
     private ?string $setup_sql = null;
 
     /**
-     * The Database question as posted, when the form is shown again after a
-     * failed submit: the files that were offered, which were ticked,
+     * The Database question as answered before (a failed submit, or the
+     * wizard's draft, App_wizard_draft::_answer): the files that were offered, which were ticked,
      * Trongate's default tables as offered and edited, the typed path and SQL
      *
      * @return array{sql_files: list<array{path: string, checked: bool}>, sql_files_loaded_for: string, trongate_tables: list<array<string, mixed>>, administrator: array<string, string>|null, sql_path: string, sql: string}
      */
     function _setup_sql_form(): array {
-        $offered = post('sql_offered');
+        $offered = $this->_answer('sql_offered');
         $checked = $this->_posted_list('sql_files');
         $files = [];
         $loaded_for = '';
@@ -54,8 +54,8 @@ trait Setup_sql_step {
             'sql_files_loaded_for' => $loaded_for,
             'trongate_tables' => $this->_posted_trongate_tables(),
             'administrator' => $this->_posted_administrator(),
-            'sql_path' => (string) post('sql_path', true),
-            'sql' => (string) post('setup_sql'),
+            'sql_path' => (string) $this->_answer('sql_path', true),
+            'sql' => (string) $this->_answer('setup_sql'),
         ];
     }
 
@@ -169,7 +169,7 @@ trait Setup_sql_step {
      * Whether the form offered Trongate's default tables
      */
     function _trongate_tables_offered(): bool {
-        return post('trongate_tables_offered') === '1';
+        return $this->_answer('trongate_tables_offered') === '1';
     }
 
     /**
@@ -205,7 +205,7 @@ trait Setup_sql_step {
 
         foreach (array_keys(Setup_sql_plan::TRONGATE_TABLE_SETS) as $set) {
             $checked = in_array($set, $ticked, true);
-            $sql = (string) post($set . '_sql');
+            $sql = (string) $this->_answer($set . '_sql');
             $options[] = $this->_trongate_tables_option($set, $checked, $sql);
         }
 
@@ -255,15 +255,15 @@ trait Setup_sql_step {
      * @return array{username: string, email: string, hash: string, hashed_with: string}|null
      */
     function _posted_administrator(): ?array {
-        $hash = (string) post('administrator_hash');
+        $hash = (string) $this->_answer('administrator_hash');
 
         if ($hash === '' || !in_array('trongate_administrators', $this->_ticked_trongate_sets(), true)) {
             return null;
         }
 
         return [
-            'username' => (string) post('administrator_username'),
-            'email' => (string) post('administrator_email'),
+            'username' => (string) $this->_answer('administrator_username'),
+            'email' => (string) $this->_answer('administrator_email'),
             'hash' => $hash,
             'hashed_with' => App_password::describe_value($hash),
         ];
@@ -323,7 +323,7 @@ trait Setup_sql_step {
      * @return list<string>
      */
     function _posted_list(string $name): array {
-        $posted = post($name);
+        $posted = $this->_answer($name);
 
         if (!is_array($posted)) {
             return [];

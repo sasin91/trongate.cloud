@@ -4,6 +4,7 @@ require_once APPPATH . 'modules/platform/manifests/Manifests.php';
 require_once APPPATH . 'modules/platform/manifests/App_env_suggestions.php';
 require_once APPPATH . 'modules/platform/manifests/Build_commands.php';
 require_once __DIR__ . '/App_rules.php';
+require_once __DIR__ . '/App_wizard_draft.php';
 require_once APPPATH . 'modules/apps/setup_sql/traits/Setup_sql_step.php';
 require_once APPPATH . 'modules/services/clients/Client.php';
 require_once APPPATH . 'modules/services/clients/Github.php';
@@ -23,6 +24,7 @@ require_once APPPATH . 'modules/services/clients/Github.php';
  */
 trait App_form {
     use App_rules;
+    use App_wizard_draft;
     use Setup_sql_step;
 
     /** GitHub is the only source provider (Services::PROVIDERS) */
@@ -31,9 +33,11 @@ trait App_form {
     /**
      * View data for the new-app questions. $connect_url signs the customer in
      * with GitHub and comes back to the form; without a sign-in they can
-     * still paste a public link.
+     * still paste a public link. A fresh open shows the draft kept under
+     * $draft_key (App_wizard_draft), so a refresh keeps the answers.
      */
-    function _app_form_data(int $customer_id, string $connect_url): array {
+    function _app_form_data(int $customer_id, string $connect_url, string $draft_key): array {
+        $this->_use_wizard_draft($draft_key);
         $repositories = $this->_pickable_repositories($customer_id);
 
         return [
@@ -42,6 +46,12 @@ trait App_form {
             'repositories' => $repositories === false ? [] : $repositories,
             'connect_url' => $connect_url,
             'public_link' => $this->_posted_public_link(),
+            'selected_repository' => (string) $this->_answer('repository'),
+            'repository_branch' => (string) $this->_answer('repository_branch'),
+            'auto_deploy' => $this->_answer('auto_deploy') !== '0',
+            'label' => (string) $this->_answer('label'),
+            'domain' => (string) $this->_answer('domain'),
+            'selected_type' => $this->_selected_type(),
             'install_url' => $this->services->github_app()->install_url(),
             'app_types' => self::APP_TYPES,
             'env_fields' => $this->_env_fields($this->_posted_env_suggestions()),
@@ -50,7 +60,21 @@ trait App_form {
             'setup_sql' => $this->_setup_sql_form(),
             'build' => $this->_build_form(),
             'error_step' => $this->_wizard_error_step(),
+            'draft_step' => $this->_wizard_draft($draft_key)['step'],
         ];
+    }
+
+    /**
+     * The Trongate version question's answer, the current release by default
+     */
+    function _selected_type(): string {
+        $type = (string) $this->_answer('type');
+
+        if ($type === '') {
+            return 'trongate_v2';
+        }
+
+        return $type;
     }
 
     /**
@@ -108,17 +132,17 @@ trait App_form {
      * picked from the list instead
      */
     function _posted_public_link(): string {
-        return trim((string) post('public_link', true));
+        return trim((string) $this->_answer('public_link', true));
     }
 
     /**
-     * The last question's settings: the defaults a new app gets, or what was
-     * posted when the form is shown again after a failed submit
+     * The last question's settings: the defaults a new app gets, or the
+     * earlier answers (a failed submit or the draft)
      *
      * @return array{trongate_env: string, health_check_path: string, persistent_paths: string, process_name: string, process_command: string, always_on: bool, captures_mail: bool}
      */
     function _new_app_settings_form(): array {
-        if (REQUEST_TYPE !== 'POST') {
+        if (!$this->_has_answers()) {
             return [
                 'trongate_env' => Runtime_settings::DEFAULT_TRONGATE_ENV,
                 'health_check_path' => '',
@@ -130,17 +154,17 @@ trait App_form {
             ];
         }
 
-        $process_names = (array) post('process_name');
-        $process_commands = (array) post('process_command');
+        $process_names = (array) $this->_answer('process_name');
+        $process_commands = (array) $this->_answer('process_command');
 
         return [
-            'trongate_env' => (string) post('trongate_env', true),
-            'health_check_path' => (string) post('health_check_path', true),
-            'persistent_paths' => (string) post('persistent_paths'),
+            'trongate_env' => (string) $this->_answer('trongate_env', true),
+            'health_check_path' => (string) $this->_answer('health_check_path', true),
+            'persistent_paths' => (string) $this->_answer('persistent_paths'),
             'process_name' => (string) ($process_names[0] ?? ''),
             'process_command' => (string) ($process_commands[0] ?? ''),
-            'always_on' => post('always_on') === '1',
-            'captures_mail' => post('captures_mail') !== '0',
+            'always_on' => $this->_answer('always_on') === '1',
+            'captures_mail' => $this->_answer('captures_mail') !== '0',
         ];
     }
 
@@ -347,10 +371,10 @@ trait App_form {
         $source = $this->_posted_public_link();
 
         if ($source === '') {
-            $source = (string) post('repository');
+            $source = (string) $this->_answer('repository');
         }
 
-        return $source . '@' . (string) post('repository_branch');
+        return $source . '@' . (string) $this->_answer('repository_branch');
     }
 
     /**
@@ -490,19 +514,32 @@ trait App_form {
     }
 
     /**
-     * The Build question before a repository is read, or as posted when the
-     * form is shown again after a failed submit
+     * The Build question before a repository is read, or as answered before
+     * (a failed submit, or the draft)
      *
      * @return array{commands: string, php_extensions: string, note: string, loaded_for: string}
      */
     function _build_form(): array {
-        if (REQUEST_TYPE !== 'POST') {
+        if (!$this->_has_answers()) {
             return $this->_build_fields('', '', 'Pick a repository and branch first.') + ['loaded_for' => ''];
         }
 
-        $fields = $this->_build_fields((string) post('build_commands'), (string) post('php_extensions', true), '');
+        $fields = $this->_build_fields((string) $this->_answer('build_commands'), (string) $this->_answer('php_extensions', true), '');
 
-        return $fields + ['loaded_for' => $this->_posted_source_key()];
+        return $fields + ['loaded_for' => $this->_build_loaded_for()];
+    }
+
+    /**
+     * What the Build question's fields were read from. A failed submit had
+     * them all; a draft says (app_steps.js sends build_loaded_for), as it can
+     * be kept while they are still loading.
+     */
+    function _build_loaded_for(): string {
+        if (REQUEST_TYPE === 'POST') {
+            return $this->_posted_source_key();
+        }
+
+        return (string) $this->_answer('build_loaded_for');
     }
 
     /**
@@ -533,7 +570,7 @@ trait App_form {
      * @return list<array{name: string, default: string, file: string}>
      */
     function _posted_env_suggestions(): array {
-        $posted = post('env');
+        $posted = $this->_answer('env');
 
         if (!is_array($posted)) {
             return [];
@@ -553,7 +590,7 @@ trait App_form {
      * from, so the form does not read them again and lose what was typed
      */
     function _posted_env_loaded_for(): string {
-        if (!is_array(post('env'))) {
+        if (!is_array($this->_answer('env'))) {
             return '';
         }
 

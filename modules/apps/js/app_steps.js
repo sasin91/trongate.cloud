@@ -1,5 +1,7 @@
 // New-app form shown one question at a time (views/_app_steps.php).
 // Without JS every question stays visible and the form submits as one page.
+// Each move to another question keeps the answers in the session (App_wizard_draft),
+// so a refresh opens the same question again.
 document.addEventListener('DOMContentLoaded', function () {
     const form = document.querySelector('form[data-steps]');
     if (!form) return;
@@ -17,6 +19,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const radios = Array.from(form.querySelectorAll('[name="repository"]'));
     let current = 0;
     let branchesLoadedFor = '';
+    // The branch a refresh or failed submit showed, kept when the branches load again
+    let restoredBranch = branch.value;
 
     form.classList.add('wz-js');
 
@@ -78,6 +82,16 @@ document.addEventListener('DOMContentLoaded', function () {
         return true;
     };
 
+    // The answers so far and the open question, for a refresh. Environment values stay out (App_wizard_draft).
+    const saveDraft = function () {
+        if (!form.dataset.draft) return;
+
+        const data = new FormData(form);
+        data.append('wizard_step', steps[current].dataset.step);
+        data.append('build_loaded_for', buildFields.dataset.loadedFor || '');
+        fetch(form.dataset.draft, { method: 'POST', body: data, credentials: 'same-origin' }).catch(function () {});
+    };
+
     const show = function (index) {
         current = Math.max(0, Math.min(index, steps.length - 1));
         steps.forEach(function (step, i) {
@@ -98,6 +112,11 @@ document.addEventListener('DOMContentLoaded', function () {
         if (focusable) focusable.focus({ preventScroll: true });
     };
 
+    const moveTo = function (index) {
+        show(index);
+        saveDraft();
+    };
+
     const advance = function () {
         if (!fieldsValid(steps[current])) return;
         if (steps[current].dataset.step === 'repository' && publicLink.value.trim() !== '') {
@@ -106,7 +125,7 @@ document.addEventListener('DOMContentLoaded', function () {
             updateSheet();
         }
         if (current < steps.length - 1) {
-            show(current + 1);
+            moveTo(current + 1);
             return;
         }
         if (typeof form.requestSubmit === 'function') {
@@ -124,7 +143,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     back.addEventListener('click', function () {
-        show(current - 1);
+        moveTo(current - 1);
     });
 
     form.addEventListener('keydown', function (event) {
@@ -133,7 +152,9 @@ document.addEventListener('DOMContentLoaded', function () {
         advance();
     });
 
-    form.addEventListener('submit', function () {
+    form.addEventListener('submit', function (event) {
+        // Cancel submits the form elsewhere, to forget the draft
+        if (event.submitter && event.submitter !== next) return;
         next.disabled = true;
         next.insertAdjacentHTML('afterbegin', '<span class="wz-spinner" aria-hidden="true"></span>');
     });
@@ -243,7 +264,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 branch.innerHTML = html;
                 const names = Array.from(branch.options).map(function (option) { return option.value; });
                 const preferred = ['main', 'master'].find(function (name) { return names.includes(name); });
-                if (preferred) branch.value = preferred;
+                if (names.includes(restoredBranch)) {
+                    branch.value = restoredBranch;
+                } else if (preferred) {
+                    branch.value = preferred;
+                }
+                restoredBranch = '';
                 loadEnv();
                 loadSqlFiles();
                 loadBuild();
@@ -265,7 +291,7 @@ document.addEventListener('DOMContentLoaded', function () {
             loadBranches();
             suggestLabel();
             updateSheet();
-            setTimeout(function () { show(current + 1); }, 250);
+            setTimeout(function () { moveTo(current + 1); }, 250);
         });
     });
 
@@ -333,7 +359,8 @@ document.addEventListener('DOMContentLoaded', function () {
     form.addEventListener('input', updateSheet);
     form.addEventListener('change', updateSheet);
 
-    // Reload after a failed submit: reload branches, then open the first question that needs attention
+    // Reload after a failed submit or a refresh: reload branches, then open the first question
+    // that needs attention, or the question the draft was on
     applyPublicLink();
     if (source() && branch.options.length <= 1) loadBranches();
     updateSheet();
@@ -348,6 +375,8 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         });
         if (start === -1) start = steps.findIndex(function (step) { return step.dataset.step === 'name'; });
+    } else if (form.dataset.draftStep) {
+        start = Math.max(0, steps.findIndex(function (step) { return step.dataset.step === form.dataset.draftStep; }));
     }
     show(start);
 });
