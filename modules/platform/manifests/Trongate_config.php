@@ -1,7 +1,6 @@
 <?php
 
 require_once __DIR__ . '/Runtime_settings.php';
-
 require_once __DIR__ . '/../../../config/platform.php';
 
 /**
@@ -11,7 +10,6 @@ require_once __DIR__ . '/../../../config/platform.php';
  * Framework-free: loaded by the worker.
  */
 class Trongate_config {
-
 
     /**
      * Bump whenever what the platform writes into an app's config changes

@@ -1,7 +1,6 @@
 <?php
 
 require_once __DIR__ . '/../manifests/Runtime_settings.php';
-
 require_once __DIR__ . '/../../../config/platform.php';
 
 /**
