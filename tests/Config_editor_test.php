@@ -351,6 +351,34 @@ test('a v1 app gets the database constants', function () use ($db) {
     assert_same("<?php\ndefine('HOST', 'shared-1.databases');\ndefine('PORT', '3306');\ndefine('USER', 'tc_p7');\ndefine('PASSWORD', 'pw');\ndefine('DATABASE', 'tc_p7');\n", $out['database.php']);
 });
 
+test("a fresh trongate-framework app opens on 'welcome' instead of 'setup'", function () use ($db) {
+    $files = ['config.php' => "<?php\ndefine('BASE_URL', '****');\ndefine('ENV', 'dev');\ndefine('DEFAULT_MODULE', 'setup');\ndefine('DEFAULT_METHOD', 'index');\n"];
+    $out = Trongate_config::config_files($files, ['id' => 7, 'slug' => 'shop'], $db);
+    assert_same(true, str_contains($out['config.php'], "define('DEFAULT_MODULE', 'welcome');"));
+    assert_same(false, str_contains($out['config.php'], "'setup'"));
+});
+
+test("a default module the app chose is left alone", function () use ($db) {
+    $sources = [
+        "<?php\ndefine('DEFAULT_MODULE', 'shop');\n",
+        "<?php\ndefine('DEFAULT_MODULE', getenv('DEFAULT_MODULE') ?: 'setup');\n",
+        "<?php\ndefine('ENV', 'dev');\n",
+    ];
+
+    foreach ($sources as $source) {
+        $out = Trongate_config::config_files(['config.php' => $source], ['id' => 7, 'slug' => 'shop'], $db);
+        assert_same(substr_count($source, 'DEFAULT_MODULE'), substr_count($out['config.php'], 'DEFAULT_MODULE'));
+        assert_same(false, str_contains($out['config.php'], "'welcome'"));
+    }
+});
+
+test("'setup' is replaced in whichever config file defines it", function () use ($db) {
+    $files = ['config.php' => "<?php\ndefine('ENV', 'dev');\n", 'site.php' => "<?php\ndefine('DEFAULT_MODULE', 'setup');\n"];
+    $out = Trongate_config::config_files($files, ['id' => 7, 'slug' => 'shop'], $db);
+    assert_same("<?php\ndefine('DEFAULT_MODULE', 'welcome');\n", $out['site.php']);
+    assert_same(false, str_contains($out['config.php'], 'DEFAULT_MODULE'));
+});
+
 test('config_files passes on the Config_error', function () use ($config_error, $db) {
     $error = $config_error(fn() => Trongate_config::config_files(['database.php' => '<?php $databases = ['], ['id' => 7, 'slug' => 'shop'], $db));
     assert_same(['database.php', Config_error::FIX_FILE], [$error['file'], $error['action']]);
