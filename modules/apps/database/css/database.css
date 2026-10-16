@@ -1154,3 +1154,80 @@ button.db-rownum:focus {
     from { transform: translateX(-100%); }
     to { transform: translateX(340%); }
 }
+
+/* Credentials dialog (views/_credentials.php) */
+.db-credentials-open {
+    flex: none;
+    width: auto;
+    margin: 0 0 0.4rem auto;
+}
+
+.db-credentials-list {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 0.5rem 1rem;
+    align-items: center;
+    margin: 0 0 1rem;
+}
+
+.db-credentials-list dt {
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+}
+
+.db-credentials-list dd {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+    margin: 0;
+}
+
+.db-credentials-list code {
+    min-width: 0;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    overflow-wrap: anywhere;
+}
+
+.db-credentials-show {
+    display: contents;
+}
+
+.db-credentials-button {
+    flex: none;
+    width: auto;
+    margin: 0 0 0 auto;
+    padding: 1px 8px;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    background: var(--white);
+    color: var(--text-muted);
+    font: inherit;
+    font-size: 0.75rem;
+    cursor: pointer;
+}
+
+.db-credentials-button:hover {
+    color: var(--primary);
+    border-color: var(--accent);
+}
+
+.db-copy {
+    display: none;
+}
+
+.has-clipboard .db-copy {
+    display: inline-block;
+}
+
+@media (max-width: 640px) {
+    .db-credentials-list {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0.25rem;
+    }
+
+    .db-credentials-list dd {
+        margin-bottom: 0.5rem;
+    }
+}

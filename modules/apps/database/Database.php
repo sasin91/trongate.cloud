@@ -8,6 +8,7 @@ require_once __DIR__ . '/traits/App_database_guard.php';
 require_once __DIR__ . '/traits/App_database_diagram.php';
 require_once __DIR__ . '/traits/App_database_schema.php';
 require_once __DIR__ . '/traits/App_database_import.php';
+require_once __DIR__ . '/traits/App_database_credentials.php';
 
 /**
  * Child module of apps: apps/{id}/database, browse and edit an app's own
@@ -26,9 +27,13 @@ class Database extends Trongate {
     use App_database_diagram;
     use App_database_schema;
     use App_database_import;
+    use App_database_credentials;
 
     /** mx-build-modal for the Change password form (views/_password_form.php) */
     const PASSWORD_MODAL = '{"id":"db-password-modal","modalHeading":"Change password","width":"32rem","marginTop":"8vh"}';
+
+    /** mx-build-modal for the database's host, user and password (views/_credentials.php) */
+    const CREDENTIALS_MODAL = '{"id":"db-credentials-modal","modalHeading":"Credentials","width":"34rem","marginTop":"8vh"}';
 
     /** mx-build-modal for confirming Delete selected (views/_delete_rows_form.php) */
     const DELETE_ROWS_MODAL = '{"id":"db-delete-rows-modal","modalHeading":"Delete rows","width":"28rem","marginTop":"12vh"}';
@@ -611,6 +616,7 @@ class Database extends Trongate {
             ...$this->_app_header_data($app),
             'base' => 'apps/' . $app->id . '/database',
             'database_name' => Manifests::database_name((int) $app->id),
+            'credentials_url' => 'apps/' . $app->id . '/database/credentials',
             'view' => $this->_requested_view(),
             'tables' => [],
             'table' => null,
@@ -645,6 +651,7 @@ class Database extends Trongate {
                 'apps-database_module/js/select.js',
                 'apps-database_module/js/workspace.js',
                 'apps-database_module/js/import.js',
+                'apps-database_module/js/credentials.js',
                 'sql_check_module/js/sql_check.js',
             ],
         ];
@@ -1406,6 +1413,10 @@ class Database extends Trongate {
     function _history_outcome(object $entry): string {
         if ($entry->error !== null) {
             return (string) $entry->error;
+        }
+
+        if ($entry->action === 'credentials') {
+            return 'shown';
         }
 
         if ($entry->affected === null) {
