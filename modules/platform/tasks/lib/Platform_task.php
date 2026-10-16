@@ -127,6 +127,21 @@ class Platform_task {
     }
 
     /**
+     * A GitHub client that can read the app's repository: without a token
+     * for an app from a public link, else with an installation token
+     * (github_client).
+     *
+     * @throws Client_Error 404 when the App is not installed on the repository
+     */
+    static function app_source_client(array $app, string $repo): Github {
+        if (!empty($app['source_public'])) {
+            return Github::anonymous();
+        }
+
+        return self::github_client($repo);
+    }
+
+    /**
      * The deployment row; fails unless it belongs to the app
      */
     static function deployment(PDO $db, int $app_id, int $deployment_id): array {

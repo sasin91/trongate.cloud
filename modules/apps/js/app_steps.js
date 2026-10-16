@@ -13,7 +13,10 @@ document.addEventListener('DOMContentLoaded', function () {
     const segments = Array.from(document.querySelectorAll('#wz-progress span'));
     const label = form.querySelector('[name="label"]');
     const branch = form.querySelector('[name="repository_branch"]');
+    const publicLink = form.querySelector('[name="public_link"]');
+    const radios = Array.from(form.querySelectorAll('[name="repository"]'));
     let current = 0;
+    let branchesLoadedFor = '';
 
     form.classList.add('wz-js');
 
@@ -24,6 +27,42 @@ document.addEventListener('DOMContentLoaded', function () {
     const checked = function (name) {
         const input = form.querySelector('[name="' + name + '"]:checked');
         return input ? input.value : '';
+    };
+
+    // Where the app comes from: the pasted public link, else the picked repository
+    const source = function () {
+        const link = publicLink.value.trim();
+        return link !== '' ? link : checked('repository');
+    };
+
+    const sourceQuery = function () {
+        const link = publicLink.value.trim();
+        if (link !== '') return 'public_link=' + encodeURIComponent(link);
+        return 'repository=' + encodeURIComponent(checked('repository')) + '&provider=' + encodeURIComponent(form.dataset.provider);
+    };
+
+    // The repository's name: from github.com/owner/name/..., or the picked owner/name
+    const nameFromSource = function (value) {
+        const link = value.match(/github\.com\/[^\/]+\/([^\/?#]+)/i);
+        const name = link ? link[1] : value.split('/').pop();
+        return name.replace(/\.git$/i, '');
+    };
+
+    const suggestLabel = function () {
+        if (label.value.trim() !== '') return;
+        const name = nameFromSource(source()).replace(/[-_]+/g, ' ');
+        label.value = name.charAt(0).toUpperCase() + name.slice(1);
+    };
+
+    // A pasted link replaces the picked repository and deploys only by hand
+    const applyPublicLink = function () {
+        const isPublic = publicLink.value.trim() !== '';
+        radios.forEach(function (radio) {
+            radio.required = !isPublic;
+            if (isPublic) radio.checked = false;
+        });
+        form.querySelectorAll('[data-push-row]').forEach(function (row) { row.hidden = isPublic; });
+        form.querySelectorAll('[data-public-only]').forEach(function (hint) { hint.hidden = !isPublic; });
     };
 
     const fieldsValid = function (step) {
@@ -61,6 +100,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const advance = function () {
         if (!fieldsValid(steps[current])) return;
+        if (steps[current].dataset.step === 'repository' && publicLink.value.trim() !== '') {
+            loadBranches();
+            suggestLabel();
+            updateSheet();
+        }
         if (current < steps.length - 1) {
             show(current + 1);
             return;
@@ -98,14 +142,13 @@ document.addEventListener('DOMContentLoaded', function () {
     const envFields = form.querySelector('[data-env-fields]');
 
     const loadEnv = function () {
-        const repository = checked('repository');
-        if (!repository || !branch.value) return;
+        if (!source() || !branch.value) return;
 
-        const loadedFor = repository + '@' + branch.value;
+        const loadedFor = source() + '@' + branch.value;
         if (envFields.dataset.loadedFor === loadedFor) return;
         envFields.dataset.loadedFor = loadedFor;
 
-        const url = form.dataset.env + '?repository=' + encodeURIComponent(repository) + '&branch=' + encodeURIComponent(branch.value) + '&provider=' + encodeURIComponent(form.dataset.provider);
+        const url = form.dataset.env + '?' + sourceQuery() + '&branch=' + encodeURIComponent(branch.value);
         envFields.innerHTML = '<p class="wz-hint">Reading config/ for environment variables...</p>';
         fetch(url, { credentials: 'same-origin' })
             .then(function (response) {
@@ -129,14 +172,13 @@ document.addEventListener('DOMContentLoaded', function () {
     const sqlFiles = form.querySelector('[data-sql-files]');
 
     const loadSqlFiles = function () {
-        const repository = checked('repository');
-        if (!repository || !branch.value) return;
+        if (!source() || !branch.value) return;
 
-        const loadedFor = repository + '@' + branch.value;
+        const loadedFor = source() + '@' + branch.value;
         if (sqlFiles.dataset.loadedFor === loadedFor) return;
         sqlFiles.dataset.loadedFor = loadedFor;
 
-        const url = form.dataset.sql + '?repository=' + encodeURIComponent(repository) + '&branch=' + encodeURIComponent(branch.value) + '&provider=' + encodeURIComponent(form.dataset.provider);
+        const url = form.dataset.sql + '?' + sourceQuery() + '&branch=' + encodeURIComponent(branch.value);
         sqlFiles.innerHTML = '<p class="wz-hint">Looking for .sql files...</p>';
         fetch(url, { credentials: 'same-origin' })
             .then(function (response) {
@@ -157,8 +199,12 @@ document.addEventListener('DOMContentLoaded', function () {
     branch.addEventListener('change', loadSqlFiles);
 
     // Repository: load its branches, suggest a name, move on
-    const loadBranches = function (repository) {
-        const url = form.dataset.branches + '?repository=' + encodeURIComponent(repository) + '&provider=' + encodeURIComponent(form.dataset.provider);
+    const loadBranches = function () {
+        const loadingFor = source();
+        if (loadingFor === branchesLoadedFor) return;
+        branchesLoadedFor = loadingFor;
+
+        const url = form.dataset.branches + '?' + sourceQuery();
         branch.innerHTML = '<option value="">Loading branches...</option>';
         fetch(url, { credentials: 'same-origin' })
             .then(function (response) {
@@ -175,21 +221,26 @@ document.addEventListener('DOMContentLoaded', function () {
                 updateSheet();
             })
             .catch(function () {
-                branch.innerHTML = '<option value="">Could not load branches, pick the repository again</option>';
+                branchesLoadedFor = '';
+                const message = publicLink.value.trim() !== ''
+                    ? 'Could not read this link, check that the repository is public'
+                    : 'Could not load branches, pick the repository again';
+                branch.innerHTML = '<option value="">' + message + '</option>';
             });
     };
 
-    form.querySelectorAll('[name="repository"]').forEach(function (radio) {
+    radios.forEach(function (radio) {
         radio.addEventListener('change', function () {
-            loadBranches(radio.value);
-            if (label.value.trim() === '') {
-                const name = radio.value.split('/').pop().replace(/[-_]+/g, ' ');
-                label.value = name.charAt(0).toUpperCase() + name.slice(1);
-            }
+            publicLink.value = '';
+            applyPublicLink();
+            loadBranches();
+            suggestLabel();
             updateSheet();
             setTimeout(function () { show(current + 1); }, 250);
         });
     });
+
+    publicLink.addEventListener('input', applyPublicLink);
 
     const filter = form.querySelector('[data-filter]');
     if (filter) {
@@ -225,7 +276,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const typeInput = form.querySelector('[name="type"]:checked');
 
         slugTarget.textContent = slug || 'your-app';
-        if (sheet.repository) sheet.repository.textContent = checked('repository');
+        if (sheet.repository) sheet.repository.textContent = source();
         if (sheet.branch) sheet.branch.textContent = branch.value ? branch.value + (onPush ? ', on push' : ', manual') : '';
         if (sheet.env) {
             const filled = Array.from(envFields.querySelectorAll('input')).filter(function (input) { return input.value !== ''; }).length;
@@ -248,8 +299,8 @@ document.addEventListener('DOMContentLoaded', function () {
     form.addEventListener('change', updateSheet);
 
     // Reload after a failed submit: reload branches, then open the first question that needs attention
-    const repository = checked('repository');
-    if (repository && branch.options.length <= 1) loadBranches(repository);
+    applyPublicLink();
+    if (source() && branch.options.length <= 1) loadBranches();
     updateSheet();
 
     let start = 0;

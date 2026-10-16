@@ -6,7 +6,8 @@
  * Builds an app's GitHub repository on PLATFORM_APP_BASE_IMAGE (FrankenPHP) with
  * a BuildKit daemon started for this build only, pushes it to PLATFORM_REGISTRY
  * and rolls it out to its project's namespace. GitHub is read with an
- * installation token of the trongate.cloud GitHub App.
+ * installation token of the trongate.cloud GitHub App, or without a token
+ * for an app from a public link.
  *
  * Payload: {deployment_id, app_id, project_id, commit_sha?}
  *
@@ -40,8 +41,12 @@ return function (Task_log $log) use ($payload, $runtime): int {
 
     $repo = Platform_task::github_repo($app);
 
+    if (!empty($app['source_public'])) {
+        $log->info("Reading {$repo} as a public repository, without a GitHub token");
+    }
+
     try {
-        $github = Platform_task::github_client($repo);
+        $github = Platform_task::app_source_client($app, $repo);
     } catch (Client_Error $e) {
         if ($e->getCode() === 404) {
             throw new RuntimeException("The trongate.cloud GitHub app cannot read {$repo}; install it on the repository on GitHub");

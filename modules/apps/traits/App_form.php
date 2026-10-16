@@ -4,12 +4,16 @@ require_once APPPATH . 'modules/platform/manifests/Manifests.php';
 require_once APPPATH . 'modules/platform/manifests/App_env_suggestions.php';
 require_once __DIR__ . '/App_rules.php';
 require_once __DIR__ . '/App_setup_sql.php';
+require_once APPPATH . 'modules/services/clients/Client.php';
+require_once APPPATH . 'modules/services/clients/Github.php';
 
 /**
  * New-app form shared by onboarding and the apps module:
  * repository picker data, validation rules/callbacks and app creation.
  * Repositories are those the customer's GitHub sign-in can see on the GitHub
- * App's installations; the app goes into the project the controller authorized.
+ * App's installations, or a pasted link to a public GitHub repository (read
+ * without a token, no sign-in needed; it deploys only when someone presses
+ * Deploy). The app goes into the project the controller authorized.
  *
  * The using controller must also use Customer_guard and Provider_clients, and
  * its model must use Current_customer, Platform_actions and App_records.
@@ -20,12 +24,40 @@ trait App_form {
     use App_rules;
     use App_setup_sql;
 
+    /** GitHub is the only source provider (Services::PROVIDERS) */
+    const SOURCE_PROVIDER = 'github';
+
     /**
-     * View data for the repository picker, or false when the customer has not
-     * connected GitHub yet (or their sign-in has expired). No repositories
-     * means the GitHub App is not installed where they can see it yet.
+     * View data for the new-app questions. $connect_url signs the customer in
+     * with GitHub and comes back to the form; without a sign-in they can
+     * still paste a public link.
      */
-    function _app_form_data(int $customer_id): array|false {
+    function _app_form_data(int $customer_id, string $connect_url): array {
+        $repositories = $this->_pickable_repositories($customer_id);
+
+        return [
+            'provider' => self::SOURCE_PROVIDER,
+            'github_connected' => $repositories !== false,
+            'repositories' => $repositories === false ? [] : $repositories,
+            'connect_url' => $connect_url,
+            'public_link' => $this->_posted_public_link(),
+            'install_url' => $this->services->github_app()->install_url(),
+            'app_types' => self::APP_TYPES,
+            'env_fields' => $this->_env_fields($this->_posted_env_suggestions()),
+            'env_loaded_for' => $this->_posted_env_loaded_for(),
+            'settings' => $this->_new_app_settings_form(),
+            'setup_sql' => $this->_setup_sql_form(),
+        ];
+    }
+
+    /**
+     * The repositories the customer may pick, or false when they have not
+     * connected GitHub yet (or their sign-in has expired). None means the
+     * GitHub App is not installed where they can see it yet.
+     *
+     * @return list<array{id: string, name: string, full_name: string, url: string, private: bool}>|false
+     */
+    function _pickable_repositories(int $customer_id): array|false {
         $provider = $this->_customer_provider($customer_id, 'source');
 
         if ($provider === false) {
@@ -40,7 +72,7 @@ trait App_form {
         }
 
         try {
-            $repositories = $client->list_repositories();
+            return $client->list_repositories();
         } catch (Client_Error $e) {
             if ($e->getCode() === 401) {
                 return false;
@@ -48,17 +80,14 @@ trait App_form {
 
             throw $e;
         }
+    }
 
-        return [
-            'provider' => $provider,
-            'repositories' => $repositories,
-            'install_url' => $this->services->github_app()->install_url(),
-            'app_types' => self::APP_TYPES,
-            'env_fields' => $this->_env_fields($this->_posted_env_suggestions()),
-            'env_loaded_for' => $this->_posted_env_loaded_for(),
-            'settings' => $this->_new_app_settings_form(),
-            'setup_sql' => $this->_setup_sql_form(),
-        ];
+    /**
+     * The pasted link to a public repository, or '' when a repository was
+     * picked from the list instead
+     */
+    function _posted_public_link(): string {
+        return trim((string) post('public_link', true));
     }
 
     /**
@@ -98,7 +127,13 @@ trait App_form {
 
     function _set_app_rules(): void {
         $this->validation->set_rules('provider', 'Source Control Provider', 'required|callback__validate_source_provider');
-        $this->validation->set_rules('repository', 'Repository', 'required|max_length[200]|callback__validate_pickable_repository');
+
+        if ($this->_posted_public_link() === '') {
+            $this->validation->set_rules('repository', 'Repository', 'required|max_length[200]|callback__validate_pickable_repository');
+        } else {
+            $this->validation->set_rules('public_link', 'Public link', 'max_length[300]|callback__validate_public_link');
+        }
+
         $this->validation->set_rules('repository_branch', 'Branch', 'required|max_length[100]|callback__validate_branch');
         $this->validation->set_rules('label', 'App Name', 'required|min_length[3]|max_length[50]');
         $this->validation->set_rules('domain', 'Custom Domain', 'max_length[253]|callback__validate_domain');
@@ -117,21 +152,32 @@ trait App_form {
      * Slug and webhook secret are generated by App_records::create_app().
      */
     function _create_app_from_post(int $project_id, int $customer_id): int|false {
-        $provider = post('provider', true);
         $domain = $this->_normalise_domain(post('domain', true));
+        $source = $this->_wizard_source($customer_id, (string) post('repository', true), $this->_posted_public_link(), (string) post('provider', true));
 
-        $client = $this->_provider_client($customer_id, $provider);
+        if ($source === null) {
+            return false;
+        }
+
+        $source_public = $this->_posted_public_link() !== '';
+        // The switch posts a hidden 0 then the checkbox's 1; older forms leave it out
+        $auto_deploy = post('auto_deploy') !== '0';
+
+        // No webhook arrives for a repository the GitHub App is not installed on
+        if ($source_public) {
+            $auto_deploy = false;
+        }
 
         $app_id = $this->model->create_app(
             project_id: $project_id,
             label: post('label', true),
             type: post('type', true),
-            source_url: $client->url(post('repository', true)),
-            source_provider: $provider,
+            source_url: $source['client']->url($source['repository']),
+            source_provider: self::SOURCE_PROVIDER,
             source_branch: post('repository_branch', true),
             domain: $domain,
-            // The switch posts a hidden 0 then the checkbox's 1; older forms leave it out
-            auto_deploy: post('auto_deploy') !== '0',
+            auto_deploy: $auto_deploy,
+            source_public: $source_public,
         );
 
         if ($app_id === false) {
@@ -214,21 +260,79 @@ trait App_form {
     }
 
     /**
+     * The repository a wizard question reads and the client to read it with:
+     * a pasted public link is read without a token, a picked repository with
+     * the customer's GitHub sign-in. Null when the input is not valid.
+     *
+     * @return array{repository: string, client: Github}|null
+     */
+    function _wizard_source(int $customer_id, string $repository, string $public_link, string $provider): ?array {
+        if ($public_link !== '') {
+            $public_repository = Github::repository_from_link($public_link);
+
+            if ($public_repository === null) {
+                return null;
+            }
+
+            return ['repository' => $public_repository, 'client' => Github::anonymous()];
+        }
+
+        if ($this->_validate_source_provider($provider) !== true || $this->_validate_repository($repository) !== true) {
+            return null;
+        }
+
+        return ['repository' => $repository, 'client' => $this->_provider_client($customer_id, $provider)];
+    }
+
+    /**
+     * The wizard source in the query string of a question's partial
+     *
+     * @return array{repository: string, client: Github}|null
+     */
+    function _wizard_source_from_query(int $customer_id): ?array {
+        $repository = trim($_GET['repository'] ?? '');
+        $public_link = trim($_GET['public_link'] ?? '');
+        $provider = trim($_GET['provider'] ?? '');
+
+        return $this->_wizard_source($customer_id, $repository, $public_link, $provider);
+    }
+
+    /**
+     * What the questions after the repository were read from, as app_steps.js
+     * keys it: the pasted link or the picked repository, then the branch
+     */
+    function _posted_source_key(): string {
+        $source = $this->_posted_public_link();
+
+        if ($source === '') {
+            $source = (string) post('repository');
+        }
+
+        return $source . '@' . (string) post('repository_branch');
+    }
+
+    /**
      * MX partial: <option>s for the branches of a repository.
      */
     function repository_branch_options(): void {
         $this->_make_sure_allowed();
         $customer = $this->_customer_or_redirect();
-        $repository = trim($_GET['repository'] ?? '');
-        $provider = trim($_GET['provider'] ?? '');
+        $source = $this->_wizard_source_from_query((int) $customer->id);
 
-        if ($this->_validate_source_provider($provider) !== true || $this->_validate_repository($repository) !== true) {
+        if ($source === null) {
             http_response_code(422);
             die();
         }
 
-        $client = $this->_provider_client((int) $customer->id, $provider);
-        $branches = $client->list_branches($repository, 100);
+        $repository = $source['repository'];
+
+        try {
+            $branches = $source['client']->list_branches($repository, 100);
+        } catch (Client_Error $e) {
+            error_log("New app: could not list the branches of {$repository}: {$e->getMessage()}");
+            http_response_code(422);
+            die();
+        }
 
         header('Content-Type: text/html');
         require APPPATH . 'modules/apps/views/_repository_branch_options.php';
@@ -241,22 +345,19 @@ trait App_form {
     function env_suggestion_fields(): void {
         $this->_make_sure_allowed();
         $customer = $this->_customer_or_redirect();
-        $repository = trim($_GET['repository'] ?? '');
+        $source = $this->_wizard_source_from_query((int) $customer->id);
         $branch = trim($_GET['branch'] ?? '');
-        $provider = trim($_GET['provider'] ?? '');
 
-        if ($this->_validate_source_provider($provider) !== true
-            || $this->_validate_repository($repository) !== true
-            || $this->_validate_branch($branch) !== true) {
+        if ($source === null || $this->_validate_branch($branch) !== true) {
             http_response_code(422);
             die();
         }
 
-        $client = $this->_provider_client((int) $customer->id, $provider);
+        $repository = $source['repository'];
         $read_failed = false;
 
         try {
-            $files = $client->config_php_files($repository, $branch, App_env_suggestions::MAX_FILES, App_env_suggestions::MAX_FILE_BYTES);
+            $files = $source['client']->config_php_files($repository, $branch, App_env_suggestions::MAX_FILES, App_env_suggestions::MAX_FILE_BYTES);
         } catch (Client_Error | RuntimeException $e) {
             $files = [];
             $read_failed = true;
@@ -320,7 +421,7 @@ trait App_form {
             return '';
         }
 
-        return (string) post('repository') . '@' . (string) post('repository_branch');
+        return $this->_posted_source_key();
     }
 
     // --- Validation callbacks ---
@@ -377,5 +478,48 @@ trait App_form {
         }
 
         return $pickable ? true : 'The trongate.cloud GitHub App cannot read this repository. Install it there first.';
+    }
+
+    /**
+     * A link to a public GitHub repository. It is only read for owner/name;
+     * every request goes to api.github.com, never to the pasted address.
+     */
+    function _validate_public_link(string $link): bool|string {
+        $repository = Github::repository_from_link($link);
+
+        if ($repository === null) {
+            return 'Paste a link to a GitHub repository, like https://github.com/owner/name.';
+        }
+
+        try {
+            $public = Github::anonymous()->is_public($repository);
+        } catch (Client_Error $e) {
+            return $this->_public_link_error($repository, $e);
+        }
+
+        if (!$public) {
+            return $repository . ' is private. Connect GitHub and install the trongate.cloud app on it instead.';
+        }
+
+        return true;
+    }
+
+    /**
+     * What to tell the customer when GitHub would not show the public repository
+     */
+    function _public_link_error(string $repository, Client_Error $e): string {
+        $code = $e->getCode();
+
+        if ($code === 404) {
+            return 'We could not find a public repository at github.com/' . $repository . '. For a private repository, connect GitHub and install the trongate.cloud app on it.';
+        }
+
+        error_log("New app: could not check the public link to {$repository}: {$e->getMessage()}");
+
+        if ($code === 403 || $code === 429) {
+            return 'GitHub is limiting how often we may read public repositories right now. Please try again in a few minutes, or connect GitHub and pick the repository.';
+        }
+
+        return 'We could not reach GitHub to check this link. Please try again.';
     }
 }

@@ -81,11 +81,16 @@
         </div>
 
         <div class="form-group">
+            <?php if (!empty($app->source_public)): ?>
+            <p class="form-label">Deploy on push</p>
+            <p class="form-hint">This app deploys from a public link, so GitHub does not tell us about pushes. Press Deploy to put the branch's latest commit live.</p>
+            <?php else: ?>
             <label class="checkbox-label">
                 <input type="checkbox" name="auto_deploy" value="1" <?= $auto_deploy ? 'checked' : '' ?>>
                 Deploy on push
             </label>
             <p class="form-hint">Pushes to the branch deploy automatically through the trongate.cloud GitHub app. Turn this off to deploy only when you press Deploy.</p>
+            <?php endif; ?>
         </div>
 
         <div class="form-group">

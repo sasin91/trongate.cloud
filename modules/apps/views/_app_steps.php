@@ -3,7 +3,7 @@
  * New-app questions, one at a time: repository, branch, environment, name, Trongate version, database, settings.
  * Shared by onboarding/app and projects/{id}/apps/new.
  *
- * Expects: $provider, $repositories, $install_url, $app_types, $branches_url (returns <option>s),
+ * Expects: $provider, $github_connected, $repositories, $connect_url, $public_link, $install_url, $app_types, $branches_url (returns <option>s),
  * $env_url (returns the Environment inputs), $sql_url (returns the Database question's files), $env_fields,
  * $env_loaded_for, $settings and $setup_sql (App_form::_app_form_data),
  * $form_action, $q_offset (questions answered before this page), $q_total,
@@ -42,7 +42,9 @@ $errors = validation_errors('<p>', '</p>');
                     </label>
                 <?php endif; ?>
                 <div class="wz-choices" data-repositories>
-                    <?php if (empty($repositories)): ?>
+                    <?php if (!$github_connected): ?>
+                        <p class="wz-hint"><a href="<?= $e($connect_url) ?>">Connect GitHub</a> to pick from your repositories, private ones included, and deploy on every push.</p>
+                    <?php elseif (empty($repositories)): ?>
                         <p class="wz-hint">The trongate.cloud GitHub app cannot read any of your repositories yet. <a href="<?= $e($install_url) ?>">Install it on GitHub</a> and pick the repositories to deploy.</p>
                     <?php endif; ?>
                     <?php foreach (array_values($repositories) as $i => $repo): ?>
@@ -56,6 +58,11 @@ $errors = validation_errors('<p>', '</p>');
                         </label>
                     <?php endforeach; ?>
                 </div>
+                <label class="wz-field">
+                    <span class="wz-label"><?= $github_connected ? 'Or paste a link to a public repository' : 'Paste a link to a public GitHub repository' ?></span>
+                    <input type="text" name="public_link" class="wz-in mono" placeholder="https://github.com/owner/name" value="<?= $e($public_link) ?>" maxlength="300" autocomplete="off" spellcheck="false" <?= $github_connected ? '' : 'required' ?>>
+                    <span class="wz-hint">No GitHub app needed. It deploys when you press Deploy, not on every push.</span>
+                </label>
             </fieldset>
 
             <fieldset class="wz-step" data-step="branch" data-label="Branch">
@@ -73,7 +80,8 @@ $errors = validation_errors('<p>', '</p>');
                         <?php endif; ?>
                     </select>
                 </label>
-                <label class="wz-toggle-row">
+                <p class="wz-hint" data-public-only <?= $public_link === '' ? 'hidden' : '' ?>>A public link deploys when you press Deploy. To deploy on every push, connect GitHub and install the trongate.cloud app on the repository.</p>
+                <label class="wz-toggle-row" data-push-row <?= $public_link === '' ? '' : 'hidden' ?>>
                     <span>
                         <strong>Deploy every push</strong>
                         <small>Turn off to deploy only when you press the button.</small>

@@ -29,6 +29,10 @@ trait App_upgrades {
             throw new RuntimeException('App has no source repository');
         }
 
+        if (!empty($app->source_public)) {
+            throw new RuntimeException('Upgrades open a pull request on the repository, which an app from a public link has no access to.');
+        }
+
         return $this->db->transaction(function () use ($project_id, $app_id, $customer_id) {
             $open = $this->db->query_bind(
                 "SELECT id FROM app_upgrade WHERE app_id = :app_id AND status IN ('pending', 'running') ORDER BY id DESC LIMIT 1 FOR UPDATE",

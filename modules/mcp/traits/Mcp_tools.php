@@ -7,6 +7,8 @@ require_once APPPATH . 'modules/platform/mail/Mail_capture.php';
 require_once APPPATH . 'modules/platform/traits/Live_app_state.php';
 require_once APPPATH . 'modules/services/traits/Provider_clients.php';
 require_once APPPATH . 'modules/apps/traits/App_rules.php';
+require_once APPPATH . 'modules/services/clients/Client.php';
+require_once APPPATH . 'modules/services/clients/Github.php';
 
 /**
  * MCP tools for controllers: the registry (tools/list, tools/call) and the
@@ -142,7 +144,7 @@ trait Mcp_tools {
                 'description' => 'Add an app to a project from a GitHub repository the trongate.cloud GitHub App can read, and deploy it. Each app gets its own database and {slug}.' . PLATFORM_APPS_DOMAIN . ' address.',
                 'inputSchema' => $this->_schema([
                     'project_id' => ['type' => 'integer', 'minimum' => 1],
-                    'repository' => ['type' => 'string', 'description' => 'owner/name on GitHub'],
+                    'repository' => ['type' => 'string', 'description' => 'owner/name on GitHub, or a link to a public GitHub repository (read without the GitHub App; it deploys only when asked, not on push)'],
                     'label' => ['type' => 'string', 'minLength' => 3, 'maxLength' => 50, 'description' => 'App name, also used for its address'],
                     'branch' => ['type' => 'string', 'default' => 'main'],
                     'type' => ['type' => 'string', 'enum' => array_keys(self::APP_TYPES), 'default' => 'trongate_v2'],
@@ -414,6 +416,65 @@ trait Mcp_tools {
         ], $this->model->app_processes((int) $app->id));
     }
 
+    /**
+     * Where a new app comes from: a link to a public repository is read
+     * without the GitHub App; owner/name must be one the customer's GitHub
+     * sign-in can pick.
+     *
+     * @return array{url: string, public: bool}
+     */
+    function _new_app_source(int $customer_id, string $repository): array {
+        $public_repository = Github::repository_from_link($repository);
+
+        if ($public_repository !== null) {
+            return ['url' => $this->_public_repository_url($public_repository), 'public' => true];
+        }
+
+        $this->_check($this->_validate_repository($repository));
+        $provider = $this->_customer_provider($customer_id, 'source');
+
+        if ($provider === false) {
+            throw new RuntimeException('Connect GitHub first: sign in to ' . BASE_URL . ' and press "Connect GitHub" when adding an app. Or pass a link to a public GitHub repository.');
+        }
+
+        try {
+            $client = $this->_provider_client($customer_id, $provider);
+            $pickable = $client->can_pick($repository);
+        } catch (Client_Error $e) {
+            throw new RuntimeException('Could not reach GitHub to check the repository. Try again.');
+        }
+
+        if (!$pickable) {
+            throw new RuntimeException('The trongate.cloud GitHub App cannot read ' . $repository . '. Install it on that repository first: ' . $this->services->github_app()->install_url());
+        }
+
+        return ['url' => $client->url($repository), 'public' => false];
+    }
+
+    /**
+     * https://github.com/owner/name of a repository that must be public
+     */
+    function _public_repository_url(string $repository): string {
+        $github = Github::anonymous();
+
+        try {
+            $public = $github->is_public($repository);
+        } catch (Client_Error $e) {
+            if ($e->getCode() === 404) {
+                throw new RuntimeException('There is no public repository at github.com/' . $repository . '.');
+            }
+
+            error_log("MCP create_app: could not check the public link to {$repository}: {$e->getMessage()}");
+            throw new RuntimeException('Could not reach GitHub to check the repository. Try again.');
+        }
+
+        if (!$public) {
+            throw new RuntimeException($repository . ' is private. Install the trongate.cloud GitHub App on it and pass owner/name instead.');
+        }
+
+        return $github->url($repository);
+    }
+
     function _tool_create_app(array $args): array {
         $customer_id = (int) $this->customer->id;
         $project = $this->model->find_member_project($customer_id, $this->_int_arg($args, 'project_id'));
@@ -432,37 +493,28 @@ trait Mcp_tools {
             throw new InvalidArgumentException('label must be 3 to 50 characters');
         }
 
-        $this->_check($this->_validate_repository($repository));
         $this->_check($this->_validate_branch($branch));
         $this->_check($this->_validate_app_type($type));
         $this->_check($this->_validate_domain($domain));
 
-        $provider = $this->_customer_provider($customer_id, 'source');
+        $source = $this->_new_app_source($customer_id, $repository);
+        $auto_deploy = $this->_bool_arg($args, 'auto_deploy', true);
 
-        if ($provider === false) {
-            throw new RuntimeException('Connect GitHub first: sign in to ' . BASE_URL . ' and press "Connect GitHub" when adding an app.');
-        }
-
-        try {
-            $client = $this->_provider_client($customer_id, $provider);
-            $pickable = $client->can_pick($repository);
-        } catch (Client_Error $e) {
-            throw new RuntimeException('Could not reach GitHub to check the repository. Try again.');
-        }
-
-        if (!$pickable) {
-            throw new RuntimeException('The trongate.cloud GitHub App cannot read ' . $repository . '. Install it on that repository first: ' . $this->services->github_app()->install_url());
+        // No webhook arrives for a repository the GitHub App is not installed on
+        if ($source['public']) {
+            $auto_deploy = false;
         }
 
         $app_id = $this->model->create_app(
             project_id: (int) $project->id,
             label: $label,
             type: $type,
-            source_url: $client->url($repository),
-            source_provider: $provider,
+            source_url: $source['url'],
+            source_provider: 'github',
             source_branch: $branch,
             domain: $this->_normalise_domain($domain),
-            auto_deploy: $this->_bool_arg($args, 'auto_deploy', true),
+            auto_deploy: $auto_deploy,
+            source_public: $source['public'],
         );
 
         if ($app_id === false) {
@@ -1036,6 +1088,7 @@ trait Mcp_tools {
             'urls' => array_map(fn(string $host) => 'https://' . $host, $hostnames),
             'source_url' => $app->source_url ?? null,
             'source_branch' => $app->source_branch ?? null,
+            'source_public' => !empty($app->source_public),
             'environment' => $app->environment ?? 'production',
             'staging_app_id' => isset($app->staging_app_id) ? (int) $app->staging_app_id : null,
             'always_on' => !empty($app->always_on),

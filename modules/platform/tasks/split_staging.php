@@ -91,10 +91,10 @@ return function (Task_log $log) use ($payload, $runtime): int {
         Platform_task::execute(
             $db,
             "INSERT INTO app (project_id, label, slug, type, environment, production_app_id,
-                source_url, source_provider, source_branch, auto_deploy,
+                source_url, source_provider, source_public, source_branch, auto_deploy,
                 persistent_paths, php_extensions, always_on, trongate_env, mail_capture, health_path)
              SELECT project_id, label, slug, type, 'staging', id,
-                source_url, source_provider, ?, auto_deploy,
+                source_url, source_provider, source_public, ?, auto_deploy,
                 persistent_paths, php_extensions, 0, trongate_env, 1, health_path
              FROM app
              WHERE id = ?",

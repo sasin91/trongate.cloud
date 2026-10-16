@@ -34,8 +34,8 @@ class Apps extends Trongate {
     private bool $env_form_posted = false;
 
     /**
-     * projects/{id}/apps/new: the new-app questions, or Connect GitHub first
-     * when the customer has not connected it yet.
+     * projects/{id}/apps/new: the new-app questions. Without a GitHub
+     * sign-in the customer can paste a public link or connect GitHub.
      */
     function create(): void {
         $this->_make_sure_allowed();
@@ -46,7 +46,7 @@ class Apps extends Trongate {
             'view_module' => 'apps',
             'view_file' => 'create',
             'project' => $project,
-            'form' => $this->_app_form_data((int) $customer->id),
+            'form' => $this->_app_form_data((int) $customer->id, 'auth/github?then=projects/' . (int) $project->id . '/apps/new'),
             'crumbs' => [['projects/' . $project->id, (string) $project->name], ['projects/' . $project->id . '/apps/new', 'New app']],
             'additional_includes_top' => ['apps_module/css/wizard.css'],
         ];

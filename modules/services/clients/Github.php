@@ -3,6 +3,8 @@
 /**
  * GitHub REST client for one token: a customer's user access token (from the
  * GitHub App's sign-in) or an installation token (Github_app::repository_token).
+ * Without a token (anonymous()) it reads public repositories only, within
+ * GitHub's limit for unsigned requests (60 an hour per IP address).
  * https://docs.github.com/en/rest
  */
 class Github extends Client {
@@ -13,6 +15,45 @@ class Github extends Client {
     const MAX_REPOSITORY_PAGES = 5;
 
     function __construct(private string $token) {
+    }
+
+    /**
+     * A client without a token, for apps deployed from a public link
+     */
+    static function anonymous(): self {
+        return new self('');
+    }
+
+    /**
+     * owner/name from a pasted link to a GitHub repository, or null when it
+     * is not one. Takes https://github.com/owner/name, with or without
+     * https://, a trailing .git or slash, or a page inside it (/tree/main).
+     * Only owner/name is kept: requests always go to api.github.com.
+     */
+    static function repository_from_link(string $link): ?string {
+        $link = trim($link);
+
+        if (!preg_match('~^(?:https?://)?(?:www\.)?github\.com/([A-Za-z0-9-]{1,39})/([A-Za-z0-9_.-]{1,100})(?:[/?#].*)?$~i', $link, $match)) {
+            return null;
+        }
+
+        $name = preg_replace('/\.git$/i', '', $match[2]);
+
+        if ($name === '' || $name === '.' || $name === '..') {
+            return null;
+        }
+
+        return $match[1] . '/' . $name;
+    }
+
+    /**
+     * Whether the repository exists and is public. A private one this token
+     * can see is not; one it cannot see fails with a 404 Client_Error.
+     */
+    function is_public(string $repo): bool {
+        $repository = $this->request('GET', "/repos/{$repo}");
+
+        return empty($repository['private']);
     }
 
     /**
@@ -294,11 +335,16 @@ class Github extends Client {
     }
 
     function headers(): array {
-        return [
-            'Authorization: Bearer ' . $this->token,
+        $headers = [
             'Accept: application/vnd.github+json',
             'User-Agent: TrongateCloud/1.0',
             'X-GitHub-Api-Version: 2022-11-28',
         ];
+
+        if ($this->token !== '') {
+            $headers[] = 'Authorization: Bearer ' . $this->token;
+        }
+
+        return $headers;
     }
 }

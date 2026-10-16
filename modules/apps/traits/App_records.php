@@ -10,9 +10,10 @@ trait App_records {
 
     /**
      * Create an app with a unique slug. The repository must be one the GitHub
-     * App is installed on: deploys read it with an installation token.
+     * App is installed on (deploys read it with an installation token), or a
+     * public one ($source_public: read without a token, deployed by hand).
      */
-    function create_app(int $project_id, string $label, string $type, string $source_url, string $source_provider, string $source_branch = 'main', ?string $domain = null, bool $auto_deploy = true): int|false {
+    function create_app(int $project_id, string $label, string $type, string $source_url, string $source_provider, string $source_branch = 'main', ?string $domain = null, bool $auto_deploy = true, bool $source_public = false): int|false {
         return $this->db->insert([
             'project_id' => $project_id,
             'label' => $label,
@@ -21,6 +22,7 @@ trait App_records {
             'source_url' => $source_url,
             'source_provider' => $source_provider,
             'source_branch' => $source_branch ?: 'main',
+            'source_public' => $source_public ? 1 : 0,
             'domain' => $domain,
             'auto_deploy' => $auto_deploy ? 1 : 0,
             'persistent_paths' => '[]',
@@ -100,7 +102,8 @@ trait App_records {
 
     /**
      * Update an app's platform settings (the app must be in the project).
-     * The custom domain goes through update_app_domain().
+     * The custom domain goes through update_app_domain(). An app from a
+     * public link never deploys on push: no webhook arrives for it.
      *
      * @param array{domain: ?string, persistent_paths: list<string>, php_extensions: string, always_on: bool, auto_deploy: bool, source_branch: string, trongate_env: string, mail_capture: bool, health_path: string} $settings
      */
@@ -115,7 +118,7 @@ trait App_records {
                 trongate_env = :trongate_env,
                 mail_capture = :mail_capture,
                 health_path = :health_path,
-                auto_deploy = :auto_deploy,
+                auto_deploy = IF(source_public = 1, 0, :auto_deploy),
                 source_branch = :source_branch
             WHERE id = :app_id AND project_id = :project_id
         SQL;
