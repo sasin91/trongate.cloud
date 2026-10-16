@@ -51,12 +51,43 @@ class Onboarding extends Trongate {
 
     // --- App ---
 
+    /**
+     * onboarding/app[/{step}]: the first app's questions, open on the step in
+     * the URL. Opened without a step while answers are kept
+     * (App_wizard_draft), it first asks whether to continue them.
+     */
     function app(): void {
         $customer = $this->_customer_or_redirect();
         $this->_forget_earlier_errors();
-        $form = $this->_app_form_data((int) $customer->id, 'auth/github?then=onboarding/app', self::WIZARD_DRAFT_KEY);
+        $step = (string) segment(3);
+
+        if ($step !== '' && !$this->_is_wizard_step($step)) {
+            redirect('onboarding/app');
+        }
+
+        if (REQUEST_TYPE === 'GET' && $step === '' && $this->_has_wizard_draft(self::WIZARD_DRAFT_KEY)) {
+            $this->view('continue', [
+                'draft_name' => $this->_wizard_draft_name(self::WIZARD_DRAFT_KEY),
+                'continue_url' => 'onboarding/app/' . $this->_wizard_draft_step(self::WIZARD_DRAFT_KEY),
+                'reset_action' => 'onboarding/app/reset',
+            ]);
+            return;
+        }
+
+        $form = $this->_app_form_data((int) $customer->id, 'auth/github?then=onboarding/app', self::WIZARD_DRAFT_KEY, $step);
 
         $this->view('app', $form);
+    }
+
+    /**
+     * POST onboarding/app/reset: forget the draft and open the first question
+     */
+    function reset(): void {
+        $this->_customer_or_redirect();
+        $this->_require_post_with_csrf();
+
+        $this->_forget_wizard_draft(self::WIZARD_DRAFT_KEY);
+        redirect('onboarding/app');
     }
 
     /**

@@ -1,10 +1,13 @@
 <?php
 
 /**
- * The new-app wizard's answers so far, kept in the panel session (Valkey) so
- * a browser refresh opens the same question with the same answers.
- * app_steps.js posts the whole form each time it moves to another question;
- * a successful launch or Cancel forgets it.
+ * The new-app wizard's answers so far, kept in the panel session (Valkey).
+ * Each question has its own URL (projects/{id}/apps/new/{step}), so a
+ * refresh opens the same question with the same answers. app_steps.js posts
+ * the whole form each time it moves to another question. Opening the wizard
+ * without a step while a draft exists asks whether to continue it (to the
+ * draft's step URL) or start over. A successful launch, Cancel or Start over
+ * forgets it.
  *
  * Each wizard has its own key ('project-{id}' or 'onboarding'), so two
  * projects' wizards in two tabs do not mix.
@@ -13,6 +16,9 @@
  * and the form's _posted_* readers go through _answer().
  */
 trait App_wizard_draft {
+
+    /** The questions in views/_app_steps.php, by their data-step, in order */
+    const WIZARD_STEPS = ['repository', 'branch', 'env', 'name', 'type', 'database', 'build', 'settings'];
 
     /** Typed SQL longer than this is not kept: it can run to megabytes, and the session is read on every page */
     const DRAFT_MAX_SQL_BYTES = 65536;
@@ -37,7 +43,7 @@ trait App_wizard_draft {
      * @param array<string, mixed> $posted
      */
     function _save_wizard_draft(string $key, string $step, array $posted): void {
-        if (preg_match('/^[a-z_]{1,30}$/', $step) !== 1) {
+        if (!$this->_is_wizard_step($step)) {
             $step = '';
         }
 
@@ -83,6 +89,47 @@ trait App_wizard_draft {
             'step' => (string) ($draft['step'] ?? ''),
             'answers' => (array) ($draft['answers'] ?? []),
         ];
+    }
+
+    function _is_wizard_step(string $step): bool {
+        return in_array($step, self::WIZARD_STEPS, true);
+    }
+
+    /**
+     * Whether the wizard has answers to continue with
+     */
+    function _has_wizard_draft(string $key): bool {
+        return $this->_wizard_draft($key)['answers'] !== [];
+    }
+
+    /**
+     * What the "Continue?" question calls the app being set up: its name,
+     * else its repository, else 'your app'
+     */
+    function _wizard_draft_name(string $key): string {
+        $answers = $this->_wizard_draft($key)['answers'];
+        $candidates = [$answers['label'] ?? '', $answers['repository'] ?? '', $answers['public_link'] ?? ''];
+
+        foreach ($candidates as $candidate) {
+            if (is_string($candidate) && trim($candidate) !== '') {
+                return trim($candidate);
+            }
+        }
+
+        return 'your app';
+    }
+
+    /**
+     * The question the draft was on, or the first one
+     */
+    function _wizard_draft_step(string $key): string {
+        $step = $this->_wizard_draft($key)['step'];
+
+        if ($step === '') {
+            return self::WIZARD_STEPS[0];
+        }
+
+        return $step;
     }
 
     function _forget_wizard_draft(string $key): void {

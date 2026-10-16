@@ -34,9 +34,10 @@ trait App_form {
      * View data for the new-app questions. $connect_url signs the customer in
      * with GitHub and comes back to the form; without a sign-in they can
      * still paste a public link. A fresh open shows the draft kept under
-     * $draft_key (App_wizard_draft), so a refresh keeps the answers.
+     * $draft_key (App_wizard_draft), so a refresh keeps the answers, and
+     * opens on $open_step (the step in the URL, '' for the first question).
      */
-    function _app_form_data(int $customer_id, string $connect_url, string $draft_key): array {
+    function _app_form_data(int $customer_id, string $connect_url, string $draft_key, string $open_step): array {
         $this->_use_wizard_draft($draft_key);
         $repositories = $this->_pickable_repositories($customer_id);
 
@@ -60,7 +61,7 @@ trait App_form {
             'setup_sql' => $this->_setup_sql_form(),
             'build' => $this->_build_form(),
             'error_step' => $this->_wizard_error_step(),
-            'draft_step' => $this->_wizard_draft($draft_key)['step'],
+            'open_step' => $open_step,
         ];
     }
 
