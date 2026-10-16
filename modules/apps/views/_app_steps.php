@@ -162,10 +162,10 @@ $errors = validation_errors('<p>', '</p>');
                 </label>
                 <label class="wz-field">
                     <span class="wz-label">Or type SQL</span>
-                    <textarea name="setup_sql" class="wz-in mono wz-sql" rows="5" spellcheck="false" placeholder="CREATE TABLE posts (id INT PRIMARY KEY AUTO_INCREMENT, title VARCHAR(255));" aria-describedby="wz-sql-check" data-sql-check="<?= $e(BASE_URL) ?>sql/check" data-sql-check-rules="setup" data-sql-check-result="wz-sql-check"><?= $e($setup_sql['sql']) ?></textarea>
+                    <textarea name="setup_sql" class="wz-in mono wz-sql" rows="5" spellcheck="false" placeholder="CREATE TABLE posts (id INT PRIMARY KEY AUTO_INCREMENT, title VARCHAR(255));" aria-describedby="wz-sql-check" mx-post="sql/check" mx-trigger="change" mx-target="#wz-sql-check" mx-vals='{"rules":"setup","sql_field":"setup_sql"}'><?= $e($setup_sql['sql']) ?></textarea>
                     <span class="wz-hint">Runs after the files. Kept encrypted until it has run. If a statement fails, the deploy carries on and the app page shows what did not run.</span>
                 </label>
-                <div id="wz-sql-check" class="sql-check wz-sql-check" aria-live="polite" hidden></div>
+                <div id="wz-sql-check" class="sql-check wz-sql-check" aria-live="polite"></div>
             </fieldset>
 
             <fieldset class="wz-step" data-step="build" data-label="Build">

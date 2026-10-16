@@ -1,7 +1,7 @@
 /* Live SQL check (views/_result.php): a summary, a Comment out button, and
    each problem drawn like a Rust compiler error. Sized in em, so the box it
    sits under sets the size. */
-.sql-check[hidden] {
+.sql-check:empty {
     display: none;
 }
 

@@ -22,6 +22,7 @@
     $q_offset = 1;
     require APPPATH . 'modules/apps/views/_app_steps.php';
     ?>
+    <script src="<?= BASE_URL ?>js/trongate-mx.min.js"></script>
 </body>
 
 </html>

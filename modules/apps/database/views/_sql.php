@@ -16,12 +16,12 @@ $e = fn($value) => htmlspecialchars((string) $value);
         . " ? 'Run this SQL with changes allowed? The tables it names are backed up first, so you can restore them under Backups.'"
         . " : 'Run this SQL with changes allowed and no backup? It can change or delete data in " . $e($database_name) . " for good.')",
 ]) ?>
-    <textarea name="sql" id="db-sql" aria-label="SQL statements" aria-describedby="db-sql-check" class="db-editor" rows="5" spellcheck="false" placeholder="<?= $e($sql_placeholder) ?>" data-sql-check="<?= $e($check_url) ?>" data-sql-check-rules="database" data-sql-check-result="db-sql-check"><?= $e($sql) ?></textarea>
-    <div id="db-sql-check" class="sql-check db-sql-check" aria-live="polite" hidden></div>
+    <textarea name="sql" id="db-sql" aria-label="SQL statements" aria-describedby="db-sql-check" class="db-editor" rows="5" spellcheck="false" placeholder="<?= $e($sql_placeholder) ?>" mx-post="<?= $e($check_url) ?>" mx-trigger="change" mx-target="#db-sql-check" mx-vals='{"rules":"database","sql_field":"sql"}'><?= $e($sql) ?></textarea>
+    <div id="db-sql-check" class="sql-check db-sql-check" aria-live="polite"></div>
     <div class="db-sql-bar">
         <button type="submit" class="btn-primary db-run">&#9654; Run</button>
         <label class="checkbox-label">
-            <input type="checkbox" name="allow_changes" value="1" id="db-allow-changes" onchange="this.form.backup.disabled = !this.checked">
+            <input type="checkbox" name="allow_changes" value="1" id="db-allow-changes" onchange="this.form.backup.disabled = !this.checked" mx-post="<?= $e($check_url) ?>" mx-trigger="change" mx-target="#db-sql-check" mx-vals='{"rules":"database","sql_field":"sql"}'>
             Allow changes
         </label>
         <label class="checkbox-label">

@@ -773,7 +773,7 @@ class Database extends Trongate {
         $data['history_url'] = $this->_database_url($app, $this->_with_table(['view' => 'history'], $table_name));
         $data['backups_url'] = $this->_database_url($app, $this->_with_table(['view' => 'backups'], $table_name));
         $data['import_url'] = $this->_database_url($app, ['view' => 'import']);
-        $data['check_url'] = BASE_URL . 'sql/check';
+        $data['check_url'] = 'sql/check';
         $data['query_url'] = $data['base'] . '/query' . ($table_name === null ? '' : '?' . http_build_query(['table' => $table_name]));
         $data['sql_placeholder'] = 'SELECT * FROM ' . ($table_name ?? 'users') . ' LIMIT 10';
         $data['statement_seconds'] = App_database::STATEMENT_SECONDS;

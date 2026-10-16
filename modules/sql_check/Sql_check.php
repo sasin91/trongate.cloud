@@ -3,15 +3,18 @@
 require_once APPPATH . 'modules/platform/live/Sql_checker.php';
 
 /**
- * SQL checked while it is typed or pasted, for any SQL box in the panel:
- * the Database tab's SQL box and the new-app wizard's typed SQL today. Like
+ * SQL checked while it is written, for any SQL box in the panel: the
+ * Database tab's SQL box and the new-app wizard's typed SQL today. Like
  * Laravel Precognition, it runs the checks the box's real submit runs
  * (Sql_checker) and answers with what they found, drawn like the Rust
  * compiler's errors (views/_result.php), without running the SQL anywhere.
  *
- * A box opts in with data-sql-check (this URL), data-sql-check-rules (one
- * of RULES) and data-sql-check-result (where the answer goes), and loads
- * js/sql_check.js and css/sql_check.css.
+ * A box opts in with Trongate MX: mx-post="sql/check" mx-trigger="change"
+ * on the textarea (inside its form, so the form's csrf_token goes along),
+ * mx-target on an element with class sql-check that the textarea names in
+ * aria-describedby, and mx-vals {"rules": one of RULES, "sql_field": the
+ * textarea's name}. js/sql_check.js adds the Comment out button's edit and
+ * css/sql_check.css the looks.
  *
  * @property-read Trongate_tokens $trongate_tokens
  * @property-read Validation $validation
@@ -21,11 +24,15 @@ class Sql_check extends Trongate {
     /** Which submit's checks to run: the Database tab's SQL box, or SQL a new app starts with */
     const RULES = ['database', 'setup'];
 
+    /** Names the SQL is posted under, by the box's form: the Database tab's, the wizard's */
+    const SQL_FIELDS = ['sql', 'setup_sql'];
+
     /**
-     * POST sql/check with sql (as typed, so the lines it names are the
-     * box's lines), rules and allow_changes: the answer as HTML, 422 when the
-     * real submit would refuse the SQL, 200 when it would not. Any signed-in
-     * customer may ask, onboarding ones included; nothing is stored or run.
+     * POST sql/check with the box's form, rules and sql_field: the answer as
+     * HTML for MX to swap in. Always 200, as MX swaps only a success; the
+     * answer itself says whether the real submit would refuse the SQL. Any
+     * signed-in customer may ask, onboarding ones included; nothing is
+     * stored or run.
      */
     function check(): void {
         if (REQUEST_TYPE !== 'POST') {
@@ -40,12 +47,19 @@ class Sql_check extends Trongate {
 
         $this->validation->run(); // CSRF
 
-        $sql = (string) post('sql');
         $rules = (string) post('rules', true);
+        $sql_field = (string) post('sql_field', true);
 
-        if (!in_array($rules, self::RULES, true)) {
+        if (!in_array($rules, self::RULES, true) || !in_array($sql_field, self::SQL_FIELDS, true)) {
             http_response_code(400);
             die();
+        }
+
+        // As typed, not trimmed, so the lines it names are the box's lines
+        $sql = (string) post($sql_field);
+
+        if (trim($sql) === '') {
+            die(); // nothing to say about an empty box
         }
 
         if ($rules === 'setup') {
@@ -68,7 +82,6 @@ class Sql_check extends Trongate {
             'fix_label' => $this->_fix_label(count($check['fix_lines'])),
         ];
 
-        http_response_code($data['refused'] ? 422 : 200);
         header('Content-Type: text/html');
         $this->view('_result', $data);
     }
