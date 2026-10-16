@@ -28,14 +28,17 @@
             <li>The address <code><?= htmlspecialchars($app->slug . '.' . PLATFORM_APPS_DOMAIN) ?></code>: it is not given to another app.</li>
         </ul>
 
-        <?= form_open('apps/' . $app->id . '/delete/submit') ?>
+        <?= form_open('apps/' . $app->id . '/delete/submit', ['id' => 'app-delete-form']) ?>
             <div class="form-group">
                 <label for="confirm_slug" class="form-label">Type <code><?= htmlspecialchars($app->slug) ?></code> to confirm</label>
-                <input type="text" name="confirm_slug" id="confirm_slug" class="form-input mono" autocomplete="off" required>
+                <input type="text" name="confirm_slug" id="confirm_slug" class="form-input mono" autocomplete="off" required
+                       data-slug="<?= htmlspecialchars($app->slug) ?>"
+                       oninput="document.getElementById('app-delete-button').disabled = this.value.trim() !== this.dataset.slug"
+                       onkeydown="if (event.key === 'Enter') event.preventDefault()">
             </div>
 
             <div class="form-actions">
-                <button type="submit" class="btn-danger">Delete app</button>
+                <button type="button" id="app-delete-button" class="btn-danger" disabled mx-get="<?= htmlspecialchars($confirm_url) ?>" mx-build-modal="<?= htmlspecialchars(Apps::DELETE_MODAL) ?>">Delete app</button>
                 <a href="apps/<?= $app->id ?>/settings" class="btn-secondary">Cancel</a>
             </div>
         <?= form_close() ?>

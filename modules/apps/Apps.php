@@ -27,6 +27,9 @@ class Apps extends Trongate {
     use App_form;
     use App_page;
 
+    /** mx-build-modal for the last question before deleting an app (views/_delete_confirm.php) */
+    const DELETE_MODAL = '{"id":"app-delete-modal","modalHeading":"Delete app","width":"28rem","marginTop":"12vh"}';
+
     /** The app submit_delete() checks the typed confirmation against */
     private ?object $app_to_delete = null;
 
@@ -383,12 +386,28 @@ class Apps extends Trongate {
             'app' => $app,
             'urls' => $this->_app_urls($app),
             'staging_urls' => $this->_staging_urls($app),
-            'name' => $app->environment === 'staging' ? $app->label . ' staging' : $app->label,
+            'name' => $this->_delete_name($app),
+            'confirm_url' => 'apps/' . $app->id . '/delete/confirm',
             'crumbs' => $this->_app_crumbs($app),
             'additional_includes_top' => ['apps_module/css/apps.css'],
         ];
         $this->module('templates');
         $this->templates->customer($data);
+    }
+
+    /**
+     * apps/{id}/delete/confirm: asks once more before deleting, for a Trongate
+     * MX modal (mx-build-modal). Its button submits the delete page's form
+     * (form="app-delete-form"), which carries the typed name.
+     */
+    function delete_confirm(): void {
+        $this->_make_sure_allowed();
+        $app = $this->_member_app_or_redirect(segment(3, 'int'));
+        $this->_make_sure_owner($app, 'Only the project owner can delete an app.', 'apps/' . $app->id . '/settings');
+
+        $this->view('_delete_confirm', [
+            'name' => $this->_delete_name($app),
+        ]);
     }
 
     /**
@@ -429,6 +448,15 @@ class Apps extends Trongate {
     }
 
     // --- Helpers ---
+
+    /** What the delete page and its modal call the app */
+    function _delete_name(object $app): string {
+        if ($app->environment === 'staging') {
+            return $app->label . ' staging';
+        }
+
+        return (string) $app->label;
+    }
 
     /**
      * The addresses of a production app's staging app, deleted along with it;
