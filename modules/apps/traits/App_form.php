@@ -140,12 +140,13 @@ trait App_form {
      * The last question's settings: the defaults a new app gets, or the
      * earlier answers (a failed submit or the draft)
      *
-     * @return array{trongate_env: string, health_check_path: string, persistent_paths: string, process_name: string, process_command: string, always_on: bool, captures_mail: bool}
+     * @return array{trongate_env: string, default_module: string, health_check_path: string, persistent_paths: string, process_name: string, process_command: string, always_on: bool, captures_mail: bool}
      */
     function _new_app_settings_form(): array {
         if (!$this->_has_answers()) {
             return [
                 'trongate_env' => Runtime_settings::DEFAULT_TRONGATE_ENV,
+                'default_module' => Runtime_settings::SUGGESTED_DEFAULT_MODULE,
                 'health_check_path' => '',
                 'persistent_paths' => '',
                 'process_name' => '',
@@ -160,6 +161,7 @@ trait App_form {
 
         return [
             'trongate_env' => (string) $this->_answer('trongate_env', true),
+            'default_module' => (string) $this->_answer('default_module', true),
             'health_check_path' => (string) $this->_answer('health_check_path', true),
             'persistent_paths' => (string) $this->_answer('persistent_paths'),
             'process_name' => (string) ($process_names[0] ?? ''),
@@ -208,6 +210,7 @@ trait App_form {
         $this->validation->set_rules('env', 'Environment variables', 'callback__validate_suggested_env');
         $this->validation->set_rules('setup_sql', 'Database', 'callback__validate_setup_sql');
         $this->validation->set_rules('trongate_env', 'Environment', 'required|callback__validate_trongate_env');
+        $this->validation->set_rules('default_module', 'Default module', 'callback__validate_default_module');
         $this->validation->set_rules('health_check_path', 'Health Check Path', 'max_length[200]|callback__validate_health_check_path');
         $this->validation->set_rules('php_extensions', 'PHP Extensions', 'max_length[255]|callback__validate_php_extensions');
         $this->validation->set_rules('build_commands', 'Build Commands', 'callback__validate_build_commands');
@@ -271,6 +274,7 @@ trait App_form {
             'auto_deploy' => post('auto_deploy') !== '0',
             'source_branch' => trim((string) post('repository_branch', true)),
             'trongate_env' => trim((string) post('trongate_env', true)),
+            'default_module' => trim((string) post('default_module', true)),
             'captures_mail' => post('captures_mail') !== '0',
             'health_check_path' => $this->_parse_health_check_path((string) post('health_check_path', true)),
         ]);

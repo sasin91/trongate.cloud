@@ -286,6 +286,19 @@ trait App_rules {
     }
 
     /**
+     * Trongate's DEFAULT_MODULE for the app; empty keeps the app's own
+     */
+    function _validate_default_module(string $value): bool|string {
+        $module = trim($value);
+
+        if ($module !== '' && !preg_match(Runtime_settings::DEFAULT_MODULE_PATTERN, $module)) {
+            return 'The default module may only contain letters, numbers, dashes and underscores (at most 50).';
+        }
+
+        return true;
+    }
+
+    /**
      * The health check path as entered; empty is the home page
      */
     function _parse_health_check_path(string $value): string {

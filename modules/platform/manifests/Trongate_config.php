@@ -26,6 +26,7 @@ class Trongate_config {
      * database.php (v2 apps read databases.default.*, v1 apps the
      * HOST/PORT/USER/PASSWORD/DATABASE constants), plus the mail inbox in
      * trongate_email.php while mail capture is on (Mail_capture::rules).
+     * DEFAULT_MODULE too when the app's settings name one.
      *
      * @param array{host: string, port: string, user: string, password: string, database: string} $db
      * @param array<string, string> $files the app's config/*.php: file name => source
@@ -39,6 +40,12 @@ class Trongate_config {
             new Config_rule('BASE_URL', self::base_url($app)),
             new Config_rule('ENV', Runtime_settings::trongate_env($app)),
         ];
+        $default_module = Runtime_settings::default_module($app);
+
+        if ($default_module !== '') {
+            $rules[] = new Config_rule('DEFAULT_MODULE', $default_module);
+        }
+
         $v1 = ($app['type'] ?? 'trongate_v2') === 'trongate_v1';
 
         foreach (['host', 'port', 'user', 'password', 'database'] as $key) {

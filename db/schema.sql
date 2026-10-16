@@ -301,6 +301,8 @@ CREATE TABLE app_runtime (
   always_on TINYINT(1) NOT NULL DEFAULT 0,
   -- Trongate's ENV constant, patched into config/config.php (Runtime_settings::trongate_env)
   trongate_env VARCHAR(20) NOT NULL DEFAULT 'dev',
+  -- Trongate's DEFAULT_MODULE, patched into config/config.php; '' keeps the app's own (Runtime_settings::default_module)
+  default_module VARCHAR(50) NOT NULL DEFAULT '',
   -- Mail from config/trongate_email.php goes to the platform's inbox (Mail_capture)
   captures_mail TINYINT(1) NOT NULL DEFAULT 1,
   -- Requested by the rollout gate and smoke test; '' is the home page (Runtime_settings::health_check_path)
@@ -583,4 +585,5 @@ INSERT INTO schema_migrations (name) VALUES
   ('0014_app_runtime'),
   ('0015_app_setup_sql'),
   ('0016_app_backup'),
-  ('0017_app_database_log_credentials');
+  ('0017_app_database_log_credentials'),
+  ('0018_app_default_module');

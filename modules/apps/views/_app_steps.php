@@ -197,6 +197,11 @@ $errors = validation_errors('<p>', '</p>');
                         <span class="wz-hint">In <code>dev</code>, Trongate shows error details. Use <code>prod</code> to hide them from visitors.</span>
                     </label>
                     <label class="wz-field">
+                        <span class="wz-label">Default module</span>
+                        <input type="text" name="default_module" class="wz-in mono" value="<?= $e($settings['default_module']) ?>">
+                        <span class="wz-hint">The page your app opens on. A fresh Trongate app opens on <code>setup</code>, which can't save its changes here, so we use <code>welcome</code>. Leave it empty to keep your config's own.</span>
+                    </label>
+                    <label class="wz-field">
                         <span class="wz-label">Health check path</span>
                         <input type="text" name="health_check_path" class="wz-in mono" placeholder="/" value="<?= $e($settings['health_check_path']) ?>">
                         <span class="wz-hint">A deploy goes live once this path answers with a 2xx or 3xx. The home page by default.</span>

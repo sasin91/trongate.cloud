@@ -35,6 +35,12 @@
         </div>
 
         <div class="form-group">
+            <label for="default_module" class="form-label">Default Module</label>
+            <input type="text" name="default_module" id="default_module" class="form-input mono" placeholder="<?= htmlspecialchars(Runtime_settings::SUGGESTED_DEFAULT_MODULE) ?>" value="<?= htmlspecialchars($default_module) ?>">
+            <p class="form-hint">The module your app opens on, its <code>DEFAULT_MODULE</code> in <code>config/config.php</code>. Leave it empty to keep your config's own.</p>
+        </div>
+
+        <div class="form-group">
             <label for="health_check_path" class="form-label">Health Check Path</label>
             <input type="text" name="health_check_path" id="health_check_path" class="form-input mono" placeholder="/" value="<?= htmlspecialchars($health_check_path) ?>">
             <p class="form-hint">Each deploy goes live only once this path answers with a 2xx or 3xx. The home page by default; an API whose home page is a 404 can use a health endpoint such as <code>/health</code>.</p>
