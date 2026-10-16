@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../../../config/platform.php';
 require_once __DIR__ . '/Trongate_config.php';
+require_once __DIR__ . '/Runtime_settings.php';
 require_once __DIR__ . '/App_env.php';
 require_once __DIR__ . '/../mail/Mail_capture.php';
 require_once __DIR__ . '/../../../engine/Valkey_sessions.php';
@@ -63,16 +64,13 @@ class Manifests {
     ];
 
     // Rollout gate (see _deployment()): a new pod takes no traffic until its
-    // home page (or health_path()) answers 2xx/3xx, for up to STARTUP_PROBE_PERIOD *
+    // home page (or Runtime_settings::health_check_path()) answers 2xx/3xx, for up to STARTUP_PROBE_PERIOD *
     // STARTUP_PROBE_FAILURES seconds (about 2 minutes, like the smoke test).
     // The old pod keeps serving meanwhile; a rollout that makes no progress
     // for PROGRESS_DEADLINE_SECONDS fails and the deploy restores the old one.
     const STARTUP_PROBE_PERIOD = 3;
     const STARTUP_PROBE_FAILURES = 40;
     const PROGRESS_DEADLINE_SECONDS = 180;
-
-    /** An app's health check path (health_path()): absolute, no query, no dot or empty segments */
-    const HEALTH_PATH_PATTERN = '#^(?!.*//)(?!.*/\.{1,2}(?:/|$))/[A-Za-z0-9._~/-]{0,199}$#';
 
     const INIT_RESOURCES = [
         'requests' => ['cpu' => '10m', 'memory' => '32Mi', 'ephemeral-storage' => '64Mi'],
@@ -352,48 +350,6 @@ class Manifests {
     }
 
     /**
-     * Normalised persistent paths (relative to the app dir); rejects anything that escapes it
-     *
-     * @return list<string>
-     */
-    static function persistent_paths(array $app): array {
-        $paths = $app['persistent_paths'] ?? [];
-
-        if (is_string($paths)) {
-            $paths = json_decode($paths, true) ?: [];
-        }
-
-        $clean = [];
-
-        foreach ((array) $paths as $path) {
-            $path = trim(str_replace('\\', '/', (string) $path), '/');
-
-            if ($path === '') {
-                continue;
-            }
-
-            if (!preg_match('#^[A-Za-z0-9._/-]+$#', $path) || preg_match('#(^|/)\.{1,2}(/|$)#', $path)) {
-                throw new InvalidArgumentException("Invalid persistent path: {$path}");
-            }
-
-            $clean[$path] = $path;
-        }
-
-        return array_values($clean);
-    }
-
-    /**
-     * The path the rollout gate and the smoke test request (app_runtime.health_path):
-     * the home page unless the app names another, e.g. /health for an API
-     * whose home page is a 404. Anything not HEALTH_PATH_PATTERN is the home page.
-     */
-    static function health_path(array $app): string {
-        $path = trim((string) ($app['health_path'] ?? ''));
-
-        return preg_match(self::HEALTH_PATH_PATTERN, $path) ? $path : '/';
-    }
-
-    /**
      * Tenant namespace with quota, limits and network isolation
      *
      * @param string $namespace project.namespace (Manifests::namespace_name)
@@ -653,8 +609,8 @@ class Manifests {
         $secret_name = "p{$app_id}-database";
         $pvc_name = "p{$app_id}-files";
         $db_name = self::database_name($app_id);
-        $always_on = !empty($app['always_on']);
-        $paths = self::persistent_paths($app);
+        $always_on = Runtime_settings::always_on($app);
+        $paths = Runtime_settings::persistent_paths($app);
         $image = (string) ($deployment['image'] ?? '');
 
         if ($image === '') {
@@ -1139,7 +1095,7 @@ class Manifests {
             'selector' => ['matchLabels' => $o['selector']],
             'template' => [
                 'metadata' => [
-                    'labels' => $o['labels'] + (Mail_capture::enabled($app) ? [] : [self::OWN_SMTP_LABEL => 'true']),
+                    'labels' => $o['labels'] + (Runtime_settings::captures_mail($app) ? [] : [self::OWN_SMTP_LABEL => 'true']),
                     'annotations' => [
                         self::LABEL_PREFIX . '/deployment-id' => (string) ($deployment['id'] ?? ''),
                         self::LABEL_PREFIX . '/config-hash' => $o['config_hash'],
@@ -1180,7 +1136,7 @@ class Manifests {
                         // runs; the TCP readiness probe takes over after it.
                         'startupProbe' => [
                             'httpGet' => [
-                                'path' => self::health_path($app),
+                                'path' => Runtime_settings::health_check_path($app),
                                 'port' => 'http',
                                 'httpHeaders' => [['name' => 'Host', 'value' => (string) parse_url($o['base_url'], PHP_URL_HOST)]],
                             ],

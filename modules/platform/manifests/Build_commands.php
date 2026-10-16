@@ -187,32 +187,6 @@ final class Build_commands {
     }
 
     /**
-     * The app's extra PHP extensions (app_runtime.php_extensions, a JSON
-     * list): lowercase, unique, only names install-php-extensions takes
-     *
-     * @return list<string>
-     */
-    static function php_extensions(array $app): array {
-        $names = $app['php_extensions'] ?? [];
-
-        if (is_string($names)) {
-            $names = json_decode($names, true) ?: [];
-        }
-
-        $clean = [];
-
-        foreach ((array) $names as $name) {
-            $name = strtolower(trim((string) $name));
-
-            if (preg_match('/^[a-z0-9_]{1,40}$/', $name)) {
-                $clean[$name] = $name;
-            }
-        }
-
-        return array_values($clean);
-    }
-
-    /**
      * Why the commands cannot be saved, or null
      */
     static function error(string $commands): ?string {

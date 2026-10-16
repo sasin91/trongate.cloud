@@ -32,7 +32,7 @@ class Mail extends Trongate {
             'view_file' => 'index',
             'app' => $app,
             ...$this->_app_header_data($app),
-            'capture_on' => Mail_capture::enabled((array) $app),
+            'capture_on' => Runtime_settings::captures_mail((array) $app),
             'messages' => $this->model->messages((int) $app->id),
             'open' => $open,
             'parsed' => $open !== false ? Mail_message::parse((string) $open->raw) : null,

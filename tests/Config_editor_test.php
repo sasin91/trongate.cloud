@@ -511,7 +511,7 @@ $test('mail capture creates trongate_email.php when the app has none', function 
 });
 
 $test('with mail capture off trongate_email.php is left alone', function () use ($same, $db, $stock_email) {
-    $out = Trongate_config::config_files(['trongate_email.php' => $stock_email], ['id' => 7, 'slug' => 'shop', 'mail_capture' => 0], $db);
+    $out = Trongate_config::config_files(['trongate_email.php' => $stock_email], ['id' => 7, 'slug' => 'shop', 'captures_mail' => 0], $db);
 
     $same(false, isset($out['trongate_email.php']));
 });
@@ -526,7 +526,7 @@ $test('only apps with mail capture off may reach SMTP submission ports', functio
     };
 
     $same(false, isset($pod_labels([])[Manifests::OWN_SMTP_LABEL]));
-    $same('true', $pod_labels(['mail_capture' => 0])[Manifests::OWN_SMTP_LABEL]);
+    $same('true', $pod_labels(['captures_mail' => 0])[Manifests::OWN_SMTP_LABEL]);
 
     $by_name = [];
 

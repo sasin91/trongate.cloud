@@ -1,7 +1,7 @@
 <?php
 /**
  * apps/{id}/mail (Mail::index). Expects: $app, $urls, $live_state, $can_rollback,
- * $capture_on (Mail_capture::enabled), $messages (Mail_model::messages),
+ * $capture_on (Runtime_settings::captures_mail), $messages (Mail_model::messages),
  * $open (the message ?open= names, with its source, or false), $parsed (Mail_message::parse of it, or null).
  */
 $e = fn($value) => htmlspecialchars((string) $value);

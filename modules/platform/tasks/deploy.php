@@ -169,7 +169,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
         // instructions; nothing from the repository does.
 
         // The base already has pdo_mysql, redis (Valkey sessions) and the common ones
-        $extensions = Build_commands::php_extensions($app);
+        $extensions = Runtime_settings::php_extensions($app);
 
         $extension_lines = [];
 
@@ -204,7 +204,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
             $log->info('Using the repository Caddyfile');
         }
 
-        $build_commands = Build_commands::normalise((string) ($app['build_commands'] ?? ''));
+        $build_commands = Runtime_settings::build_commands($app);
 
         if ($build_commands !== '') {
             $log->info("Build commands:\n{$build_commands}");

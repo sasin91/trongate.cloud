@@ -114,7 +114,7 @@ trait App_records {
      *
      * No transaction of its own, so app creation can run it inside one.
      *
-     * @param array{domain: ?string, persistent_paths: list<string>, php_extensions: list<string>, build_commands: string, always_on: bool, auto_deploy: bool, source_branch: string, trongate_env: string, mail_capture: bool, health_path: string} $settings
+     * @param array{domain: ?string, persistent_paths: list<string>, php_extensions: list<string>, build_commands: string, always_on: bool, auto_deploy: bool, source_branch: string, trongate_env: string, captures_mail: bool, health_check_path: string} $settings
      */
     function update_app_settings(int $project_id, int $app_id, array $settings): void {
         if ($this->find_project_app($project_id, $app_id) === false) {
@@ -135,20 +135,20 @@ trait App_records {
      * Write the app's runtime settings (app_runtime), creating its row if it
      * has none
      *
-     * @param array{persistent_paths: list<string>, php_extensions: list<string>, build_commands: string, always_on: bool, trongate_env: string, mail_capture: bool, health_path: string} $settings
+     * @param array{persistent_paths: list<string>, php_extensions: list<string>, build_commands: string, always_on: bool, trongate_env: string, captures_mail: bool, health_check_path: string} $settings
      */
     function save_app_runtime(int $app_id, array $settings): void {
         $sql = <<<SQL
-            INSERT INTO app_runtime (app_id, php_extensions, build_commands, persistent_paths, always_on, trongate_env, mail_capture, health_path)
-            VALUES (:app_id, :php_extensions, :build_commands, :persistent_paths, :always_on, :trongate_env, :mail_capture, :health_path)
+            INSERT INTO app_runtime (app_id, php_extensions, build_commands, persistent_paths, always_on, trongate_env, captures_mail, health_check_path)
+            VALUES (:app_id, :php_extensions, :build_commands, :persistent_paths, :always_on, :trongate_env, :captures_mail, :health_check_path)
             ON DUPLICATE KEY UPDATE
                 php_extensions = VALUES(php_extensions),
                 build_commands = VALUES(build_commands),
                 persistent_paths = VALUES(persistent_paths),
                 always_on = VALUES(always_on),
                 trongate_env = VALUES(trongate_env),
-                mail_capture = VALUES(mail_capture),
-                health_path = VALUES(health_path)
+                captures_mail = VALUES(captures_mail),
+                health_check_path = VALUES(health_check_path)
         SQL;
         $this->db->query_bind($sql, [
             'app_id' => $app_id,
@@ -157,8 +157,8 @@ trait App_records {
             'persistent_paths' => json_encode(array_values($settings['persistent_paths'])),
             'always_on' => $settings['always_on'] ? 1 : 0,
             'trongate_env' => $settings['trongate_env'],
-            'mail_capture' => $settings['mail_capture'] ? 1 : 0,
-            'health_path' => $settings['health_path'] === '/' ? '' : $settings['health_path'],
+            'captures_mail' => $settings['captures_mail'] ? 1 : 0,
+            'health_check_path' => $settings['health_check_path'] === '/' ? '' : $settings['health_check_path'],
         ]);
     }
 

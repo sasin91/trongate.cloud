@@ -103,8 +103,8 @@ return function (Task_log $log) use ($payload, $runtime): int {
         // Built and run like production, but sleeps when idle and captures mail
         Platform_task::execute(
             $db,
-            'INSERT INTO app_runtime (app_id, php_extensions, build_commands, persistent_paths, always_on, trongate_env, mail_capture, health_path)
-             SELECT ?, php_extensions, build_commands, persistent_paths, 0, trongate_env, 1, health_path
+            'INSERT INTO app_runtime (app_id, php_extensions, build_commands, persistent_paths, always_on, trongate_env, captures_mail, health_check_path)
+             SELECT ?, php_extensions, build_commands, persistent_paths, 0, trongate_env, 1, health_check_path
              FROM app_runtime
              WHERE app_id = ?',
             [$staging_id, $app_id],

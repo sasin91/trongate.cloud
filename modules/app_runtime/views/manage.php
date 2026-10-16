@@ -54,7 +54,7 @@ echo Modules::run('pagination/display', $pagination_data);
                 <td><?= out($row->app_id) ?></td>
                 <td><?= out($row->always_on) ?></td>
                 <td><?= out($row->trongate_env) ?></td>
-                <td><?= out($row->mail_capture) ?></td>
+                <td><?= out($row->captures_mail) ?></td>
                 <td><?= out($row->updated_at) ?></td>
                 </tr>
             <?php endforeach; ?>

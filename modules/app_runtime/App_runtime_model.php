@@ -128,8 +128,8 @@ class App_runtime_model extends Model {
         $record_obj->persistent_paths = trim((string) $record_obj->persistent_paths);
         $record_obj->always_on = ($record_obj->always_on == 1) ? 'yes' : 'no';
         $record_obj->trongate_env = trim((string) $record_obj->trongate_env);
-        $record_obj->mail_capture = ($record_obj->mail_capture == 1) ? 'yes' : 'no';
-        $record_obj->health_path = trim((string) $record_obj->health_path);
+        $record_obj->captures_mail = ($record_obj->captures_mail == 1) ? 'yes' : 'no';
+        $record_obj->health_check_path = trim((string) $record_obj->health_check_path);
         $record_obj->updated_at = trim((string) $record_obj->updated_at);
         return $record_obj;
     }

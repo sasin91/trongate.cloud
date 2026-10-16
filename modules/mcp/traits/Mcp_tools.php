@@ -169,9 +169,9 @@ trait Mcp_tools {
                     'always_on' => ['type' => 'boolean', 'description' => 'Never sleep when idle (needed when other apps call it directly)'],
                     'auto_deploy' => ['type' => 'boolean', 'description' => 'Deploy on every push to the branch'],
                     'source_branch' => ['type' => 'string', 'description' => 'The branch it deploys from (a staging app: staging by default)'],
-                    'trongate_env' => ['type' => 'string', 'description' => "Trongate's ENV constant in config/config.php, e.g. " . implode(', ', Trongate_config::ENV_SUGGESTIONS) . ' (dev shows errors)'],
-                    'mail_capture' => ['type' => 'boolean', 'description' => "Catch mail sent with Trongate's email module on the app's Mail tab instead of delivering it (on by default); off sends with the app's own config/trongate_email.php"],
-                    'health_path' => ['type' => 'string', 'description' => 'Path a deploy must answer 2xx/3xx on before it goes live, e.g. /health for an API whose home page is a 404; "" or "/" is the home page'],
+                    'trongate_env' => ['type' => 'string', 'description' => "Trongate's ENV constant in config/config.php, e.g. " . implode(', ', Runtime_settings::TRONGATE_ENV_SUGGESTIONS) . ' (dev shows errors)'],
+                    'captures_mail' => ['type' => 'boolean', 'description' => "Catch mail sent with Trongate's email module on the app's Mail tab instead of delivering it (on by default); off sends with the app's own config/trongate_email.php"],
+                    'health_check_path' => ['type' => 'string', 'description' => 'Path a deploy must answer 2xx/3xx on before it goes live, e.g. /health for an API whose home page is a 404; "" or "/" is the home page'],
                 ], ['app_id']),
                 'annotations' => $this->_hints(false, true, true),
                 'scopes' => ['customer'],
@@ -383,14 +383,14 @@ trait Mcp_tools {
             'project_id' => $project_id,
             'live_state' => $this->_live_app_state($app),
             'custom_domain' => $this->_domain_status($app),
-            'persistent_paths' => Manifests::persistent_paths((array) $app),
-            'php_extensions' => Build_commands::php_extensions((array) $app),
-            'build_commands' => (string) ($app->build_commands ?? ''),
+            'persistent_paths' => Runtime_settings::persistent_paths((array) $app),
+            'php_extensions' => Runtime_settings::php_extensions((array) $app),
+            'build_commands' => Runtime_settings::build_commands((array) $app),
             'processes' => $this->_processes_with_state($app),
             'auto_deploy' => (bool) ($app->auto_deploy ?? false),
-            'trongate_env' => Trongate_config::env((array) $app),
-            'mail_capture' => Mail_capture::enabled((array) $app),
-            'health_path' => Manifests::health_path((array) $app),
+            'trongate_env' => Runtime_settings::trongate_env((array) $app),
+            'captures_mail' => Runtime_settings::captures_mail((array) $app),
+            'health_check_path' => Runtime_settings::health_check_path((array) $app),
             'database' => empty($app->database_server_id) ? null : Manifests::database_name((int) $app->id),
             'current_deployment' => $current,
             'trongate_upgrade' => $this->_upgrade_summary($this->model->latest_upgrade((int) $app->id)),
@@ -544,15 +544,15 @@ trait Mcp_tools {
 
         $settings = [
             'domain' => $this->_normalise_domain((string) ($app->domain ?? '')),
-            'persistent_paths' => Manifests::persistent_paths((array) $app),
-            'php_extensions' => Build_commands::php_extensions((array) $app),
-            'build_commands' => (string) ($app->build_commands ?? ''),
-            'always_on' => (bool) $app->always_on,
+            'persistent_paths' => Runtime_settings::persistent_paths((array) $app),
+            'php_extensions' => Runtime_settings::php_extensions((array) $app),
+            'build_commands' => Runtime_settings::build_commands((array) $app),
+            'always_on' => Runtime_settings::always_on((array) $app),
             'auto_deploy' => (bool) $app->auto_deploy,
             'source_branch' => (string) $app->source_branch,
-            'trongate_env' => Trongate_config::env((array) $app),
-            'mail_capture' => Mail_capture::enabled((array) $app),
-            'health_path' => Manifests::health_path((array) $app),
+            'trongate_env' => Runtime_settings::trongate_env((array) $app),
+            'captures_mail' => Runtime_settings::captures_mail((array) $app),
+            'health_check_path' => Runtime_settings::health_check_path((array) $app),
         ];
         $processes = null;
         $changed = [];
@@ -604,7 +604,7 @@ trait Mcp_tools {
             $changed[] = 'processes';
         }
 
-        foreach (['always_on', 'auto_deploy', 'mail_capture'] as $flag) {
+        foreach (['always_on', 'auto_deploy', 'captures_mail'] as $flag) {
             if (array_key_exists($flag, $args)) {
                 $settings[$flag] = $this->_bool_arg($args, $flag);
                 $changed[] = $flag;
@@ -625,11 +625,11 @@ trait Mcp_tools {
             $changed[] = 'trongate_env';
         }
 
-        if (array_key_exists('health_path', $args)) {
-            $path = $this->_string_arg($args, 'health_path', false);
-            $this->_check($this->_validate_health_path($path));
-            $settings['health_path'] = $this->_parse_health_path($path);
-            $changed[] = 'health_path';
+        if (array_key_exists('health_check_path', $args)) {
+            $path = $this->_string_arg($args, 'health_check_path', false);
+            $this->_check($this->_validate_health_check_path($path));
+            $settings['health_check_path'] = $this->_parse_health_check_path($path);
+            $changed[] = 'health_check_path';
         }
 
         if ($changed === []) {
@@ -646,15 +646,15 @@ trait Mcp_tools {
             'changed' => $changed,
             'settings' => [
                 'domain' => $this->_domain_status($app),
-                'persistent_paths' => Manifests::persistent_paths((array) $app),
-                'php_extensions' => Build_commands::php_extensions((array) $app),
-                'build_commands' => (string) $app->build_commands,
+                'persistent_paths' => Runtime_settings::persistent_paths((array) $app),
+                'php_extensions' => Runtime_settings::php_extensions((array) $app),
+                'build_commands' => Runtime_settings::build_commands((array) $app),
                 'processes' => $this->model->app_processes((int) $app->id),
-                'always_on' => (bool) $app->always_on,
+                'always_on' => Runtime_settings::always_on((array) $app),
                 'auto_deploy' => (bool) $app->auto_deploy,
-                'trongate_env' => Trongate_config::env((array) $app),
-                'mail_capture' => Mail_capture::enabled((array) $app),
-            'health_path' => Manifests::health_path((array) $app),
+                'trongate_env' => Runtime_settings::trongate_env((array) $app),
+                'captures_mail' => Runtime_settings::captures_mail((array) $app),
+            'health_check_path' => Runtime_settings::health_check_path((array) $app),
             ],
             'next' => 'Settings take effect on the next deploy: deploy_app {"app_id": ' . $app->id . '}',
         ];

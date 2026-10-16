@@ -73,7 +73,7 @@ $test('the inbox entrypoint loads its classes and stops without MAIL_KEY', funct
 });
 
 $test('capture is on unless the app turned it off', function () use ($same) {
-    $same([true, true, false], [Mail_capture::enabled([]), Mail_capture::enabled(['mail_capture' => '1']), Mail_capture::enabled(['mail_capture' => 0])]);
+    $same([true, true, false], [Runtime_settings::captures_mail([]), Runtime_settings::captures_mail(['captures_mail' => '1']), Runtime_settings::captures_mail(['captures_mail' => 0])]);
 });
 
 $test('mail needs AUTH first', function () use ($session, $codes, $same) {

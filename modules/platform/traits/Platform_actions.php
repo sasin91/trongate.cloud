@@ -272,7 +272,7 @@ trait Platform_actions {
                 a.domain_pointed_at, a.domain_secured_at, a.domain_checked_at,
                 a.source_provider, a.source_url, a.source_branch,
                 a.database_server_id, a.current_deployment_id, a.created_at,
-                r.php_extensions, r.build_commands, r.persistent_paths, r.always_on, r.trongate_env, r.mail_capture, r.health_path,
+                r.php_extensions, r.build_commands, r.persistent_paths, r.always_on, r.trongate_env, r.captures_mail, r.health_check_path,
                 st.id AS staging_app_id,
                 cd.status AS current_status,
                 cd.commit_sha AS current_commit_sha,
@@ -295,7 +295,7 @@ trait Platform_actions {
      */
     function find_project_app(int $project_id, int $app_id): object|false {
         $sql = <<<SQL
-            SELECT a.*, r.php_extensions, r.build_commands, r.persistent_paths, r.always_on, r.trongate_env, r.mail_capture, r.health_path, p.namespace
+            SELECT a.*, r.php_extensions, r.build_commands, r.persistent_paths, r.always_on, r.trongate_env, r.captures_mail, r.health_check_path, p.namespace
             FROM app a
             JOIN project p ON p.id = a.project_id
             LEFT JOIN app_runtime r ON r.app_id = a.id
@@ -638,7 +638,7 @@ trait Platform_actions {
      */
     function find_member_app(int $customer_id, int $app_id): object|false {
         $sql = <<<SQL
-            SELECT a.*, r.php_extensions, r.build_commands, r.persistent_paths, r.always_on, r.trongate_env, r.mail_capture, r.health_path,
+            SELECT a.*, r.php_extensions, r.build_commands, r.persistent_paths, r.always_on, r.trongate_env, r.captures_mail, r.health_check_path,
                 p.name AS project_name, p.namespace, pm.role AS member_role
             FROM app a
             JOIN project p ON p.id = a.project_id

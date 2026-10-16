@@ -304,16 +304,16 @@ CREATE TABLE app_runtime (
   -- lines run after composer (Build_commands)
   php_extensions JSON NOT NULL DEFAULT '[]',
   build_commands TEXT NOT NULL DEFAULT '',
-  -- Directories kept across deploys (Manifests::persistent_paths), JSON list
+  -- Directories kept across deploys (Runtime_settings::persistent_paths), JSON list
   persistent_paths JSON NOT NULL DEFAULT '[]',
   -- Never sleeps when idle
   always_on TINYINT(1) NOT NULL DEFAULT 0,
-  -- Trongate's ENV constant, patched into config/config.php (Trongate_config::env)
+  -- Trongate's ENV constant, patched into config/config.php (Runtime_settings::trongate_env)
   trongate_env VARCHAR(20) NOT NULL DEFAULT 'dev',
   -- Mail from config/trongate_email.php goes to the platform's inbox (Mail_capture)
-  mail_capture TINYINT(1) NOT NULL DEFAULT 1,
-  -- Requested by the rollout gate and smoke test; '' is the home page (Manifests::health_path)
-  health_path VARCHAR(200) NOT NULL DEFAULT '',
+  captures_mail TINYINT(1) NOT NULL DEFAULT 1,
+  -- Requested by the rollout gate and smoke test; '' is the home page (Runtime_settings::health_check_path)
+  health_check_path VARCHAR(200) NOT NULL DEFAULT '',
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_app_runtime_app FOREIGN KEY (app_id) REFERENCES app (id) ON DELETE CASCADE
 );

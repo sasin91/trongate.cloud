@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/Runtime_settings.php';
+
 require_once __DIR__ . '/../../../config/platform.php';
 
 /**
@@ -10,13 +12,6 @@ require_once __DIR__ . '/../../../config/platform.php';
  */
 class Trongate_config {
 
-    /** ENV for an app that has not picked one: Trongate shows errors in dev */
-    const DEFAULT_ENV = 'dev';
-
-    /** Offered on the app's Settings page; any other value matching ENV_PATTERN works too */
-    const ENV_SUGGESTIONS = ['dev', 'staging', 'prod'];
-
-    const ENV_PATTERN = '/^[A-Za-z0-9_-]{1,20}$/';
 
     /**
      * Bump whenever what the platform writes into an app's config changes
@@ -26,15 +21,6 @@ class Trongate_config {
      * 2: mail capture (trongate_email.php).
      */
     const CONFIG_VERSION = 2;
-
-    /**
-     * The app's Trongate ENV constant (app_runtime.trongate_env), DEFAULT_ENV when unset or invalid
-     */
-    static function env(array $app): string {
-        $env = (string) ($app['trongate_env'] ?? '');
-
-        return preg_match(self::ENV_PATTERN, $env) ? $env : self::DEFAULT_ENV;
-    }
 
     /**
      * What the platform sets in an app's config/*.php: BASE_URL and ENV
@@ -53,7 +39,7 @@ class Trongate_config {
 
         $rules = [
             new Config_rule('BASE_URL', self::base_url($app)),
-            new Config_rule('ENV', self::env($app)),
+            new Config_rule('ENV', Runtime_settings::trongate_env($app)),
         ];
         $v1 = ($app['type'] ?? 'trongate_v2') === 'trongate_v1';
 

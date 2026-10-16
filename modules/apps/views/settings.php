@@ -27,7 +27,7 @@
             <label for="trongate_env" class="form-label">Environment</label>
             <input type="text" name="trongate_env" id="trongate_env" class="form-input mono" list="trongate_env_options" value="<?= htmlspecialchars($trongate_env) ?>">
             <datalist id="trongate_env_options">
-                <?php foreach (Trongate_config::ENV_SUGGESTIONS as $option): ?>
+                <?php foreach (Runtime_settings::TRONGATE_ENV_SUGGESTIONS as $option): ?>
                 <option value="<?= htmlspecialchars($option) ?>">
                 <?php endforeach; ?>
             </datalist>
@@ -35,8 +35,8 @@
         </div>
 
         <div class="form-group">
-            <label for="health_path" class="form-label">Health Check Path</label>
-            <input type="text" name="health_path" id="health_path" class="form-input mono" placeholder="/" value="<?= htmlspecialchars($health_path) ?>">
+            <label for="health_check_path" class="form-label">Health Check Path</label>
+            <input type="text" name="health_check_path" id="health_check_path" class="form-input mono" placeholder="/" value="<?= htmlspecialchars($health_check_path) ?>">
             <p class="form-hint">Each deploy goes live only once this path answers with a 2xx or 3xx. The home page by default; an API whose home page is a 404 can use a health endpoint such as <code>/health</code>.</p>
         </div>
 
@@ -96,7 +96,7 @@
 
         <div class="form-group">
             <label class="checkbox-label">
-                <input type="checkbox" name="mail_capture" value="1" <?= $mail_capture ? 'checked' : '' ?>>
+                <input type="checkbox" name="captures_mail" value="1" <?= $captures_mail ? 'checked' : '' ?>>
                 Capture mail
             </label>
             <p class="form-hint">Mail your app sends with Trongate's email module goes to its <a href="apps/<?= $app->id ?>/mail">Mail</a> tab instead of being delivered; we set the SMTP settings in <code>config/trongate_email.php</code> for you. Turn this off to send real mail with your own SMTP settings in that file (port 587 or 465).</p>

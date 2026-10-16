@@ -69,7 +69,7 @@ class Platform_task {
      */
     static function app(PDO $db, int $project_id, int $app_id): array {
         $sql = <<<SQL
-            SELECT a.*, r.php_extensions, r.build_commands, r.persistent_paths, r.always_on, r.trongate_env, r.mail_capture, r.health_path,
+            SELECT a.*, r.php_extensions, r.build_commands, r.persistent_paths, r.always_on, r.trongate_env, r.captures_mail, r.health_check_path,
                 p.namespace, p.owner_id AS project_owner_id
             FROM app a
             JOIN project p ON p.id = a.project_id
@@ -647,7 +647,7 @@ class Platform_task {
     }
 
     /**
-     * Request the app's public URL (at its health check path, Manifests::health_path)
+     * Request the app's public URL (at its health check path, Runtime_settings::health_check_path)
      * until it answers 200 with a page of its own.
      *
      * A 200 that is only the router's fallback text (FALLBACK_BODIES) does not
@@ -658,7 +658,7 @@ class Platform_task {
      * go to the deploy log.
      */
     static function smoke_test(Runtime $runtime, Task_log $log, array $app): bool {
-        $url = rtrim(Trongate_config::base_url($app), '/') . Manifests::health_path($app);
+        $url = rtrim(Trongate_config::base_url($app), '/') . Runtime_settings::health_check_path($app);
         $kube = $runtime->kube();
         $namespace = Manifests::namespace_name($app);
         $name = Manifests::app_name((int) $app['id']);
