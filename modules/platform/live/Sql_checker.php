@@ -18,7 +18,7 @@ require_once __DIR__ . '/Setup_sql_plan.php';
  *
  * Framework-free, like App_database and Setup_sql_plan.
  */
-final class Sql_check {
+final class Sql_checker {
 
     /** Problems shown in full; past that, only how many more there are */
     const MAX_PROBLEMS = 20;

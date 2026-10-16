@@ -1,7 +1,7 @@
 <?php
 /**
- * What a live SQL check found (Sql_check_response::_show_sql_check), shown
- * under the SQL box by apps_module/js/sql_check.js. Problems look like the
+ * What a live SQL check found (Sql_check::_show), shown under the SQL box
+ * by js/sql_check.js. Problems look like the
  * Rust compiler's errors.
  *
  * Expects: $refused, $summary, $problems (title, where, rows of gutter, pipe, text, kind),

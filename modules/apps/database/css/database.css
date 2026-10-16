@@ -593,69 +593,11 @@ button.db-rownum:focus {
     background: #fcfcff;
 }
 
-/* Live SQL check under the editor (views/_sql_check.php) */
+/* Live SQL check under the editor (sql_check module) */
 .db-sql-check {
     padding: 0.4rem 0.875rem;
-    font-size: 0.75rem;
+    font-size: 0.8125rem;
     border-bottom: 1px solid var(--border);
-    background: #fafbff;
-}
-
-.sql-check-head {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 0.5rem 0.875rem;
-}
-
-.sql-check-summary,
-.sql-check-more {
-    margin: 0;
-    color: var(--text-muted);
-}
-
-.sql-check-summary.sql-check-refused {
-    color: #8a2a22;
-}
-
-.sql-check-fix {
-    padding: 0.15rem 0.6rem;
-    font: inherit;
-    color: var(--text-main);
-    background: var(--white);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-.sql-check-fix:hover {
-    border-color: var(--accent);
-}
-
-/* One problem, drawn like a Rust compiler error */
-.sql-check-problem {
-    margin: 0.4rem 0 0;
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-    line-height: 1.5;
-    color: var(--text-main);
-    overflow-x: auto;
-    tab-size: 4;
-}
-
-.sql-check-error,
-.sql-check-mark {
-    color: #b3261e;
-    font-weight: 600;
-}
-
-.sql-check-gutter {
-    color: #6966d6;
-}
-
-.sql-check-note,
-.sql-check-help {
-    color: #1d6b6b;
 }
 
 .db-sql-bar {

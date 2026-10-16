@@ -1,0 +1,65 @@
+/* Live SQL check (views/_result.php): a summary, a Comment out button, and
+   each problem drawn like a Rust compiler error. Sized in em, so the box it
+   sits under sets the size. */
+.sql-check[hidden] {
+    display: none;
+}
+
+.sql-check-head {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5em 0.875em;
+}
+
+.sql-check-summary,
+.sql-check-more {
+    margin: 0;
+    color: #5b5f7e;
+}
+
+.sql-check-summary.sql-check-refused {
+    color: #a12c2c;
+}
+
+.sql-check-fix {
+    padding: 0.25em 0.8em;
+    font: inherit;
+    color: #1d1e6e;
+    background: #fff;
+    border: 1px solid #d6d7ea;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.sql-check-fix:hover {
+    border-color: #6966d6;
+}
+
+.sql-check-problem {
+    margin: 0.5em 0 0;
+    padding: 0.7em 1em;
+    font-family: var(--font-mono, var(--wz-mono, ui-monospace, monospace));
+    font-size: 0.92em;
+    line-height: 1.5;
+    color: #1d1e6e;
+    background: #f7f7fc;
+    border-radius: 8px;
+    overflow-x: auto;
+    tab-size: 4;
+}
+
+.sql-check-error,
+.sql-check-mark {
+    color: #b3261e;
+    font-weight: 600;
+}
+
+.sql-check-gutter {
+    color: #6966d6;
+}
+
+.sql-check-note,
+.sql-check-help {
+    color: #1d6b6b;
+}

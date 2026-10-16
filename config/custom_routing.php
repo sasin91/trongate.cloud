@@ -11,6 +11,9 @@ $routes = [
     'auth/github/callback' => 'github_auth/callback',
     'auth/github/installed' => 'github_auth/installed',
 
+    // Live SQL check of any SQL box (sql_check module)
+    'sql/check' => 'sql_check/check',
+
     // News: the changelog and writing (modules/news/posts)
     'news/feed' => 'news/feed',
     'news/changelog' => 'news/index/changelog',
@@ -25,7 +28,6 @@ $routes = [
     'onboarding/branches' => 'customer-onboarding/repository_branch_options',
     'onboarding/env-suggestions' => 'customer-onboarding/env_suggestion_fields',
     'onboarding/sql-files' => 'customer-onboarding/sql_file_options',
-    'onboarding/setup-sql-check' => 'customer-onboarding/check_setup_sql',
     'onboarding/build-suggestions' => 'customer-onboarding/build_suggestion_fields',
     'onboarding/(:any)' => 'customer-onboarding/$1',
 
@@ -51,7 +53,6 @@ $routes = [
     'apps/branches' => 'apps/repository_branch_options',
     'apps/env-suggestions' => 'apps/env_suggestion_fields',
     'apps/sql-files' => 'apps/sql_file_options',
-    'apps/setup-sql-check' => 'apps/check_setup_sql',
     'apps/build-suggestions' => 'apps/build_suggestion_fields',
     'apps/(:num)/deploy' => 'apps/deploy/$1',
     'apps/(:num)/setup-sql/dismiss' => 'apps-setup_sql/dismiss/$1',
@@ -80,7 +81,6 @@ $routes = [
     'apps/(:num)/staging/submit' => 'apps-staging/submit/$1',
     'apps/(:num)/database' => 'apps-database/index/$1',
     'apps/(:num)/database/query' => 'apps-database/query/$1',
-    'apps/(:num)/database/check' => 'apps-database/check/$1',
     'apps/(:num)/database/copy-tables' => 'apps-database/copy_tables/$1',
     'apps/(:num)/database/row' => 'apps-database/row/$1',
     'apps/(:num)/database/row/submit' => 'apps-database/submit_row/$1',

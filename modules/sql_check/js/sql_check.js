@@ -1,7 +1,8 @@
-// Live SQL check, like Laravel Precognition: while SQL is typed or pasted into a
-// textarea with data-sql-check (the URL to post it to), the server runs the same
-// checks the real submit runs, without running the SQL, and its answer
-// (views/_sql_check.php) is shown in the element data-sql-check-result names.
+// Live SQL check, like Laravel Precognition, for any SQL box: while SQL is typed
+// or pasted into a textarea with data-sql-check (sql/check), the server runs the
+// checks named by data-sql-check-rules (the ones its real submit runs), without
+// running the SQL, and its answer (views/_result.php) is shown in the element
+// data-sql-check-result names.
 // Its "Comment out" button puts -- before the lines of the statements it names.
 // Without JS the SQL is still checked when it is submitted.
 document.addEventListener('DOMContentLoaded', function () {
@@ -39,6 +40,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
             const body = new FormData();
             body.append('sql', sql);
+            body.append('rules', textarea.dataset.sqlCheckRules || 'database');
 
             if (allowChanges && allowChanges.checked) body.append('allow_changes', '1');
 

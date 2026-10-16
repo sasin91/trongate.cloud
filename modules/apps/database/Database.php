@@ -8,7 +8,6 @@ require_once __DIR__ . '/traits/App_database_guard.php';
 require_once __DIR__ . '/traits/App_database_diagram.php';
 require_once __DIR__ . '/traits/App_database_schema.php';
 require_once __DIR__ . '/traits/App_database_import.php';
-require_once APPPATH . 'modules/apps/traits/Sql_check_response.php';
 
 /**
  * Child module of apps: apps/{id}/database, browse and edit an app's own
@@ -27,7 +26,6 @@ class Database extends Trongate {
     use App_database_diagram;
     use App_database_schema;
     use App_database_import;
-    use Sql_check_response;
 
     /** mx-build-modal for the Change password form (views/_password_form.php) */
     const PASSWORD_MODAL = '{"id":"db-password-modal","modalHeading":"Change password","width":"32rem","marginTop":"8vh"}';
@@ -113,22 +111,6 @@ class Database extends Trongate {
         }
 
         $this->_database_page($app, $page);
-    }
-
-    /**
-     * POST apps/{id}/database/check: what query() would refuse in the SQL, per
-     * statement, checked while it is typed (apps_module/js/sql_check.js). The
-     * SQL is never sent to the database.
-     */
-    function check(): void {
-        $this->_make_sure_allowed();
-        $this->_member_app_or_redirect(segment(3, 'int'));
-        $this->_require_post_with_csrf();
-
-        $sql = (string) post('sql'); // as typed, so the lines it names are the box's lines
-        $allow_changes = (bool) post('allow_changes');
-
-        $this->_show_sql_check(Sql_check::database_tab($sql, $allow_changes));
     }
 
     /**
@@ -656,14 +638,14 @@ class Database extends Trongate {
             'schema_summary' => '',
             'schema_skipped' => null,
             'crumbs' => [...$this->_app_crumbs($app), ['apps/' . $app->id . '/database', 'Database']],
-            'additional_includes_top' => ['apps_module/css/apps.css', 'apps-database_module/css/database.css', 'apps-database_module/css/diagram.css'],
+            'additional_includes_top' => ['apps_module/css/apps.css', 'apps-database_module/css/database.css', 'apps-database_module/css/diagram.css', 'sql_check_module/css/sql_check.css'],
             'additional_includes_btm' => [
                 'apps-database_module/js/password.js',
                 'apps-database_module/js/keep_scroll.js',
                 'apps-database_module/js/select.js',
                 'apps-database_module/js/workspace.js',
                 'apps-database_module/js/import.js',
-                'apps_module/js/sql_check.js',
+                'sql_check_module/js/sql_check.js',
             ],
         ];
         $data = $page + $data;
@@ -791,7 +773,7 @@ class Database extends Trongate {
         $data['history_url'] = $this->_database_url($app, $this->_with_table(['view' => 'history'], $table_name));
         $data['backups_url'] = $this->_database_url($app, $this->_with_table(['view' => 'backups'], $table_name));
         $data['import_url'] = $this->_database_url($app, ['view' => 'import']);
-        $data['check_url'] = BASE_URL . $data['base'] . '/check';
+        $data['check_url'] = BASE_URL . 'sql/check';
         $data['query_url'] = $data['base'] . '/query' . ($table_name === null ? '' : '?' . http_build_query(['table' => $table_name]));
         $data['sql_placeholder'] = 'SELECT * FROM ' . ($table_name ?? 'users') . ' LIMIT 10';
         $data['statement_seconds'] = App_database::STATEMENT_SECONDS;

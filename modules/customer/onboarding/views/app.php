@@ -7,6 +7,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Your first app - trongate.cloud</title>
     <link rel="stylesheet" href="<?= BASE_URL ?>apps_module/css/wizard.css">
+    <link rel="stylesheet" href="<?= BASE_URL ?>sql_check_module/css/sql_check.css">
 </head>
 
 <body class="wz-body">
@@ -17,7 +18,6 @@
     $branches_url = 'onboarding/branches';
     $env_url = 'onboarding/env-suggestions';
     $sql_url = 'onboarding/sql-files';
-    $sql_check_url = 'onboarding/setup-sql-check';
     $build_url = 'onboarding/build-suggestions';
     $q_offset = 1;
     require APPPATH . 'modules/apps/views/_app_steps.php';

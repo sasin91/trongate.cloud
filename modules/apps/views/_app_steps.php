@@ -5,7 +5,6 @@
  *
  * Expects: $provider, $github_connected, $repositories, $connect_url, $public_link, $install_url, $app_types, $branches_url (returns <option>s),
  * $env_url (returns the Environment inputs), $sql_url (returns the Database question's files),
- * $sql_check_url (checks the typed SQL while it is typed),
  * $build_url (returns the Build question's fields), $env_fields, $env_loaded_for, $settings, $setup_sql,
  * $build and $error_step (App_form::_app_form_data),
  * $form_action, $q_offset (questions answered before this page), $q_total,
@@ -163,7 +162,7 @@ $errors = validation_errors('<p>', '</p>');
                 </label>
                 <label class="wz-field">
                     <span class="wz-label">Or type SQL</span>
-                    <textarea name="setup_sql" class="wz-in mono wz-sql" rows="5" spellcheck="false" placeholder="CREATE TABLE posts (id INT PRIMARY KEY AUTO_INCREMENT, title VARCHAR(255));" aria-describedby="wz-sql-check" data-sql-check="<?= $e(BASE_URL . $sql_check_url) ?>" data-sql-check-result="wz-sql-check"><?= $e($setup_sql['sql']) ?></textarea>
+                    <textarea name="setup_sql" class="wz-in mono wz-sql" rows="5" spellcheck="false" placeholder="CREATE TABLE posts (id INT PRIMARY KEY AUTO_INCREMENT, title VARCHAR(255));" aria-describedby="wz-sql-check" data-sql-check="<?= $e(BASE_URL) ?>sql/check" data-sql-check-rules="setup" data-sql-check-result="wz-sql-check"><?= $e($setup_sql['sql']) ?></textarea>
                     <span class="wz-hint">Runs after the files. Kept encrypted until it has run. If a statement fails, the deploy carries on and the app page shows what did not run.</span>
                 </label>
                 <div id="wz-sql-check" class="sql-check wz-sql-check" aria-live="polite" hidden></div>
@@ -260,4 +259,4 @@ $errors = validation_errors('<p>', '</p>');
     </aside>
 </div>
 <script src="<?= BASE_URL ?>apps_module/js/app_steps.js"></script>
-<script src="<?= BASE_URL ?>apps_module/js/sql_check.js"></script>
+<script src="<?= BASE_URL ?>sql_check_module/js/sql_check.js"></script>

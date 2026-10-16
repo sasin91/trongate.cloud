@@ -48,7 +48,7 @@ class Apps extends Trongate {
             'project' => $project,
             'form' => $this->_app_form_data((int) $customer->id, 'auth/github?then=projects/' . (int) $project->id . '/apps/new'),
             'crumbs' => [['projects/' . $project->id, (string) $project->name], ['projects/' . $project->id . '/apps/new', 'New app']],
-            'additional_includes_top' => ['apps_module/css/wizard.css'],
+            'additional_includes_top' => ['apps_module/css/wizard.css', 'sql_check_module/css/sql_check.css'],
         ];
         $this->module('templates');
         $this->templates->customer($data);
