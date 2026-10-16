@@ -9,8 +9,8 @@ class App_model extends Model {
     
     private string $table_name = 'app';
 
-    // Never php_extensions, build_commands, setup_sql
-    private string $columns = '`id`, `project_id`, `label`, `slug`, `serves_slug_host`, `type`, `environment`, `production_app_id`, `domain`, `verified_domain`, `domain_pointed_at`, `domain_secured_at`, `domain_dns_failures`, `domain_checked_at`, `source_url`, `source_branch`, `source_provider`, `auto_deploy`, `reconciled_at`, `persistent_paths`, `always_on`, `trongate_env`, `mail_capture`, `health_path`, `setup_sql_status`, `setup_sql_error`, `database_server_id`, `current_deployment_id`, `created_at`, `deleted_at`';
+    // Never setup_sql
+    private string $columns = '`id`, `project_id`, `label`, `slug`, `serves_slug_host`, `type`, `environment`, `production_app_id`, `domain`, `verified_domain`, `domain_pointed_at`, `domain_secured_at`, `domain_dns_failures`, `domain_checked_at`, `source_url`, `source_branch`, `source_provider`, `auto_deploy`, `reconciled_at`, `setup_sql_status`, `setup_sql_error`, `database_server_id`, `current_deployment_id`, `created_at`, `deleted_at`';
 
     /**
      * Return the list of searchable column names (used by the controller for validation).
@@ -161,11 +161,6 @@ class App_model extends Model {
         $record_obj->source_provider = trim((string) $record_obj->source_provider);
         $record_obj->auto_deploy = ($record_obj->auto_deploy == 1) ? 'yes' : 'no';
         $record_obj->reconciled_at = trim((string) $record_obj->reconciled_at);
-        $record_obj->persistent_paths = trim((string) $record_obj->persistent_paths);
-        $record_obj->always_on = ($record_obj->always_on == 1) ? 'yes' : 'no';
-        $record_obj->trongate_env = trim((string) $record_obj->trongate_env);
-        $record_obj->mail_capture = ($record_obj->mail_capture == 1) ? 'yes' : 'no';
-        $record_obj->health_path = trim((string) $record_obj->health_path);
         $record_obj->setup_sql_status = trim((string) $record_obj->setup_sql_status);
         $record_obj->setup_sql_error = trim((string) $record_obj->setup_sql_error);
         $record_obj->created_at = trim((string) $record_obj->created_at);

@@ -11,11 +11,12 @@ require_once APPPATH . 'modules/platform/manifests/Build_commands.php';
 trait App_records {
 
     /**
-     * Create an app with a unique slug. The repository must be one the GitHub
-     * App is installed on: deploys read it with an installation token.
+     * Create an app with a unique slug and the default runtime settings
+     * (app_runtime). The repository must be one the GitHub App is installed
+     * on: deploys read it with an installation token.
      */
     function create_app(int $project_id, string $label, string $type, string $source_url, string $source_provider, string $source_branch = 'main', ?string $domain = null, bool $auto_deploy = true): int|false {
-        return $this->db->insert([
+        $app_id = $this->db->insert([
             'project_id' => $project_id,
             'label' => $label,
             'slug' => $this->generate_app_slug($label),
@@ -25,8 +26,15 @@ trait App_records {
             'source_branch' => $source_branch ?: 'main',
             'domain' => $domain,
             'auto_deploy' => $auto_deploy ? 1 : 0,
-            'persistent_paths' => '[]',
         ], 'app');
+
+        if ($app_id === false) {
+            return false;
+        }
+
+        $this->db->query_bind('INSERT INTO app_runtime (app_id) VALUES (:app_id)', ['app_id' => $app_id]);
+
+        return $app_id;
     }
 
     /**
@@ -85,65 +93,6 @@ trait App_records {
     }
 
     /**
-     * The extra PHP extensions the app's image build installs, in the order
-     * they were added
-     *
-     * @return list<string>
-     */
-    function app_php_extensions(int $app_id): array {
-        $rows = $this->db->query_bind('SELECT name FROM app_php_extension WHERE app_id = :app_id ORDER BY id', ['app_id' => $app_id], 'array');
-
-        return array_column($rows ?: [], 'name');
-    }
-
-    /**
-     * The shell lines the app's image build runs (Build_commands); '' when none
-     */
-    function app_build_commands(int $app_id): string {
-        $commands = $this->db->query_bind('SELECT commands FROM app_build WHERE app_id = :app_id', ['app_id' => $app_id], 'column');
-
-        return (string) ($commands ?: '');
-    }
-
-    /**
-     * Replace the app's extra PHP extensions with these (checked by
-     * _validate_php_extensions); they take effect on the next deploy
-     *
-     * @param list<string> $names
-     */
-    function save_app_php_extensions(int $app_id, array $names): void {
-        $keep = $names === [] ? "''" : implode(',', array_map(fn(int $i) => ":name_{$i}", array_keys($names)));
-        $params = ['app_id' => $app_id];
-        foreach ($names as $i => $name) {
-            $params["name_{$i}"] = $name;
-        }
-        $this->db->query_bind("DELETE FROM app_php_extension WHERE app_id = :app_id AND name NOT IN ({$keep})", $params);
-
-        foreach ($names as $name) {
-            $this->db->query_bind('INSERT IGNORE INTO app_php_extension (app_id, name) VALUES (:app_id, :name)', ['app_id' => $app_id, 'name' => $name]);
-        }
-    }
-
-    /**
-     * Set the app's build commands (checked by _validate_build_commands);
-     * '' removes them. They take effect on the next deploy.
-     */
-    function save_app_build_commands(int $app_id, string $commands): void {
-        $commands = Build_commands::normalise($commands);
-
-        if ($commands === '') {
-            $this->db->query_bind('DELETE FROM app_build WHERE app_id = :app_id', ['app_id' => $app_id]);
-            return;
-        }
-
-        $this->db->query_bind(
-            'INSERT INTO app_build (app_id, commands) VALUES (:app_id, :commands)
-             ON DUPLICATE KEY UPDATE commands = VALUES(commands)',
-            ['app_id' => $app_id, 'commands' => $commands]
-        );
-    }
-
-    /**
      * The SQL the app's database starts with (Setup_sql); its first
      * deploy runs it
      */
@@ -173,30 +122,43 @@ trait App_records {
         }
 
         $this->update_app_domain($project_id, $app_id, $settings['domain']);
-        $this->save_app_php_extensions($app_id, $settings['php_extensions']);
-        $this->save_app_build_commands($app_id, $settings['build_commands']);
 
+        $this->db->query_bind(
+            'UPDATE app SET auto_deploy = :auto_deploy, source_branch = :source_branch WHERE id = :app_id',
+            ['auto_deploy' => $settings['auto_deploy'] ? 1 : 0, 'source_branch' => $settings['source_branch'], 'app_id' => $app_id]
+        );
+
+        $this->save_app_runtime($app_id, $settings);
+    }
+
+    /**
+     * Write the app's runtime settings (app_runtime), creating its row if it
+     * has none
+     *
+     * @param array{persistent_paths: list<string>, php_extensions: list<string>, build_commands: string, always_on: bool, trongate_env: string, mail_capture: bool, health_path: string} $settings
+     */
+    function save_app_runtime(int $app_id, array $settings): void {
         $sql = <<<SQL
-            UPDATE app
-            SET persistent_paths = :persistent_paths,
-                always_on = :always_on,
-                trongate_env = :trongate_env,
-                mail_capture = :mail_capture,
-                health_path = :health_path,
-                auto_deploy = :auto_deploy,
-                source_branch = :source_branch
-            WHERE id = :app_id AND project_id = :project_id
+            INSERT INTO app_runtime (app_id, php_extensions, build_commands, persistent_paths, always_on, trongate_env, mail_capture, health_path)
+            VALUES (:app_id, :php_extensions, :build_commands, :persistent_paths, :always_on, :trongate_env, :mail_capture, :health_path)
+            ON DUPLICATE KEY UPDATE
+                php_extensions = VALUES(php_extensions),
+                build_commands = VALUES(build_commands),
+                persistent_paths = VALUES(persistent_paths),
+                always_on = VALUES(always_on),
+                trongate_env = VALUES(trongate_env),
+                mail_capture = VALUES(mail_capture),
+                health_path = VALUES(health_path)
         SQL;
         $this->db->query_bind($sql, [
-            'persistent_paths' => json_encode($settings['persistent_paths']),
+            'app_id' => $app_id,
+            'php_extensions' => json_encode(array_values($settings['php_extensions'])),
+            'build_commands' => Build_commands::normalise($settings['build_commands']),
+            'persistent_paths' => json_encode(array_values($settings['persistent_paths'])),
             'always_on' => $settings['always_on'] ? 1 : 0,
             'trongate_env' => $settings['trongate_env'],
             'mail_capture' => $settings['mail_capture'] ? 1 : 0,
             'health_path' => $settings['health_path'] === '/' ? '' : $settings['health_path'],
-            'auto_deploy' => $settings['auto_deploy'] ? 1 : 0,
-            'source_branch' => $settings['source_branch'],
-            'app_id' => $app_id,
-            'project_id' => $project_id,
         ]);
     }
 

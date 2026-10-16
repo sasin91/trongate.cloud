@@ -1,15 +1,16 @@
 <?php
 /**
- * Search modal form for filtering builds.
+ * Search modal form for filtering runtimes.
  *
  * Loaded via MX into a modal when the Search button is clicked.
  */
 $searchable_columns = [
-    'commands' => 'Commands',
+    'php_extensions' => 'Php Extensions',
+    'build_commands' => 'Build Commands',
 ];
 
 $form_attr = ['id' => 'search-form'];
-echo form_open('app_build/submit_search', $form_attr);
+echo form_open('app_runtime/submit_search', $form_attr);
 ?>
     <div class="form-group">
         <?= form_label('Search Query') ?>

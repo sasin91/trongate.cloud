@@ -1,10 +1,10 @@
 <?php
 /**
- * App_php_extension Controller
+ * App_runtime Controller
  *
- * Manages php extension records (read-only in tg-admin).
+ * Manages runtime records (read-only in tg-admin).
  */
-class App_php_extension extends Trongate {
+class App_runtime extends Trongate {
 
     private int $default_limit = 20;
     private array $per_page_options = [10, 20, 50, 100];
@@ -15,11 +15,11 @@ class App_php_extension extends Trongate {
      * @return void
      */
     public function index(): void {
-        redirect('app_php_extension/manage');
+        redirect('app_runtime/manage');
     }
 
     /**
-     * Display paginated list of php extensions.
+     * Display paginated list of runtimes.
      *
      * Shows records in a table with pagination controls. Includes
      * dropdown for selecting number of records per page.
@@ -59,7 +59,7 @@ class App_php_extension extends Trongate {
         $data = [
             'rows' => $rows,
             'pagination_data' => $this->get_pagination_data($total_rows, $limit, $search_query, $search_column),
-            'view_module' => 'app_php_extension',
+            'view_module' => 'app_runtime',
             'view_file' => 'manage',
             'per_page_options' => $this->per_page_options,
             'selected_per_page' => $this->get_selected_per_page()
@@ -73,39 +73,6 @@ class App_php_extension extends Trongate {
 
 
 
-    /**
-     * Display detailed view of a single php extension.
-     *
-     * Shows all details with edit/delete options.
-     * Automatically handles missing records with 404 page.
-     *
-     * @return void
-     */
-    public function show(): void {
-        $this->trongate_security->make_sure_allowed();
-
-        $update_id = segment(3, 'int');
-
-        if ($update_id === 0) {
-            redirect('app_php_extension/manage');
-        }
-
-        // Fetch record and prepare for display.
-        $data = $this->model->get_data_from_db($update_id, true);
-
-        if ($data === false) {
-            $this->not_found();
-            return;
-        }
-
-        // Add additional view data
-        $data['update_id'] = $update_id;
-        $data['headline'] = 'PHP Extension Details';
-        $data['back_url'] = $this->get_back_url();
-        $data['view_module'] = 'app_php_extension';
-        $data['view_file'] = 'show';
-        $this->templates->admin($data);
-    }
 
 
 
@@ -126,7 +93,7 @@ class App_php_extension extends Trongate {
         }
 
         $_SESSION['selected_per_page'] = $selected_index;
-        redirect('app_php_extension/manage');
+        redirect('app_runtime/manage');
     }
 
     /**
@@ -147,46 +114,14 @@ class App_php_extension extends Trongate {
         return [
             'total_rows' => $total_rows,
             'limit' => $limit,
-            'pagination_root' => 'app_php_extension/manage',
+            'pagination_root' => 'app_runtime/manage',
             'pagination_query' => $pagination_query,
-            'record_name_plural' => 'php extensions',
+            'record_name_plural' => 'runtimes',
             'include_showing_statement' => true
         ];
     }
 
-    /**
-     * Determine appropriate back URL for navigation.
-     *
-     * Uses previous URL if it was the manage page, otherwise defaults to manage.
-     *
-     * @return string URL for back button
-     */
-    private function get_back_url(): string {
-        $previous_url = previous_url();
-        if ($previous_url !== '' && strpos($previous_url, BASE_URL . 'app_php_extension/manage') === 0) {
-            return $previous_url;
-        }
-        return BASE_URL . 'app_php_extension/manage';
-    }
 
-    /**
-     * Display 404-style not found page for missing php extensions.
-     *
-     * Shows user-friendly error message with navigation back.
-     *
-     * @return void
-     */
-    private function not_found(): void {
-        $data = [
-            'headline' => 'PHP Extension Not Found',
-            'message' => 'The php extension you\'re looking for doesn\'t exist or has been deleted.',
-            'back_url' => $this->get_back_url(),
-            'back_label' => 'Go Back',
-            'view_module' => 'app_php_extension',
-            'view_file' => 'not_found'
-        ];
-        $this->templates->admin($data);
-    }
 
     /**
      * Get selected per-page index from session.
@@ -220,7 +155,7 @@ class App_php_extension extends Trongate {
     }
 
     /**
-     * Handle search form submission for filtering php extensions.
+     * Handle search form submission for filtering runtimes.
      *
      * Preprocesses text parameters and triggers custom query filtering.
      *
@@ -245,14 +180,14 @@ class App_php_extension extends Trongate {
         // Validate minimum 2 character length
         if (strlen($search_query) < 2) {
             set_flashdata('Search query must be at least 2 characters');
-            redirect('app_php_extension/manage');
+            redirect('app_runtime/manage');
         }
 
-        redirect('app_php_extension/manage?search_query=' . urlencode($search_query) . '&search_column=' . urlencode($search_column));
+        redirect('app_runtime/manage?search_query=' . urlencode($search_query) . '&search_column=' . urlencode($search_column));
     }
 
     /**
-     * Display the search modal form for filtering php extensions.
+     * Display the search modal form for filtering runtimes.
      *
      * Renders a form with a search input and a dropdown of searchable columns.
      *
@@ -261,7 +196,7 @@ class App_php_extension extends Trongate {
     public function search_modal(): void {
         $this->trongate_security->make_sure_allowed();
 
-        $data['view_module'] = 'app_php_extension';
+        $data['view_module'] = 'app_runtime';
         $data['view_file'] = 'search_modal';
         $this->view('search_modal', $data);
     }

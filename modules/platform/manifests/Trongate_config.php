@@ -28,7 +28,7 @@ class Trongate_config {
     const CONFIG_VERSION = 2;
 
     /**
-     * The app's Trongate ENV constant (app.trongate_env), DEFAULT_ENV when unset or invalid
+     * The app's Trongate ENV constant (app_runtime.trongate_env), DEFAULT_ENV when unset or invalid
      */
     static function env(array $app): string {
         $env = (string) ($app['trongate_env'] ?? '');

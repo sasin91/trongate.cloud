@@ -62,14 +62,18 @@ class Platform_task {
     }
 
     /**
-     * The app row plus its project's namespace and owner_id (project_owner_id);
-     * fails unless it belongs to the project and neither is deleted
+     * The app row with its runtime settings (app_runtime; NULL, so the
+     * defaults, when it has none) plus its project's namespace and owner_id
+     * (project_owner_id); fails unless it belongs to the project and neither
+     * is deleted
      */
     static function app(PDO $db, int $project_id, int $app_id): array {
         $sql = <<<SQL
-            SELECT a.*, p.namespace, p.owner_id AS project_owner_id
+            SELECT a.*, r.php_extensions, r.build_commands, r.persistent_paths, r.always_on, r.trongate_env, r.mail_capture, r.health_path,
+                p.namespace, p.owner_id AS project_owner_id
             FROM app a
             JOIN project p ON p.id = a.project_id
+            LEFT JOIN app_runtime r ON r.app_id = a.id
             WHERE a.id = ? AND a.project_id = ? AND a.deleted_at IS NULL AND p.deleted_at IS NULL
             SQL;
 
@@ -80,22 +84,6 @@ class Platform_task {
         }
 
         return $app;
-    }
-
-    /**
-     * The app's build settings: its extra PHP extensions (app_php_extension)
-     * and its build commands (app_build, '' when none)
-     *
-     * @return array{php_extensions: list<string>, commands: string}
-     */
-    static function app_build(PDO $db, int $app_id): array {
-        $extensions = self::rows($db, 'SELECT name FROM app_php_extension WHERE app_id = ? ORDER BY id', [$app_id]);
-        $build = self::row($db, 'SELECT commands FROM app_build WHERE app_id = ?', [$app_id]);
-
-        return [
-            'php_extensions' => array_column($extensions, 'name'),
-            'commands' => (string) ($build['commands'] ?? ''),
-        ];
     }
 
     /**

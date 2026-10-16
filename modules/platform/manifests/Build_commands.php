@@ -1,7 +1,7 @@
 <?php
 
 /**
- * An app's build commands (app_build.commands): shell lines the deploy runs
+ * An app's build commands (app_runtime.build_commands): shell lines the deploy runs
  * in the image build, after composer and the app's files are in /app, such
  * as `npm ci` and `npm run build`. They run in a build stage that has Node
  * or Bun when the commands name them; the app image takes only /app from
@@ -184,6 +184,32 @@ final class Build_commands {
         $lines = array_map('rtrim', $lines);
 
         return trim(implode("\n", $lines), "\n");
+    }
+
+    /**
+     * The app's extra PHP extensions (app_runtime.php_extensions, a JSON
+     * list): lowercase, unique, only names install-php-extensions takes
+     *
+     * @return list<string>
+     */
+    static function php_extensions(array $app): array {
+        $names = $app['php_extensions'] ?? [];
+
+        if (is_string($names)) {
+            $names = json_decode($names, true) ?: [];
+        }
+
+        $clean = [];
+
+        foreach ((array) $names as $name) {
+            $name = strtolower(trim((string) $name));
+
+            if (preg_match('/^[a-z0-9_]{1,40}$/', $name)) {
+                $clean[$name] = $name;
+            }
+        }
+
+        return array_values($clean);
     }
 
     /**

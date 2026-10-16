@@ -272,18 +272,6 @@ CREATE TABLE app (
   auto_deploy TINYINT(1) NOT NULL DEFAULT 1,
   reconciled_at TIMESTAMP NULL DEFAULT NULL COMMENT 'Last deploy reconcile check',
 
-  -- Runtime settings
-  persistent_paths JSON DEFAULT '[]',
-  -- Unused since 0014_app_build (app_build, app_php_extension); dropped later
-  php_extensions VARCHAR(255) NOT NULL DEFAULT '',
-  build_commands TEXT NOT NULL DEFAULT '',
-  always_on TINYINT(1) NOT NULL DEFAULT 0,
-  -- Trongate's ENV constant, patched into config/config.php (Trongate_config::env)
-  trongate_env VARCHAR(20) NOT NULL DEFAULT 'dev',
-  -- Mail from config/trongate_email.php goes to the platform's inbox (Mail_capture)
-  mail_capture TINYINT(1) NOT NULL DEFAULT 1,
-  -- Requested by the rollout gate and smoke test; '' is the home page (Manifests::health_path)
-  health_path VARCHAR(200) NOT NULL DEFAULT '',
   -- From the new-app wizard (Setup_sql), encrypted with APP_KEY, run by the
   -- first deploy and then cleared; when it failed, the statements from the
   -- failed one on
@@ -306,6 +294,28 @@ CREATE TABLE app (
   CONSTRAINT fk_app_project FOREIGN KEY (project_id) REFERENCES project (id),
   CONSTRAINT fk_app_production_app FOREIGN KEY (production_app_id) REFERENCES app (id),
   CONSTRAINT fk_app_database_server FOREIGN KEY (database_server_id) REFERENCES database_server (id)
+);
+
+-- How an app is built and run, one row per app (created with it; an app
+-- without one gets the defaults). Changes take effect on the next deploy.
+CREATE TABLE app_runtime (
+  app_id INT PRIMARY KEY,
+  -- Image build: extra extensions (lowercase names, JSON list) and shell
+  -- lines run after composer (Build_commands)
+  php_extensions JSON NOT NULL DEFAULT '[]',
+  build_commands TEXT NOT NULL DEFAULT '',
+  -- Directories kept across deploys (Manifests::persistent_paths), JSON list
+  persistent_paths JSON NOT NULL DEFAULT '[]',
+  -- Never sleeps when idle
+  always_on TINYINT(1) NOT NULL DEFAULT 0,
+  -- Trongate's ENV constant, patched into config/config.php (Trongate_config::env)
+  trongate_env VARCHAR(20) NOT NULL DEFAULT 'dev',
+  -- Mail from config/trongate_email.php goes to the platform's inbox (Mail_capture)
+  mail_capture TINYINT(1) NOT NULL DEFAULT 1,
+  -- Requested by the rollout gate and smoke test; '' is the home page (Manifests::health_path)
+  health_path VARCHAR(200) NOT NULL DEFAULT '',
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_app_runtime_app FOREIGN KEY (app_id) REFERENCES app (id) ON DELETE CASCADE
 );
 
 -- Messages the inbox captured (Mail_store), kept per Mail_capture's limits
@@ -405,26 +415,6 @@ CREATE TABLE app_process (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY unique_app_process_name (app_id, name),
   CONSTRAINT fk_app_process_app FOREIGN KEY (app_id) REFERENCES app (id) ON DELETE CASCADE
-);
-
--- An app's build commands (Build_commands): shell lines the image build runs
--- after composer, such as npm ci and npm run build. No row runs none.
-CREATE TABLE app_build (
-  app_id INT PRIMARY KEY,
-  commands TEXT NOT NULL,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT fk_app_build_app FOREIGN KEY (app_id) REFERENCES app (id) ON DELETE CASCADE
-);
-
--- PHP extensions the image build installs on top of the base image's
-CREATE TABLE app_php_extension (
-  id INT PRIMARY KEY AUTO_INCREMENT,
-  app_id INT NOT NULL,
-  -- Lowercase, as install-php-extensions names it
-  name VARCHAR(40) NOT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY unique_app_php_extension (app_id, name),
-  CONSTRAINT fk_app_php_extension_app FOREIGN KEY (app_id) REFERENCES app (id) ON DELETE CASCADE
 );
 
 -- A project's services (Project_service): an image that runs next to the
@@ -564,4 +554,4 @@ INSERT INTO schema_migrations (name) VALUES
   ('0011_app_setup_sql_dismissed'),
   ('0012_app_sql_import'),
   ('0013_app_build_commands'),
-  ('0014_app_build');
+  ('0014_app_runtime');

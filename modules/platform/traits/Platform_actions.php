@@ -271,14 +271,15 @@ trait Platform_actions {
                 a.id, a.project_id, a.label, a.slug, a.type, a.environment, a.domain, a.verified_domain,
                 a.domain_pointed_at, a.domain_secured_at, a.domain_checked_at,
                 a.source_provider, a.source_url, a.source_branch,
-                a.persistent_paths, a.always_on,
                 a.database_server_id, a.current_deployment_id, a.created_at,
+                r.php_extensions, r.build_commands, r.persistent_paths, r.always_on, r.trongate_env, r.mail_capture, r.health_path,
                 st.id AS staging_app_id,
                 cd.status AS current_status,
                 cd.commit_sha AS current_commit_sha,
                 cd.image AS current_image,
                 cd.completed_at AS current_deployed_at
             FROM app a
+            LEFT JOIN app_runtime r ON r.app_id = a.id
             LEFT JOIN deployment cd ON cd.id = a.current_deployment_id
             LEFT JOIN app st ON st.production_app_id = a.id AND st.environment = 'staging' AND st.deleted_at IS NULL
             WHERE a.project_id = :project_id AND a.deleted_at IS NULL AND a.environment = 'production'
@@ -288,15 +289,16 @@ trait Platform_actions {
     }
 
     /**
-     * An app row with its project's
+     * An app row with its runtime settings (app_runtime) and its project's
      * namespace, if it belongs to the project and neither is deleted. Every
      * action on an app starts here.
      */
     function find_project_app(int $project_id, int $app_id): object|false {
         $sql = <<<SQL
-            SELECT a.*, p.namespace
+            SELECT a.*, r.php_extensions, r.build_commands, r.persistent_paths, r.always_on, r.trongate_env, r.mail_capture, r.health_path, p.namespace
             FROM app a
             JOIN project p ON p.id = a.project_id
+            LEFT JOIN app_runtime r ON r.app_id = a.id
             WHERE a.id = :app_id AND a.project_id = :project_id
               AND a.deleted_at IS NULL AND p.deleted_at IS NULL
             LIMIT 1
@@ -630,16 +632,17 @@ trait Platform_actions {
 
     /**
      * An app (not deleted) in a project the customer is a member of:
-     * the app row plus project_name, namespace,
+     * the app row with its runtime settings (app_runtime) plus project_name, namespace,
      * and member_role. Pass (int) $app->project_id on to the
      * other actions.
      */
     function find_member_app(int $customer_id, int $app_id): object|false {
         $sql = <<<SQL
-            SELECT a.*, p.name AS project_name, p.namespace,
-                pm.role AS member_role
+            SELECT a.*, r.php_extensions, r.build_commands, r.persistent_paths, r.always_on, r.trongate_env, r.mail_capture, r.health_path,
+                p.name AS project_name, p.namespace, pm.role AS member_role
             FROM app a
             JOIN project p ON p.id = a.project_id
+            LEFT JOIN app_runtime r ON r.app_id = a.id
             JOIN project_member pm ON pm.project_id = p.id
             WHERE a.id = :app_id
               AND a.deleted_at IS NULL

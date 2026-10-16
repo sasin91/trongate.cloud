@@ -81,26 +81,6 @@
                 <div class="detail-label">Reconciled At</div>
                 <div class="detail-value"><?= out($reconciled_at) ?></div>
             </div>
-            <div class="detail-block">
-                <div class="detail-label">Persistent Paths</div>
-                <div class="detail-content"><?= nl2br(out($persistent_paths)) ?></div>
-            </div>
-            <div class="detail-row">
-                <div class="detail-label">Always On</div>
-                <div class="detail-value"><?= out($always_on) ?></div>
-            </div>
-            <div class="detail-row">
-                <div class="detail-label">Trongate Env</div>
-                <div class="detail-value"><?= out($trongate_env) ?></div>
-            </div>
-            <div class="detail-row">
-                <div class="detail-label">Mail Capture</div>
-                <div class="detail-value"><?= out($mail_capture) ?></div>
-            </div>
-            <div class="detail-row">
-                <div class="detail-label">Health Path</div>
-                <div class="detail-value"><?= out($health_path) ?></div>
-            </div>
             <div class="detail-row">
                 <div class="detail-label">Setup Sql Status</div>
                 <div class="detail-value"><?= out($setup_sql_status) ?></div>

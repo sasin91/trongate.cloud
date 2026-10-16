@@ -8,7 +8,7 @@ require_once __DIR__ . '/../../../config/platform.php';
  * (server.php, Deployment trongate-cloud-mail) instead of the internet, and
  * shows up on the app's Mail tab. Nothing is ever delivered.
  *
- * On by default (app.mail_capture). At every apply the worker points the
+ * On by default (app_runtime.mail_capture). At every apply the worker points the
  * app's trongate_email.php at the inbox (rules()); each app signs in with
  * its own password (password()), which is how the inbox knows whose mail it
  * is, so one app can never put mail in (or read) another app's mailbox.
@@ -35,7 +35,7 @@ final class Mail_capture {
     const PASSWORD_HASH_LENGTH = 40;
 
     /**
-     * Whether the app's mail is captured (app.mail_capture, on unless turned off)
+     * Whether the app's mail is captured (app_runtime.mail_capture, on unless turned off)
      */
     static function enabled(array $app): bool {
         return !array_key_exists('mail_capture', $app) || $app['mail_capture'] === null || (int) $app['mail_capture'] === 1;

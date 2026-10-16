@@ -383,7 +383,7 @@ class Manifests {
     }
 
     /**
-     * The path the rollout gate and the smoke test request (app.health_path):
+     * The path the rollout gate and the smoke test request (app_runtime.health_path):
      * the home page unless the app names another, e.g. /health for an API
      * whose home page is a 404. Anything not HEALTH_PATH_PATTERN is the home page.
      */

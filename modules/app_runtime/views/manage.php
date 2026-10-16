@@ -1,4 +1,4 @@
-<h1>Manage PHP Extensions</h1>
+<h1>Manage Runtimes</h1>
 <?= flashdata() ?>
 <?php if (!empty($search_query)): ?>
     <p>Showing results for <strong><?= out($search_query) ?></strong></p>
@@ -8,10 +8,10 @@ echo '<p class="flex-row justify-between">';
 if ((count($rows) > 9) || (!empty($search_query))) {
     $btn_attr = [
         'class' => 'alt',
-        'mx-get' => 'app_php_extension/search_modal',
+        'mx-get' => 'app_runtime/search_modal',
         'mx-build-modal' => json_encode([
             'id' => 'search-modal',
-            'modalHeading' => 'Search PHP Extensions',
+            'modalHeading' => 'Search Runtimes',
             'modalFooter' => '<button class="alt" onclick="closeModal()">Cancel</button><button form="search-form">Search</button>'
         ])
     ];
@@ -29,7 +29,7 @@ echo Modules::run('pagination/display', $pagination_data);
     <table class="records-table">
         <thead>
             <tr>
-                <th colspan="4">
+                <th colspan="5">
                     <div>
                         <div>&nbsp;</div>
                         <div>Records Per Page: <?php
@@ -41,32 +41,21 @@ echo Modules::run('pagination/display', $pagination_data);
             </tr>
             <tr>
                 <th class="text-left">App Id</th>
-            <th class="text-left">Name</th>
-            <th class="text-left">Created At</th>
-                <th>Actions</th>
+            <th class="text-left">Always On</th>
+            <th class="text-left">Trongate Env</th>
+            <th class="text-left">Mail Capture</th>
+            <th class="text-left">Updated At</th>
             </tr>
         </thead>
         <tbody>
             <?php foreach($rows as $row): 
-                $link_attr = [
-                    'mx-get' => 'app_php_extension/show/'.$row->id,
-                    'mx-select' => '.detail-grid',
-                    'mx-build-modal' => json_encode([
-                        'id' => 'record-preview-modal',
-                        'width' => '640px',
-                        'modalHeading' => 'Record Preview',
-                        'modalFooter' => '<button class="alt" onclick="closeModal()">Cancel</button><button onclick="window.location.href=\''.BASE_URL.segment(1).'/show/'.$row->id.'\'">View Record</button>'
-                    ])
-                ];
                 ?>
                 <tr>
-                <td><?= anchor('#', out($row->app_id), $link_attr) ?></td>
-                <td><?= out($row->name) ?></td>
-                <td><?= out($row->created_at) ?></td>                    <td>
-                        <div class="actions">
-                            <a href="app_php_extension/show/<?= $row->id ?>" class="button alt button-round"><i class="tg tg-eye"></i></a>
-                        </div>
-                    </td>
+                <td><?= out($row->app_id) ?></td>
+                <td><?= out($row->always_on) ?></td>
+                <td><?= out($row->trongate_env) ?></td>
+                <td><?= out($row->mail_capture) ?></td>
+                <td><?= out($row->updated_at) ?></td>
                 </tr>
             <?php endforeach; ?>
         </tbody>
@@ -83,6 +72,6 @@ if(count($rows)>9) {
 <script>
 function setPerPage() {
     const selectedIndex = document.querySelector('select[name="per_page"]').value;
-    window.location.href = '<?= BASE_URL ?>app_php_extension/set_per_page/' + selectedIndex;
+    window.location.href = '<?= BASE_URL ?>app_runtime/set_per_page/' + selectedIndex;
 }
 </script>
