@@ -26,6 +26,17 @@ final class Setup_sql_plan {
     const TRONGATE_SETUP_PATHS = ['modules/setup/sql/setup.sql', 'modules/trongate_administrators/setup.sql'];
 
     /**
+     * Trongate's default tables, offered in sets when the repository has no
+     * setup.sql (offers_trongate_tables). Each set's SQL is in
+     * modules/apps/setup_sql/sql/{set}.sql, and runs in this order
+     */
+    const TRONGATE_TABLE_SETS = [
+        'trongate_auth_core' => ['label' => 'Auth core', 'tables' => ['trongate_user_levels', 'trongate_users', 'trongate_tokens']],
+        'trongate_administrators' => ['label' => 'Administrators', 'tables' => ['trongate_administrators']],
+        'trongate_login' => ['label' => 'Login', 'tables' => ['login_attempts', 'password_resets']],
+    ];
+
+    /**
      * Where else .sql files are offered: the repository root, database/, db/,
      * sql/ and module folders (Trongate Control runs a module's *.sql, also a
      * child module's)
@@ -87,9 +98,9 @@ final class Setup_sql_plan {
     }
 
     /**
-     * Whether to offer Trongate's default tables
-     * (modules/apps/setup_sql/sql/trongate_tables.sql): only when the
-     * repository has no Trongate setup.sql, which candidates() already ticks
+     * Whether to offer Trongate's default tables (TRONGATE_TABLE_SETS):
+     * only when the repository has no Trongate setup.sql, which
+     * candidates() already ticks
      *
      * @param list<string> $paths every file in the repository
      */

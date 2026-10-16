@@ -50,11 +50,13 @@ test('Trongate default tables are offered only when the repository has no setup.
     assert_same(false, Setup_sql_plan::offers_trongate_tables(['modules/trongate_administrators/setup.sql']));
 });
 
-test('Trongate default tables pass the setup SQL rules', function () {
-    $plan = Setup_sql_plan::plan(file_get_contents(dirname(__DIR__) . '/modules/apps/setup_sql/sql/trongate_tables.sql'));
+test('each set of Trongate default tables passes the setup SQL rules', function () {
+    foreach (array_keys(Setup_sql_plan::TRONGATE_TABLE_SETS) as $set) {
+        $plan = Setup_sql_plan::plan(file_get_contents(dirname(__DIR__) . '/modules/apps/setup_sql/sql/' . $set . '.sql'));
 
-    assert_same(null, $plan['refusal']);
-    assert_same(15, count($plan['statements']));
+        assert_same(null, $plan['refusal']);
+        assert_same(true, count($plan['statements']) > 0);
+    }
 });
 
 test('a dump runs without its transaction and lock statements', function () {

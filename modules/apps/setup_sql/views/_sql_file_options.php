@@ -1,23 +1,37 @@
 <?php
 /**
- * The Database question's files: a checkbox per .sql file on the branch
- * (Setup_sql_plan::candidates), the likely ones ticked, and one for
- * Trongate's default tables when the branch has no setup.sql. sql_offered[]
- * and trongate_tables_offered post what was offered, so the form shows it
- * again after a failed submit.
- * Expects: $sql_files, $offer_trongate_tables, $trongate_tables_checked,
- * $read_failed (optional: GitHub could not be read).
+ * The Database question's files: Trongate's default tables when the branch
+ * has no setup.sql (a ticked checkbox per set, its SQL editable and checked
+ * live by sql/check), then a checkbox per .sql file on the branch
+ * (Setup_sql_plan::candidates), the likely ones ticked.
+ * trongate_tables_offered and sql_offered[] post what was offered, so the
+ * form shows it again after a failed submit.
+ * Expects: $trongate_tables (Setup_sql_step::_trongate_tables_option each),
+ * $sql_files, $read_failed (optional: GitHub could not be read).
  */
 ?>
-<?php if ($offer_trongate_tables): ?>
-    <div class="wz-sql-files">
-        <label class="wz-check">
-            <input type="hidden" name="trongate_tables_offered" value="1">
-            <input type="checkbox" name="trongate_tables" value="1" <?= $trongate_tables_checked ? 'checked' : '' ?>>
-            <span>Trongate's default tables: <code>trongate_users</code>, <code>trongate_user_levels</code>, <code>trongate_administrators</code>, <code>trongate_tokens</code>, plus the login module's <code>login_attempts</code> and <code>password_resets</code></span>
-        </label>
+<?php if ($trongate_tables !== []): ?>
+    <input type="hidden" name="trongate_tables_offered" value="1">
+    <div class="wz-sql-sets">
+        <?php foreach ($trongate_tables as $option): ?>
+            <div class="wz-sql-set">
+                <label class="wz-check">
+                    <input type="checkbox" name="trongate_tables[]" value="<?= htmlspecialchars($option['set']) ?>" <?= $option['checked'] ? 'checked' : '' ?>>
+                    <span>Trongate <?= htmlspecialchars(lcfirst($option['label'])) ?>:
+                        <?php foreach ($option['tables'] as $table): ?>
+                            <code><?= htmlspecialchars($table) ?></code>
+                        <?php endforeach; ?>
+                    </span>
+                </label>
+                <details class="wz-sql-edit">
+                    <summary>Edit SQL</summary>
+                    <textarea name="<?= htmlspecialchars($option['sql_field']) ?>" class="wz-in mono wz-sql" rows="10" spellcheck="false" aria-describedby="wz-sql-check-<?= htmlspecialchars($option['set']) ?>" mx-post="sql/check" mx-trigger="change" mx-target="#wz-sql-check-<?= htmlspecialchars($option['set']) ?>" mx-vals='{"rules":"setup","sql_field":"<?= htmlspecialchars($option['sql_field']) ?>"}'><?= htmlspecialchars($option['sql']) ?></textarea>
+                    <div id="wz-sql-check-<?= htmlspecialchars($option['set']) ?>" class="sql-check wz-sql-check" aria-live="polite"></div>
+                </details>
+            </div>
+        <?php endforeach; ?>
     </div>
-    <p class="wz-hint">Adds an <code>admin</code> administrator with the password <code>admin</code>. Change it as soon as the app is up.</p>
+    <p class="wz-hint">Trongate's tables run first, before the files below.</p>
 <?php endif; ?>
 <?php if (!empty($read_failed)): ?>
     <p class="wz-hint">We could not list the repository's files. Type a path below instead.</p>

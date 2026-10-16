@@ -153,8 +153,7 @@ $errors = validation_errors('<p>', '</p>');
                     <?php if ($setup_sql['sql_files_loaded_for'] !== ''): ?>
                         <?php
                         $sql_files = $setup_sql['sql_files'];
-                        $offer_trongate_tables = $setup_sql['trongate_tables_offered'];
-                        $trongate_tables_checked = $setup_sql['trongate_tables_checked'];
+                        $trongate_tables = $setup_sql['trongate_tables'];
                         require APPPATH . 'modules/apps/setup_sql/views/_sql_file_options.php';
                         ?>
                     <?php else: ?>

@@ -26,8 +26,8 @@ class Sql_check extends Trongate {
     /** Which rule set (Sql_rules) to check by: the Database tab's SQL box, or SQL a new app starts with (_rules) */
     const RULES = ['database', 'setup'];
 
-    /** Names the SQL is posted under, by the box's form: the Database tab's, the wizard's */
-    const SQL_FIELDS = ['sql', 'setup_sql'];
+    /** Names the SQL is posted under, by the box's form: the Database tab's, the wizard's (typed, and Trongate's default tables) */
+    const SQL_FIELDS = ['sql', 'setup_sql', 'trongate_auth_core_sql', 'trongate_administrators_sql', 'trongate_login_sql'];
 
     /**
      * POST sql/check with the box's form, rules and sql_field: the answer as

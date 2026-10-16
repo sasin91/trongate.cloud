@@ -6,8 +6,8 @@ require_once APPPATH . 'modules/platform/live/Setup_sql_plan.php';
  * The new-app wizard's optional Database question: .sql files from the
  * repository (Setup_sql_plan::candidates, the likely ones ticked),
  * Trongate's default tables when the repository has no setup.sql of its own
- * (sql/trongate_tables.sql, ticked, run first), another file by path, and SQL typed
- * in. They are read and checked when the form is submitted, stored in
+ * (Setup_sql_plan::TRONGATE_TABLE_SETS, each ticked, with its SQL to edit,
+ * run first), another file by path, and SQL typed in. They are read and checked when the form is submitted, stored in
  * app_setup_sql, and run once by the first deploy, right after it creates
  * the database (Platform_task::run_setup_sql).
  *
@@ -26,10 +26,10 @@ trait Setup_sql_step {
 
     /**
      * The Database question as posted, when the form is shown again after a
-     * failed submit: the files that were offered, which were ticked, whether
-     * Trongate's default tables were offered and ticked, the typed path and SQL
+     * failed submit: the files that were offered, which were ticked,
+     * Trongate's default tables as offered and edited, the typed path and SQL
      *
-     * @return array{sql_files: list<array{path: string, checked: bool}>, sql_files_loaded_for: string, trongate_tables_offered: bool, trongate_tables_checked: bool, sql_path: string, sql: string}
+     * @return array{sql_files: list<array{path: string, checked: bool}>, sql_files_loaded_for: string, trongate_tables: list<array<string, mixed>>, sql_path: string, sql: string}
      */
     function _setup_sql_form(): array {
         $offered = post('sql_offered');
@@ -51,8 +51,7 @@ trait Setup_sql_step {
         return [
             'sql_files' => $files,
             'sql_files_loaded_for' => $loaded_for,
-            'trongate_tables_offered' => $this->_trongate_tables_offered(),
-            'trongate_tables_checked' => $this->_trongate_tables_ticked(),
+            'trongate_tables' => $this->_posted_trongate_tables(),
             'sql_path' => (string) post('sql_path', true),
             'sql' => (string) post('setup_sql'),
         ];
@@ -85,8 +84,11 @@ trait Setup_sql_step {
         }
 
         $sql_files = Setup_sql_plan::candidates($paths);
-        $offer_trongate_tables = Setup_sql_plan::offers_trongate_tables($paths);
-        $trongate_tables_checked = true;
+        $trongate_tables = [];
+
+        if (Setup_sql_plan::offers_trongate_tables($paths)) {
+            $trongate_tables = $this->_default_trongate_tables();
+        }
 
         header('Content-Type: text/html');
         require APPPATH . 'modules/apps/setup_sql/views/_sql_file_options.php';
@@ -102,9 +104,9 @@ trait Setup_sql_step {
         $this->setup_sql = null;
         $paths = $this->_posted_sql_paths();
         $typed = trim((string) post('setup_sql'));
-        $trongate_tables = $this->_trongate_tables_ticked();
+        $trongate_tables = $this->_ticked_trongate_tables_sql();
 
-        if ($paths === [] && !$trongate_tables && $typed === '') {
+        if ($paths === [] && $trongate_tables === [] && $typed === '') {
             return true;
         }
 
@@ -115,13 +117,7 @@ trait Setup_sql_step {
         }
 
         // Trongate's default tables first, so a repository file that makes them too wins
-        $sources = [];
-
-        if ($trongate_tables) {
-            $sources["Trongate's default tables"] = $this->_trongate_tables_sql();
-        }
-
-        $sources = array_merge($sources, $files);
+        $sources = array_merge($trongate_tables, $files);
 
         if ($typed !== '') {
             $sources['typed SQL'] = $typed;
@@ -155,13 +151,6 @@ trait Setup_sql_step {
     }
 
     /**
-     * Trongate's default tables, from stock Trongate v2's setup.sql
-     */
-    function _trongate_tables_sql(): string {
-        return file_get_contents(APPPATH . 'modules/apps/setup_sql/sql/trongate_tables.sql');
-    }
-
-    /**
      * Whether the form offered Trongate's default tables
      */
     function _trongate_tables_offered(): bool {
@@ -169,10 +158,78 @@ trait Setup_sql_step {
     }
 
     /**
-     * Whether Trongate's default tables were offered and ticked
+     * Trongate's default tables as first offered: every set ticked, with its
+     * SQL from sql/{set}.sql
+     *
+     * @return list<array{set: string, label: string, tables: list<string>, checked: bool, sql_field: string, sql: string}>
      */
-    function _trongate_tables_ticked(): bool {
-        return $this->_trongate_tables_offered() && post('trongate_tables') === '1';
+    function _default_trongate_tables(): array {
+        $options = [];
+
+        foreach (array_keys(Setup_sql_plan::TRONGATE_TABLE_SETS) as $set) {
+            $sql = file_get_contents(APPPATH . 'modules/apps/setup_sql/sql/' . $set . '.sql');
+            $options[] = $this->_trongate_tables_option($set, true, $sql);
+        }
+
+        return $options;
+    }
+
+    /**
+     * Trongate's default tables as posted: which sets were ticked and their
+     * edited SQL, or [] when the form did not offer them
+     *
+     * @return list<array{set: string, label: string, tables: list<string>, checked: bool, sql_field: string, sql: string}>
+     */
+    function _posted_trongate_tables(): array {
+        if (!$this->_trongate_tables_offered()) {
+            return [];
+        }
+
+        $ticked = $this->_posted_list('trongate_tables');
+        $options = [];
+
+        foreach (array_keys(Setup_sql_plan::TRONGATE_TABLE_SETS) as $set) {
+            $checked = in_array($set, $ticked, true);
+            $sql = (string) post($set . '_sql');
+            $options[] = $this->_trongate_tables_option($set, $checked, $sql);
+        }
+
+        return $options;
+    }
+
+    /**
+     * One set of Trongate's default tables, for views/_sql_file_options.php
+     *
+     * @return array{set: string, label: string, tables: list<string>, checked: bool, sql_field: string, sql: string}
+     */
+    function _trongate_tables_option(string $set, bool $checked, string $sql): array {
+        $about = Setup_sql_plan::TRONGATE_TABLE_SETS[$set];
+
+        return [
+            'set' => $set,
+            'label' => $about['label'],
+            'tables' => $about['tables'],
+            'checked' => $checked,
+            'sql_field' => $set . '_sql',
+            'sql' => $sql,
+        ];
+    }
+
+    /**
+     * The ticked sets' SQL as edited, by name, in the order they run
+     *
+     * @return array<string, string>
+     */
+    function _ticked_trongate_tables_sql(): array {
+        $sources = [];
+
+        foreach ($this->_posted_trongate_tables() as $option) {
+            if ($option['checked'] && trim($option['sql']) !== '') {
+                $sources['Trongate ' . lcfirst($option['label']) . ' tables'] = $option['sql'];
+            }
+        }
+
+        return $sources;
     }
 
     /**

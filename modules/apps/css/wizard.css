@@ -308,6 +308,38 @@
     overflow-wrap: anywhere;
 }
 
+/* Trongate's default tables: a checkbox per set, its SQL folded away */
+.wz-sql-sets {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.wz-sql-set .wz-check {
+    align-items: flex-start;
+}
+
+.wz-sql-set .wz-check input {
+    margin-top: 3px;
+    flex-shrink: 0;
+}
+
+.wz-sql-edit {
+    margin: 4px 0 0 26px;
+}
+
+.wz-sql-edit summary {
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--wz-accent);
+}
+
+.wz-sql-edit textarea {
+    margin-top: 6px;
+    width: 100%;
+}
+
 [data-step="database"] .wz-field {
     margin-top: 16px;
 }
