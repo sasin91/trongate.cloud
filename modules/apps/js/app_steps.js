@@ -312,8 +312,10 @@ document.addEventListener('DOMContentLoaded', function () {
             sheet.env.textContent = filled === 0 ? '' : filled + (filled === 1 ? ' variable' : ' variables');
         }
         if (sheet.database) {
-            const files = sqlFiles.querySelectorAll('input[type=checkbox]:checked').length + (form.querySelector('[name="sql_path"]').value.trim() === '' ? 0 : 1);
+            const files = sqlFiles.querySelectorAll('input[name="sql_files[]"]:checked').length + (form.querySelector('[name="sql_path"]').value.trim() === '' ? 0 : 1);
+            const trongateTables = sqlFiles.querySelector('input[name="trongate_tables"]:checked');
             const parts = [];
+            if (trongateTables) parts.push('Trongate tables');
             if (files > 0) parts.push(files + (files === 1 ? ' SQL file' : ' SQL files'));
             if (form.querySelector('[name="setup_sql"]').value.trim() !== '') parts.push('typed SQL');
             sheet.database.textContent = parts.join(' + ');

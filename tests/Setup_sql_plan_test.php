@@ -43,6 +43,20 @@ test('a repository without .sql files offers nothing', function () {
     assert_same([], Setup_sql_plan::candidates(['index.php', 'config/config.php']));
 });
 
+test('Trongate default tables are offered only when the repository has no setup.sql', function () {
+    assert_same(true, Setup_sql_plan::offers_trongate_tables(['index.php', 'db/schema.sql']));
+    assert_same(true, Setup_sql_plan::offers_trongate_tables([]));
+    assert_same(false, Setup_sql_plan::offers_trongate_tables(['modules/setup/sql/setup.sql']));
+    assert_same(false, Setup_sql_plan::offers_trongate_tables(['modules/trongate_administrators/setup.sql']));
+});
+
+test('Trongate default tables pass the setup SQL rules', function () {
+    $plan = Setup_sql_plan::plan(file_get_contents(dirname(__DIR__) . '/modules/apps/setup_sql/sql/trongate_tables.sql'));
+
+    assert_same(null, $plan['refusal']);
+    assert_same(15, count($plan['statements']));
+});
+
 test('a dump runs without its transaction and lock statements', function () {
     $sql = <<<'SQL'
     -- phpMyAdmin SQL Dump

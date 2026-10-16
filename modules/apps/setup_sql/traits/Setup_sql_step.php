@@ -4,10 +4,12 @@ require_once APPPATH . 'modules/platform/live/Setup_sql_plan.php';
 
 /**
  * The new-app wizard's optional Database question: .sql files from the
- * repository (Setup_sql_plan::candidates, the likely ones ticked), another
- * file by path, and SQL typed in. They are read and checked when the form
- * is submitted, stored in app_setup_sql, and run once by the first
- * deploy, right after it creates the database (Platform_task::run_setup_sql).
+ * repository (Setup_sql_plan::candidates, the likely ones ticked),
+ * Trongate's default tables when the repository has no setup.sql of its own
+ * (sql/trongate_tables.sql, ticked, run first), another file by path, and SQL typed
+ * in. They are read and checked when the form is submitted, stored in
+ * app_setup_sql, and run once by the first deploy, right after it creates
+ * the database (Platform_task::run_setup_sql).
  *
  * Part of the apps-setup_sql child module, used by App_form: Apps and
  * Onboarding both show the question and run its validation callback. The
@@ -24,15 +26,21 @@ trait Setup_sql_step {
 
     /**
      * The Database question as posted, when the form is shown again after a
-     * failed submit: the files that were offered, which were ticked, the
-     * typed path and SQL
+     * failed submit: the files that were offered, which were ticked, whether
+     * Trongate's default tables were offered and ticked, the typed path and SQL
      *
-     * @return array{sql_files: list<array{path: string, checked: bool}>, sql_files_loaded_for: string, sql_path: string, sql: string}
+     * @return array{sql_files: list<array{path: string, checked: bool}>, sql_files_loaded_for: string, trongate_tables_offered: bool, trongate_tables_checked: bool, sql_path: string, sql: string}
      */
     function _setup_sql_form(): array {
         $offered = post('sql_offered');
         $checked = $this->_posted_list('sql_files');
         $files = [];
+        $loaded_for = '';
+
+        // Something was offered, so the branch's files had been listed
+        if (is_array($offered) || $this->_trongate_tables_offered()) {
+            $loaded_for = $this->_posted_source_key();
+        }
 
         if (is_array($offered)) {
             foreach ($offered as $path) {
@@ -42,14 +50,17 @@ trait Setup_sql_step {
 
         return [
             'sql_files' => $files,
-            'sql_files_loaded_for' => is_array($offered) ? $this->_posted_source_key() : '',
+            'sql_files_loaded_for' => $loaded_for,
+            'trongate_tables_offered' => $this->_trongate_tables_offered(),
+            'trongate_tables_checked' => $this->_trongate_tables_ticked(),
             'sql_path' => (string) post('sql_path', true),
             'sql' => (string) post('setup_sql'),
         ];
     }
 
     /**
-     * MX partial: a checkbox for each .sql file on the branch
+     * Partial: a checkbox for each .sql file on the branch, and one for
+     * Trongate's default tables when the branch has no setup.sql
      */
     function sql_file_options(): void {
         $this->_make_sure_allowed();
@@ -64,14 +75,18 @@ trait Setup_sql_step {
 
         $repository = $source['repository'];
         $read_failed = false;
+        $paths = [];
 
         try {
-            $sql_files = Setup_sql_plan::candidates(array_keys($source['client']->tree($repository, $branch)));
+            $paths = array_keys($source['client']->tree($repository, $branch));
         } catch (Client_Error | RuntimeException $e) {
             error_log("New app: could not list the .sql files of {$repository}@{$branch}: {$e->getMessage()}");
-            $sql_files = [];
             $read_failed = true;
         }
+
+        $sql_files = Setup_sql_plan::candidates($paths);
+        $offer_trongate_tables = Setup_sql_plan::offers_trongate_tables($paths);
+        $trongate_tables_checked = true;
 
         header('Content-Type: text/html');
         require APPPATH . 'modules/apps/setup_sql/views/_sql_file_options.php';
@@ -79,24 +94,34 @@ trait Setup_sql_step {
 
     /**
      * Validation callback for the Database question: reads the ticked files
-     * and the typed path from the branch, and checks them and the typed SQL
-     * the way they will run (Setup_sql_plan::plan). Keeps the result for
-     * _save_setup_sql.
+     * and the typed path from the branch, and checks them, Trongate's default
+     * tables when ticked, and the typed SQL the way they will run
+     * (Setup_sql_plan::plan). Keeps the result for _save_setup_sql.
      */
     function _validate_setup_sql(string $value): bool|string {
         $this->setup_sql = null;
         $paths = $this->_posted_sql_paths();
         $typed = trim((string) post('setup_sql'));
+        $trongate_tables = $this->_trongate_tables_ticked();
 
-        if ($paths === [] && $typed === '') {
+        if ($paths === [] && !$trongate_tables && $typed === '') {
             return true;
         }
 
-        $sources = $this->_read_sql_files($paths);
+        $files = $this->_read_sql_files($paths);
 
-        if (is_string($sources)) {
-            return $sources;
+        if (is_string($files)) {
+            return $files;
         }
+
+        // Trongate's default tables first, so a repository file that makes them too wins
+        $sources = [];
+
+        if ($trongate_tables) {
+            $sources["Trongate's default tables"] = $this->_trongate_tables_sql();
+        }
+
+        $sources = array_merge($sources, $files);
 
         if ($typed !== '') {
             $sources['typed SQL'] = $typed;
@@ -127,6 +152,27 @@ trait Setup_sql_step {
         $this->setup_sql = $sql;
 
         return true;
+    }
+
+    /**
+     * Trongate's default tables, from stock Trongate v2's setup.sql
+     */
+    function _trongate_tables_sql(): string {
+        return file_get_contents(APPPATH . 'modules/apps/setup_sql/sql/trongate_tables.sql');
+    }
+
+    /**
+     * Whether the form offered Trongate's default tables
+     */
+    function _trongate_tables_offered(): bool {
+        return post('trongate_tables_offered') === '1';
+    }
+
+    /**
+     * Whether Trongate's default tables were offered and ticked
+     */
+    function _trongate_tables_ticked(): bool {
+        return $this->_trongate_tables_offered() && post('trongate_tables') === '1';
     }
 
     /**

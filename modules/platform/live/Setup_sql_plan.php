@@ -86,6 +86,23 @@ final class Setup_sql_plan {
         return array_merge($first, $rest);
     }
 
+    /**
+     * Whether to offer Trongate's default tables
+     * (modules/apps/setup_sql/sql/trongate_tables.sql): only when the
+     * repository has no Trongate setup.sql, which candidates() already ticks
+     *
+     * @param list<string> $paths every file in the repository
+     */
+    static function offers_trongate_tables(array $paths): bool {
+        foreach (self::TRONGATE_SETUP_PATHS as $path) {
+            if (in_array($path, $paths, true)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     static function is_offered(string $path): bool {
         foreach (self::FILE_PATTERNS as $pattern) {
             if (preg_match($pattern, $path)) {
