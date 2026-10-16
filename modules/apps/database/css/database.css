@@ -601,6 +601,13 @@ button.db-rownum:focus {
     background: #fafbff;
 }
 
+.sql-check-head {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.875rem;
+}
+
 .sql-check-summary,
 .sql-check-more {
     margin: 0;
@@ -611,33 +618,44 @@ button.db-rownum:focus {
     color: #8a2a22;
 }
 
-.sql-check-problems {
-    list-style: none;
-    margin: 0.25rem 0 0;
-    padding: 0;
+.sql-check-fix {
+    padding: 0.15rem 0.6rem;
+    font: inherit;
+    color: var(--text-main);
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
 }
 
-.sql-check-problems li {
-    display: grid;
-    grid-template-columns: max-content minmax(0, 1fr);
-    gap: 0 0.625rem;
-    padding: 0.2rem 0;
+.sql-check-fix:hover {
+    border-color: var(--accent);
 }
 
-.sql-check-where {
-    color: var(--text-muted);
-}
-
-.sql-check-problems code {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+/* One problem, drawn like a Rust compiler error */
+.sql-check-problem {
+    margin: 0.4rem 0 0;
     font-family: var(--font-mono);
+    font-size: 0.75rem;
+    line-height: 1.5;
+    color: var(--text-main);
+    overflow-x: auto;
+    tab-size: 4;
 }
 
-.sql-check-message {
-    grid-column: 2;
-    color: #8a2a22;
+.sql-check-error,
+.sql-check-mark {
+    color: #b3261e;
+    font-weight: 600;
+}
+
+.sql-check-gutter {
+    color: #6966d6;
+}
+
+.sql-check-note,
+.sql-check-help {
+    color: #1d6b6b;
 }
 
 .db-sql-bar {

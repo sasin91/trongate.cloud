@@ -125,7 +125,7 @@ class Database extends Trongate {
         $this->_member_app_or_redirect(segment(3, 'int'));
         $this->_require_post_with_csrf();
 
-        $sql = trim((string) post('sql'));
+        $sql = (string) post('sql'); // as typed, so the lines it names are the box's lines
         $allow_changes = (bool) post('allow_changes');
 
         $this->_show_sql_check(Sql_check::database_tab($sql, $allow_changes));

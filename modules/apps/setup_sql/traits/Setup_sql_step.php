@@ -88,7 +88,7 @@ trait Setup_sql_step {
         $this->_make_sure_allowed();
         $this->_require_post_with_csrf();
 
-        $this->_show_sql_check(Sql_check::setup(trim((string) post('sql'))));
+        $this->_show_sql_check(Sql_check::setup((string) post('sql'))); // as typed, so the lines it names are the box's lines
     }
 
     /**

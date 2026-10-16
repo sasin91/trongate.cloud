@@ -327,6 +327,13 @@ textarea.wz-sql {
     display: none;
 }
 
+.wz-sql-check .sql-check-head {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+}
+
 .wz-sql-check .sql-check-summary,
 .wz-sql-check .sql-check-more {
     margin: 0;
@@ -337,34 +344,48 @@ textarea.wz-sql {
     color: #a12c2c;
 }
 
-.wz-sql-check .sql-check-problems {
-    list-style: none;
-    margin: 6px 0 0;
+.wz-sql-check .sql-check-fix {
+    padding: 4px 12px;
+    font: inherit;
+    font-size: 14px;
+    color: #1d1e6e;
+    background: #fff;
+    border: 1px solid #d6d7ea;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.wz-sql-check .sql-check-fix:hover {
+    border-color: #6966d6;
+}
+
+/* One problem, drawn like a Rust compiler error */
+.wz-sql-check .sql-check-problem {
+    margin: 8px 0 0;
     padding: 10px 14px;
-    background: #fbe5e5;
-    border-radius: 10px;
-}
-
-.wz-sql-check .sql-check-problems li {
-    display: flex;
-    flex-direction: column;
-    padding: 4px 0;
-}
-
-.wz-sql-check .sql-check-where {
-    color: #5b5f7e;
-    font-size: 13px;
-}
-
-.wz-sql-check .sql-check-problems code {
     font-family: var(--wz-mono);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #1d1e6e;
+    background: #f7f7fc;
+    border-radius: 10px;
+    overflow-x: auto;
+    tab-size: 4;
 }
 
-.wz-sql-check .sql-check-message {
-    color: #a12c2c;
+.wz-sql-check .sql-check-error,
+.wz-sql-check .sql-check-mark {
+    color: #b3261e;
+    font-weight: 600;
+}
+
+.wz-sql-check .sql-check-gutter {
+    color: #6966d6;
+}
+
+.wz-sql-check .sql-check-note,
+.wz-sql-check .sql-check-help {
+    color: #1d6b6b;
 }
 
 /* Settings question: the app's Settings page, in short */

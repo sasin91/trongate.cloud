@@ -2,6 +2,7 @@
 // textarea with data-sql-check (the URL to post it to), the server runs the same
 // checks the real submit runs, without running the SQL, and its answer
 // (views/_sql_check.php) is shown in the element data-sql-check-result names.
+// Its "Comment out" button puts -- before the lines of the statements it names.
 // Without JS the SQL is still checked when it is submitted.
 document.addEventListener('DOMContentLoaded', function () {
     const WAIT_MS = 500;
@@ -22,7 +23,8 @@ document.addEventListener('DOMContentLoaded', function () {
         };
 
         const check = function () {
-            const sql = textarea.value.trim();
+            // Sent as typed, so the lines it names are the box's lines
+            const sql = textarea.value;
             const asked = sql + (allowChanges && allowChanges.checked ? '\n1' : '\n0');
 
             if (asked === checked) return;
@@ -30,7 +32,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
             if (request) request.abort();
 
-            if (sql === '') {
+            if (sql.trim() === '') {
                 show('');
                 return;
             }
@@ -62,6 +64,30 @@ document.addEventListener('DOMContentLoaded', function () {
             clearTimeout(timer);
             timer = setTimeout(check, WAIT_MS);
         };
+
+        // "6-6,12-15": put -- before each of those lines that has anything on it
+        const commentOut = function (ranges) {
+            const lines = textarea.value.split('\n');
+
+            ranges.split(',').forEach(function (range) {
+                const ends = range.split('-').map(Number);
+
+                for (let line = ends[0]; line <= ends[1]; line++) {
+                    if (lines[line - 1] !== undefined && lines[line - 1].trim() !== '') {
+                        lines[line - 1] = '-- ' + lines[line - 1];
+                    }
+                }
+            });
+
+            textarea.value = lines.join('\n');
+            textarea.focus();
+            check();
+        };
+
+        result.addEventListener('click', function (event) {
+            const button = event.target.closest('[data-sql-comment-lines]');
+            if (button) commentOut(button.dataset.sqlCommentLines);
+        });
 
         textarea.addEventListener('input', later);
 

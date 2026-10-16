@@ -163,6 +163,12 @@ final class Setup_sql_plan {
             return $syntax_refusal;
         }
 
+        $database_refusal = App_database::database_refusal($statement);
+
+        if ($database_refusal !== null) {
+            return $database_refusal;
+        }
+
         if (preg_match('/^SET\b/i', $start)) {
             return self::set_refusal($start);
         }

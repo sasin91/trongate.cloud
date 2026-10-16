@@ -33,6 +33,9 @@ class App_database {
     /** First keywords of statements that change data or tables; they run only with $allow_changes */
     const WRITE_STATEMENTS = ['INSERT', 'UPDATE', 'DELETE', 'REPLACE', 'CREATE', 'ALTER', 'DROP', 'TRUNCATE', 'RENAME'];
 
+    /** USE and CREATE, ALTER or DROP DATABASE (or SCHEMA): refused, see database_refusal() */
+    const DATABASE_STATEMENT = '/^(USE\b|(CREATE|ALTER|DROP)\s+(DATABASE|SCHEMA)\b)/i';
+
     /** MariaDB aborts a statement (or the rest of several, see run()) after this long, so one query cannot tie up a web worker */
     const STATEMENT_SECONDS = 15;
 
@@ -557,6 +560,12 @@ class App_database {
             return $syntax_refusal;
         }
 
+        $database_refusal = self::database_refusal($statement);
+
+        if ($database_refusal !== null) {
+            return $database_refusal;
+        }
+
         $kind = self::keyword_kind($statement);
 
         if ($kind === null) {
@@ -571,13 +580,37 @@ class App_database {
     }
 
     /**
+     * Statements about which database to use (USE, CREATE DATABASE and the
+     * like), which dumps often start with. The app's user is already in the
+     * app's own database and may not create or pick another.
+     */
+    static function database_refusal(string $statement): ?string {
+        if (preg_match(self::DATABASE_STATEMENT, self::without_comments($statement))) {
+            return 'Your app is already connected to its own database, so USE and CREATE, ALTER or DROP DATABASE are not needed.';
+        }
+
+        return null;
+    }
+
+    /**
      * Mistakes in one statement that MariaDB would refuse anyway, found
-     * without sending it anywhere: a quote or comment that is never closed,
-     * and brackets that do not pair up. Quotes, `quoted names` and comments
-     * are read the way statements() reads them.
+     * without sending it anywhere (syntax_problem()), or null
      */
     static function syntax_refusal(string $statement): ?string {
-        $depth = 0;
+        $problem = self::syntax_problem($statement);
+
+        return $problem === null ? null : $problem['message'];
+    }
+
+    /**
+     * A quote or comment that is never closed, or brackets that do not pair
+     * up, with where in the statement it is and a few words to show there.
+     * Quotes, `quoted names` and comments are read the way statements() reads them.
+     *
+     * @return array{message: string, label: string, offset: int}|null
+     */
+    static function syntax_problem(string $statement): ?array {
+        $open_brackets = [];
         $length = strlen($statement);
 
         for ($i = 0; $i < $length; $i++) {
@@ -587,7 +620,7 @@ class App_database {
                 $close = self::closing_quote($statement, $i);
 
                 if ($close === null) {
-                    return 'A ' . $char . ' is never closed.';
+                    return ['message' => 'A ' . $char . ' is never closed.', 'label' => 'opened here, never closed', 'offset' => $i];
                 }
 
                 $i = $close;
@@ -598,23 +631,23 @@ class App_database {
                 $end = strpos($statement, '*/', $i + 2);
 
                 if ($end === false) {
-                    return 'A /* comment is never closed.';
+                    return ['message' => 'A /* comment is never closed.', 'label' => 'opened here, never closed', 'offset' => $i];
                 }
 
                 $i = $end + 1;
             } elseif ($char === '(') {
-                $depth++;
+                $open_brackets[] = $i;
             } elseif ($char === ')') {
-                $depth--;
-
-                if ($depth < 0) {
-                    return 'A ) has no ( before it.';
+                if ($open_brackets === []) {
+                    return ['message' => 'A ) has no ( before it.', 'label' => 'no ( before it', 'offset' => $i];
                 }
+
+                array_pop($open_brackets);
             }
         }
 
-        if ($depth > 0) {
-            return $depth === 1 ? 'A ( is never closed.' : $depth . ' ( are never closed.';
+        if ($open_brackets !== []) {
+            return ['message' => 'A ( is never closed.', 'label' => 'opened here, never closed', 'offset' => end($open_brackets)];
         }
 
         return null;
