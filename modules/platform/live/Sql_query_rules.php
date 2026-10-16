@@ -32,7 +32,7 @@ final class Sql_query_rules extends Sql_rules {
         return App_database::content_refusal($sql);
     }
 
-    function empty_refusal(): ?string {
+    function empty_refusal(): string {
         return 'There is no statement to run.';
     }
 
