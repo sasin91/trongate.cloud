@@ -8,34 +8,12 @@
  * Run: php tests/App_state_test.php (exits non-zero on a failure)
  */
 
+require_once __DIR__ . '/bootstrap.php';
+
 define('APPPATH', dirname(__DIR__) . '/');
 
 require_once APPPATH . 'modules/services/clients/Kubernetes.php';
 require_once APPPATH . 'modules/platform/live/App_state.php';
-
-$failures = 0;
-
-$test = function (string $name, callable $body) use (&$failures): void {
-    try {
-        $body();
-        echo "ok   {$name}\n";
-    } catch (Throwable $e) {
-        $failures++;
-        echo "FAIL {$name}\n     {$e->getMessage()}\n";
-    }
-};
-
-$same = function ($expected, $actual): void {
-    if ($expected !== $actual) {
-        throw new RuntimeException("Expected:\n" . var_export($expected, true) . "\nGot:\n" . var_export($actual, true));
-    }
-};
-
-$contains = function (string $needle, string $haystack): void {
-    if (!str_contains($haystack, $needle)) {
-        throw new RuntimeException("Expected to find '{$needle}' in:\n{$haystack}");
-    }
-};
 
 /** A cluster that answers list() from fixed objects and records the selectors asked for */
 class Fake_kubernetes extends Kubernetes {
@@ -72,7 +50,7 @@ $pod = fn(string $process, ?string $waiting = null) => [
     'status' => ['containerStatuses' => $waiting === null ? [] : [['state' => ['waiting' => ['reason' => $waiting, 'message' => 'back-off restarting']]]]],
 ];
 
-$test('for_processes reads each process by its label', function () use ($same, $deployment, $pod) {
+test('for_processes reads each process by its label', function () use ($deployment, $pod) {
     $kube = new Fake_kubernetes([
         'Deployment' => [$deployment('worker', 2, 2), $deployment('mailer', 1, 0)],
         'Pod' => [$pod('worker'), $pod('worker'), $pod('mailer', 'CrashLoopBackOff')],
@@ -80,22 +58,22 @@ $test('for_processes reads each process by its label', function () use ($same, $
 
     $states = App_state::for_processes($kube, 'project-1', 2);
 
-    $same(['running', '2 of 2 ready'], [$states['worker']['state'], $states['worker']['detail']]);
-    $same(['crashing', 'CrashLoopBackOff: back-off restarting'], [$states['mailer']['state'], $states['mailer']['detail']]);
-    $same([Manifests::process_selector(2), Manifests::process_selector(2)], $kube->selectors);
+    assert_same(['running', '2 of 2 ready'], [$states['worker']['state'], $states['worker']['detail']]);
+    assert_same(['crashing', 'CrashLoopBackOff: back-off restarting'], [$states['mailer']['state'], $states['mailer']['detail']]);
+    assert_same([Manifests::process_selector(2), Manifests::process_selector(2)], $kube->selectors);
 });
 
-$test('for_processes is empty before the namespace exists', function () use ($same) {
+test('for_processes is empty before the namespace exists', function () {
     $kube = new class ([]) extends Fake_kubernetes {
         function list(string $api_version, string $kind, ?string $namespace, string $label_selector = ''): array {
             throw new Client_Error('namespaces "project-9" not found', 404);
         }
     };
 
-    $same([], App_state::for_processes($kube, 'project-9', 2));
+    assert_same([], App_state::for_processes($kube, 'project-9', 2));
 });
 
-$test('for_processes refuses a namespace that is not a tenant\'s', function () {
+test('for_processes refuses a namespace that is not a tenant\'s', function () {
     try {
         App_state::for_processes(new Fake_kubernetes([]), 'kube-system', 2);
     } catch (InvalidArgumentException) {
@@ -115,30 +93,30 @@ $render = function (array $processes, ?array $process_states): string {
 
 $worker = ['name' => 'worker', 'command' => 'php modules/queue/runtime.php work --time-limit=3600', 'replicas' => 1];
 
-$test('a running process shows its state, command and links', function () use ($render, $contains, $worker) {
+test('a running process shows its state, command and links', function () use ($render, $worker) {
     $html = $render([$worker], ['worker' => App_state::_make('running', '1 of 1 ready')]);
 
-    $contains('worker</strong>', $html);
-    $contains('php modules/queue/runtime.php work --time-limit=3600', $html);
-    $contains('Running</span> &middot; 1 of 1 ready', $html);
-    $contains('href="apps/2/logs"', $html);
-    $contains('href="apps/2/settings#processes"', $html);
+    assert_contains('worker</strong>', $html);
+    assert_contains('php modules/queue/runtime.php work --time-limit=3600', $html);
+    assert_contains('Running</span> &middot; 1 of 1 ready', $html);
+    assert_contains('href="apps/2/logs"', $html);
+    assert_contains('href="apps/2/settings#processes"', $html);
 });
 
-$test('a process the next deploy will start or remove says so', function () use ($render, $contains, $worker) {
+test('a process the next deploy will start or remove says so', function () use ($render, $worker) {
     $html = $render([$worker], ['old' => App_state::_make('running', '1 of 1 ready')]);
 
-    $contains('Starts on next deploy', $html);
-    $contains('old</strong>', $html);
-    $contains('Removed on next deploy', $html);
+    assert_contains('Starts on next deploy', $html);
+    assert_contains('old</strong>', $html);
+    assert_contains('Removed on next deploy', $html);
 });
 
-$test('a crashing process is flagged; no state when the cluster cannot be read', function () use ($render, $contains, $same, $worker) {
-    $contains('<span class="ov-warn-text">Crashing</span>', $render([$worker], ['worker' => App_state::_make('crashing', 'CrashLoopBackOff')]));
+test('a crashing process is flagged; no state when the cluster cannot be read', function () use ($render, $worker) {
+    assert_contains('<span class="ov-warn-text">Crashing</span>', $render([$worker], ['worker' => App_state::_make('crashing', 'CrashLoopBackOff')]));
 
     $html = $render([$worker], null);
-    $same(false, str_contains($html, 'next deploy'));
-    $contains('href="apps/2/logs"', $html);
+    assert_same(false, str_contains($html, 'next deploy'));
+    assert_contains('href="apps/2/logs"', $html);
 });
 
-exit($failures === 0 ? 0 : 1);
+finish_tests();

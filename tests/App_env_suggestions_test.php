@@ -7,27 +7,11 @@
  * Run: php tests/App_env_suggestions_test.php (exits non-zero on a failure)
  */
 
+require_once __DIR__ . '/bootstrap.php';
+
 require_once dirname(__DIR__) . '/modules/platform/manifests/App_env_suggestions.php';
 
-$failures = 0;
-
-$test = function (string $name, callable $body) use (&$failures): void {
-    try {
-        $body();
-        echo "ok   {$name}\n";
-    } catch (Throwable $e) {
-        $failures++;
-        echo "FAIL {$name}\n     {$e->getMessage()}\n";
-    }
-};
-
-$same = function ($expected, $actual): void {
-    if ($expected !== $actual) {
-        throw new RuntimeException("Expected:\n" . var_export($expected, true) . "\nGot:\n" . var_export($actual, true));
-    }
-};
-
-$test('getenv, env helpers and $_ENV are read with their literal defaults', function () use ($same) {
+test('getenv, env helpers and $_ENV are read with their literal defaults', function () {
     $source = <<<'PHP'
     <?php
     define('API_KEY', getenv('ANTHROPIC_API_KEY'));
@@ -38,7 +22,7 @@ $test('getenv, env helpers and $_ENV are read with their literal defaults', func
     $region = app_env('REGION');
     PHP;
 
-    $same([
+    assert_same([
         ['name' => 'ANTHROPIC_API_KEY', 'default' => '', 'file' => 'config.php'],
         ['name' => 'MODEL', 'default' => 'claude', 'file' => 'config.php'],
         ['name' => 'RETRIES', 'default' => '3', 'file' => 'config.php'],
@@ -48,7 +32,7 @@ $test('getenv, env helpers and $_ENV are read with their literal defaults', func
     ], App_env_suggestions::from_files(['config.php' => $source]));
 });
 
-$test('putenv, function definitions, dynamic names and comments are not reads', function () use ($same) {
+test('putenv, function definitions, dynamic names and comments are not reads', function () {
     $source = <<<'PHP'
     <?php
     putenv('SET_HERE=1');
@@ -59,40 +43,40 @@ $test('putenv, function definitions, dynamic names and comments are not reads', 
     $text = "getenv('IN_A_STRING')";
     PHP;
 
-    $same([], App_env_suggestions::from_files(['helpers.php' => $source]));
+    assert_same([], App_env_suggestions::from_files(['helpers.php' => $source]));
 });
 
-$test('Variables the platform sets and impossible names are left out', function () use ($same) {
+test('Variables the platform sets and impossible names are left out', function () {
     $source = "<?php\n\$port = getenv('PORT');\n\$bad = getenv('NOT-A-NAME');\n\$ok = getenv('OK');\n";
 
-    $same(['OK'], array_column(App_env_suggestions::from_files(['config.php' => $source]), 'name'));
+    assert_same(['OK'], array_column(App_env_suggestions::from_files(['config.php' => $source]), 'name'));
 });
 
-$test('A variable read twice is suggested once, with the first default found', function () use ($same) {
+test('A variable read twice is suggested once, with the first default found', function () {
     $files = [
         'config.php' => "<?php\n\$a = getenv('SHARED');\n",
         'site.php' => "<?php\n\$b = env('SHARED', 'from site');\n\$c = env('SHARED', 'ignored');\n",
     ];
 
-    $same([['name' => 'SHARED', 'default' => 'from site', 'file' => 'config.php']], App_env_suggestions::from_files($files));
+    assert_same([['name' => 'SHARED', 'default' => 'from site', 'file' => 'config.php']], App_env_suggestions::from_files($files));
 });
 
-$test('Only a literal default is suggested', function () use ($same) {
+test('Only a literal default is suggested', function () {
     $source = "<?php\n\$a = env('A', SOME_CONSTANT);\n\$b = getenv('B') ?: \$fallback;\n\$c = env('C', 'x' . 'y');\n";
 
-    $same(['', '', ''], array_column(App_env_suggestions::from_files(['config.php' => $source]), 'default'));
+    assert_same(['', '', ''], array_column(App_env_suggestions::from_files(['config.php' => $source]), 'default'));
 });
 
-$test('Quoted defaults are unescaped', function () use ($same) {
+test('Quoted defaults are unescaped', function () {
     $source = "<?php\n\$a = env('A', 'it\\'s');\n\$b = env('B', \"tab\\there\");\n";
 
-    $same(["it's", "tab\there"], array_column(App_env_suggestions::from_files(['config.php' => $source]), 'default'));
+    assert_same(["it's", "tab\there"], array_column(App_env_suggestions::from_files(['config.php' => $source]), 'default'));
 });
 
-$test('A file that is not valid PHP is skipped', function () use ($same) {
+test('A file that is not valid PHP is skipped', function () {
     $files = ['broken.php' => "<?php\n\$a = getenv('A'\n", 'config.php' => "<?php\n\$b = getenv('B');\n"];
 
-    $same(['B'], array_column(App_env_suggestions::from_files($files), 'name'));
+    assert_same(['B'], array_column(App_env_suggestions::from_files($files), 'name'));
 });
 
-exit($failures === 0 ? 0 : 1);
+finish_tests();

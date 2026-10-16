@@ -7,28 +7,12 @@
  * Run: php tests/App_traffic_test.php (exits non-zero on a failure)
  */
 
+require_once __DIR__ . '/bootstrap.php';
+
 define('APPPATH', dirname(__DIR__) . '/');
 
 require_once APPPATH . 'modules/services/clients/Kubernetes.php';
 require_once APPPATH . 'modules/platform/live/App_traffic.php';
-
-$failures = 0;
-
-$test = function (string $name, callable $body) use (&$failures): void {
-    try {
-        $body();
-        echo "ok   {$name}\n";
-    } catch (Throwable $e) {
-        $failures++;
-        echo "FAIL {$name}\n     {$e->getMessage()}\n";
-    }
-};
-
-$same = function ($expected, $actual): void {
-    if ($expected !== $actual) {
-        throw new RuntimeException("Expected:\n" . var_export($expected, true) . "\nGot:\n" . var_export($actual, true));
-    }
-};
 
 /** An access log line as Traefik v3.7 writes it (headers dropped), with the API's timestamp prefix */
 $line = function (string $at, string $route, int $status, string $path = '/', string $gateway = 'traefik-platform') {
@@ -50,18 +34,18 @@ $log = implode("\n", [
     '',
 ]);
 
-$test('Patterns match an app\'s routers on every gateway, never a longer id or another namespace', function () use ($same) {
+test('Patterns match an app\'s routers on every gateway, never a longer id or another namespace', function () {
     $app = App_traffic::app_pattern(['id' => 7, 'namespace' => 'project-3']);
-    $same(1, preg_match($app, 'httproute-project-3-p7-app-gw-traefik-platform-ep-websecure-0-1a@kubernetesgateway'));
-    $same(1, preg_match($app, 'httproute-project-3-p7-app-gw-project-3-p7-d-example-com-ep-websecure-0-1a@kubernetesgateway'));
-    $same(0, preg_match($app, 'httproute-project-3-p71-app-gw-traefik-platform-ep-websecure-0-1a@kubernetesgateway'));
-    $same(0, preg_match($app, 'httproute-project-31-p7-app-gw-traefik-platform-ep-websecure-0-1a@kubernetesgateway'));
+    assert_same(1, preg_match($app, 'httproute-project-3-p7-app-gw-traefik-platform-ep-websecure-0-1a@kubernetesgateway'));
+    assert_same(1, preg_match($app, 'httproute-project-3-p7-app-gw-project-3-p7-d-example-com-ep-websecure-0-1a@kubernetesgateway'));
+    assert_same(0, preg_match($app, 'httproute-project-3-p71-app-gw-traefik-platform-ep-websecure-0-1a@kubernetesgateway'));
+    assert_same(0, preg_match($app, 'httproute-project-31-p7-app-gw-traefik-platform-ep-websecure-0-1a@kubernetesgateway'));
 
     preg_match(App_traffic::project_pattern(['namespace' => 'project-3']), 'httproute-project-3-p71-app-gw-x', $match);
-    $same('71', $match[1] ?? null);
+    assert_same('71', $match[1] ?? null);
 });
 
-$test('Patterns refuse a row without a tenant namespace', function () {
+test('Patterns refuse a row without a tenant namespace', function () {
     try {
         App_traffic::app_pattern(['id' => 7, 'namespace' => 'traefik']);
     } catch (InvalidArgumentException $e) {
@@ -71,12 +55,12 @@ $test('Patterns refuse a row without a tenant namespace', function () {
     throw new RuntimeException('Expected InvalidArgumentException');
 });
 
-$test('Parsing keeps only the app\'s requests but every line\'s timestamp', function () use ($same, $log) {
+test('Parsing keeps only the app\'s requests but every line\'s timestamp', function () use ($log) {
     $lines = App_traffic::parse($log, App_traffic::app_pattern(['id' => 7, 'namespace' => 'project-3']));
 
-    $same(6, count($lines));
-    $same(['/shop?page=2', '/missing'], array_column(array_filter(array_column($lines, 1)), 'path'));
-    $same([
+    assert_same(6, count($lines));
+    assert_same(['/shop?page=2', '/missing'], array_column(array_filter(array_column($lines, 1)), 'path'));
+    assert_same([
         'time' => '2026-10-09T08:00:01.958200276Z', 'app_id' => 0, 'method' => 'GET', 'host' => 'shop.trongate.dev',
         'path' => '/shop?page=2', 'status' => 200, 'ms' => 1.7, 'bytes' => 335,
     ], $lines[1][1]);
@@ -105,23 +89,23 @@ class Stub_kube extends Kubernetes {
     }
 }
 
-$test('A project read merges both Traefik pods, names each app and moves the cursor past every line', function () use ($same, $log, $line) {
+test('A project read merges both Traefik pods, names each app and moves the cursor past every line', function () use ($log, $line) {
     $kube = new Stub_kube(['traefik-a' => $log, 'traefik-b' => $line('2026-10-09T08:00:02.500000000Z', 'project-3-p7-app', 201)]);
     $read = App_traffic::read($kube, App_traffic::project_pattern(['namespace' => 'project-3']));
 
-    $same([[7, 200], [71, 502], [7, 201], [7, 404]], array_map(fn(array $r) => [$r['app_id'], $r['status']], $read['requests']));
-    $same('2026-10-09T08:00:05.000000000Z', $read['cursor']);
-    $same(['traefik', 'traefik-a', ['container' => 'traefik', 'timestamps' => true, 'limitBytes' => App_traffic::LIMIT_BYTES, 'sinceSeconds' => App_traffic::FIRST_READ_SECONDS]], $kube->asked[0]);
+    assert_same([[7, 200], [71, 502], [7, 201], [7, 404]], array_map(fn(array $r) => [$r['app_id'], $r['status']], $read['requests']));
+    assert_same('2026-10-09T08:00:05.000000000Z', $read['cursor']);
+    assert_same(['traefik', 'traefik-a', ['container' => 'traefik', 'timestamps' => true, 'limitBytes' => App_traffic::LIMIT_BYTES, 'sinceSeconds' => App_traffic::FIRST_READ_SECONDS]], $kube->asked[0]);
 });
 
-$test('A later read asks from the cursor\'s second and drops what it already sent', function () use ($same, $log) {
+test('A later read asks from the cursor\'s second and drops what it already sent', function () use ($log) {
     $kube = new Stub_kube(['traefik-a' => $log]);
     $read = App_traffic::read($kube, App_traffic::app_pattern(['id' => 7, 'namespace' => 'project-3']), '2026-10-09T08:00:01.000000001Z');
 
-    $same('2026-10-09T08:00:01Z', $kube->asked[0][2]['sinceTime']);
-    $same([404], array_column($read['requests'], 'status'));
+    assert_same('2026-10-09T08:00:01Z', $kube->asked[0][2]['sinceTime']);
+    assert_same([404], array_column($read['requests'], 'status'));
 
-    $same('', App_traffic::read(new Stub_kube([]), App_traffic::app_pattern(['id' => 7, 'namespace' => 'project-3']), 'not a cursor')['cursor']);
+    assert_same('', App_traffic::read(new Stub_kube([]), App_traffic::app_pattern(['id' => 7, 'namespace' => 'project-3']), 'not a cursor')['cursor']);
 });
 
-exit($failures === 0 ? 0 : 1);
+finish_tests();
