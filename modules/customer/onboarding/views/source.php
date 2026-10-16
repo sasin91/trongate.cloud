@@ -30,6 +30,7 @@
 
                 <div class="wz-nav">
                     <a href="<?= htmlspecialchars($connect_url) ?>" class="wz-ok">Connect GitHub</a>
+                    <a href="<?= htmlspecialchars($public_link_url) ?>" class="wz-back">Deploy a public link instead</a>
                 </div>
             </div>
         </main>

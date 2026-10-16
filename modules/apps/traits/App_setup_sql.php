@@ -41,7 +41,7 @@ trait App_setup_sql {
 
         return [
             'sql_files' => $files,
-            'sql_files_loaded_for' => is_array($offered) ? (string) post('repository') . '@' . (string) post('repository_branch') : '',
+            'sql_files_loaded_for' => is_array($offered) ? $this->_posted_source_key() : '',
             'sql_path' => (string) post('sql_path', true),
             'sql' => (string) post('setup_sql'),
             // The form opens on this question when its check failed
@@ -55,22 +55,19 @@ trait App_setup_sql {
     function sql_file_options(): void {
         $this->_make_sure_allowed();
         $customer = $this->_customer_or_redirect();
-        $repository = trim($_GET['repository'] ?? '');
+        $source = $this->_wizard_source_from_query((int) $customer->id);
         $branch = trim($_GET['branch'] ?? '');
-        $provider = trim($_GET['provider'] ?? '');
 
-        if ($this->_validate_source_provider($provider) !== true
-            || $this->_validate_repository($repository) !== true
-            || $this->_validate_branch($branch) !== true) {
+        if ($source === null || $this->_validate_branch($branch) !== true) {
             http_response_code(422);
             die();
         }
 
-        $client = $this->_provider_client((int) $customer->id, $provider);
+        $repository = $source['repository'];
         $read_failed = false;
 
         try {
-            $sql_files = Setup_sql::candidates(array_keys($client->tree($repository, $branch)));
+            $sql_files = Setup_sql::candidates(array_keys($source['client']->tree($repository, $branch)));
         } catch (Client_Error | RuntimeException $e) {
             error_log("New app: could not list the .sql files of {$repository}@{$branch}: {$e->getMessage()}");
             $sql_files = [];
@@ -183,19 +180,17 @@ trait App_setup_sql {
             return [];
         }
 
-        $repository = (string) post('repository', true);
+        $customer = $this->_customer_or_redirect();
+        $source = $this->_wizard_source((int) $customer->id, (string) post('repository', true), $this->_posted_public_link(), (string) post('provider', true));
         $branch = (string) post('repository_branch', true);
-        $provider = (string) post('provider', true);
 
         // Nothing to read the files from; the repository and branch questions show why
-        if ($this->_validate_source_provider($provider) !== true
-            || $this->_validate_repository($repository) !== true
-            || $this->_validate_branch($branch) !== true) {
+        if ($source === null || $this->_validate_branch($branch) !== true) {
             return [];
         }
 
-        $customer = $this->_customer_or_redirect();
-        $client = $this->_provider_client((int) $customer->id, $provider);
+        $repository = $source['repository'];
+        $client = $source['client'];
 
         try {
             $tree = $client->tree($repository, $branch);

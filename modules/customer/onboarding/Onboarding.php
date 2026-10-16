@@ -43,18 +43,14 @@ class Onboarding extends Trongate {
     // --- Source Control (GitHub, modules/github_auth) ---
 
     function source(): void {
-        $this->view('source', ['connect_url' => 'auth/github?then=onboarding/app']);
+        $this->view('source', ['connect_url' => 'auth/github?then=onboarding/app', 'public_link_url' => 'onboarding/app']);
     }
 
     // --- App ---
 
     function app(): void {
         $customer = $this->_customer_or_redirect();
-        $form = $this->_app_form_data((int) $customer->id);
-
-        if ($form === false) {
-            redirect('onboarding/source');
-        }
+        $form = $this->_app_form_data((int) $customer->id, 'auth/github?then=onboarding/app');
 
         $this->view('app', $form);
     }

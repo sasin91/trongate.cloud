@@ -42,7 +42,8 @@
             "php tests/App_env_suggestions_test.php",
             "php tests/Domain_dns_test.php",
             "php tests/Setup_sql_test.php",
-            "php tests/Sql_import_test.php"
+            "php tests/Sql_import_test.php",
+            "php tests/Github_link_test.php"
         ],
         "qa": [
             "@lint",
