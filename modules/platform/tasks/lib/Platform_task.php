@@ -506,7 +506,7 @@ class Platform_task {
     }
 
     /**
-     * Run the SQL the app's database is set up with (app.setup_sql), once:
+     * Run the SQL the app's database is set up with (app_setup_sql), once:
      * on the first deploy that reaches the rollout, right after apply()
      * created the database, so the app's tables are there before the smoke
      * test. A failure is recorded for the app page and logged, and the
@@ -515,7 +515,7 @@ class Platform_task {
     static function run_setup_sql(Runtime $runtime, Task_log $log, int $app_id, array $database): void {
         $pending = self::row(
             $runtime->db(),
-            "SELECT setup_sql FROM app WHERE id = ? AND setup_sql_status = 'pending'",
+            "SELECT statements FROM app_setup_sql WHERE app_id = ? AND status = 'pending'",
             [$app_id],
         );
 
@@ -523,10 +523,10 @@ class Platform_task {
             return;
         }
 
-        $sql = Setup_sql::decrypt((string) $pending['setup_sql']);
+        $sql = Setup_sql::decrypt((string) $pending['statements']);
 
         if ($sql === null) {
-            self::execute($runtime->db(), "UPDATE app SET setup_sql = NULL, setup_sql_status = 'failed', setup_sql_error = ? WHERE id = ?", ['It could not be decrypted (APP_KEY changed), so none of it ran.', $app_id]);
+            self::execute($runtime->db(), "UPDATE app_setup_sql SET statements = NULL, status = 'failed', error = ? WHERE app_id = ?", ['It could not be decrypted (APP_KEY changed), so none of it ran.', $app_id]);
             $log->warn('The setup SQL could not be decrypted (APP_KEY changed), so none of it ran. The deploy carries on.');
             return;
         }
@@ -550,7 +550,7 @@ class Platform_task {
             return;
         }
 
-        self::execute($runtime->db(), "UPDATE app SET setup_sql = NULL, setup_sql_status = 'done' WHERE id = ?", [$app_id]);
+        self::execute($runtime->db(), "UPDATE app_setup_sql SET statements = NULL, status = 'done' WHERE app_id = ?", [$app_id]);
         $log->info('Ran the setup SQL');
     }
 
@@ -581,7 +581,7 @@ class Platform_task {
     static function setup_sql_failed(Runtime $runtime, Task_log $log, int $app_id, string $message, string $remaining_sql): void {
         self::execute(
             $runtime->db(),
-            "UPDATE app SET setup_sql = ?, setup_sql_status = 'failed', setup_sql_error = ? WHERE id = ?",
+            "UPDATE app_setup_sql SET statements = ?, status = 'failed', error = ? WHERE app_id = ?",
             [Setup_sql::encrypt($remaining_sql), $message, $app_id],
         );
         $log->warn("The setup SQL stopped. {$message} The deploy carries on; the app page shows the SQL that did not run.");

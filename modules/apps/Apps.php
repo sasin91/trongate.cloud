@@ -121,18 +121,20 @@ class Apps extends Trongate {
      * @return array{message: string, remaining_sql: string}|null
      */
     function _setup_sql_failure(object $app): ?array {
-        if (($app->setup_sql_status ?? null) !== 'failed') {
+        $setup_sql = $this->model->app_setup_sql((int) $app->id);
+
+        if ($setup_sql === false || $setup_sql->status !== 'failed') {
             return null;
         }
 
-        $remaining_sql = Setup_sql::decrypt((string) $app->setup_sql);
+        $remaining_sql = Setup_sql::decrypt((string) $setup_sql->statements);
 
         if ($remaining_sql === null) {
             $remaining_sql = '-- It could not be decrypted (APP_KEY changed).';
         }
 
         return [
-            'message' => (string) $app->setup_sql_error,
+            'message' => (string) $setup_sql->error,
             'remaining_sql' => $remaining_sql,
         ];
     }

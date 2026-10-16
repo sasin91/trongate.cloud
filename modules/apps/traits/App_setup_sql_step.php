@@ -6,13 +6,13 @@ require_once APPPATH . 'modules/platform/live/Setup_sql.php';
  * The new-app wizard's optional Database question: .sql files from the
  * repository (Setup_sql::candidates, the likely ones ticked), another
  * file by path, and SQL typed in. They are read and checked when the form
- * is submitted, stored in app.setup_sql, and run once by the first
+ * is submitted, stored in app_setup_sql, and run once by the first
  * deploy, right after it creates the database (Platform_task::run_setup_sql).
  *
  * Used by App_form. The using controller must also use Customer_guard and
  * Provider_clients.
  */
-trait App_setup_sql {
+trait App_setup_sql_step {
 
     /**
      * What _validate_setup_sql read and checked, for _save_setup_sql

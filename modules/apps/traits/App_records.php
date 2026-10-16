@@ -93,19 +93,33 @@ trait App_records {
     }
 
     /**
-     * The SQL the app's database starts with (Setup_sql); its first
-     * deploy runs it
+     * The SQL the app's database starts with (Setup_sql, encrypted); its
+     * first deploy runs it
      */
-    function set_setup_sql(int $app_id, string $sql): void {
-        $this->db->query_bind("UPDATE app SET setup_sql = :sql, setup_sql_status = 'pending' WHERE id = :app_id", ['app_id' => $app_id, 'sql' => $sql]);
+    function set_setup_sql(int $app_id, string $encrypted_statements): void {
+        $this->db->query_bind(
+            "INSERT INTO app_setup_sql (app_id, statements, status, error) VALUES (:app_id, :statements, 'pending', NULL)
+             ON DUPLICATE KEY UPDATE statements = VALUES(statements), status = 'pending', error = NULL",
+            ['app_id' => $app_id, 'statements' => $encrypted_statements]
+        );
     }
 
     /**
-     * Hide a failed setup SQL's alert: the SQL that did not run is cleared,
-     * the error kept
+     * The app's setup SQL (statements still encrypted), or false when the
+     * wizard had none
+     */
+    function app_setup_sql(int $app_id): object|false {
+        $rows = $this->db->query_bind('SELECT statements, status, error FROM app_setup_sql WHERE app_id = :app_id', ['app_id' => $app_id], 'object');
+
+        return $rows[0] ?? false;
+    }
+
+    /**
+     * Hide a failed setup SQL's alert: the statements that did not run are
+     * cleared, the error kept
      */
     function dismiss_setup_sql(int $app_id): void {
-        $this->db->query_bind("UPDATE app SET setup_sql = NULL, setup_sql_status = 'dismissed' WHERE id = :app_id AND setup_sql_status = 'failed'", ['app_id' => $app_id]);
+        $this->db->query_bind("UPDATE app_setup_sql SET statements = NULL, status = 'dismissed' WHERE app_id = :app_id AND status = 'failed'", ['app_id' => $app_id]);
     }
 
     /**

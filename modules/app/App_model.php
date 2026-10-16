@@ -9,9 +9,6 @@ class App_model extends Model {
     
     private string $table_name = 'app';
 
-    // Never setup_sql
-    private string $columns = '`id`, `project_id`, `label`, `slug`, `serves_slug_host`, `type`, `environment`, `production_app_id`, `domain`, `verified_domain`, `domain_pointed_at`, `domain_secured_at`, `domain_dns_failures`, `domain_checked_at`, `source_url`, `source_branch`, `source_provider`, `auto_deploy`, `reconciled_at`, `setup_sql_status`, `setup_sql_error`, `database_server_id`, `current_deployment_id`, `created_at`, `deleted_at`';
-
     /**
      * Return the list of searchable column names (used by the controller for validation).
      *
@@ -30,7 +27,7 @@ class App_model extends Model {
      * @return array|bool Associative array on success or false on failure.
      */
     public function get_data_from_db(int $update_id, bool $prepare_for_display = false): array|bool {
-        $record_obj = $this->db->query_bind('SELECT '.$this->columns.' FROM '.$this->table_name.' WHERE id = :id', ['id' => $update_id], 'object')[0] ?? false;
+        $record_obj = $this->db->get_where($update_id, $this->table_name);
 
         if ($record_obj === false) {
             return false;
@@ -53,7 +50,7 @@ class App_model extends Model {
      * @return array<object>
      */
     public function fetch_records(int $limit, int $offset): array {
-        $sql = 'SELECT '.$this->columns.' FROM '.$this->table_name.' ORDER BY id desc LIMIT '.$limit.' OFFSET '.$offset;
+        $sql = 'SELECT * FROM '.$this->table_name.' ORDER BY id desc LIMIT '.$limit.' OFFSET '.$offset;
         return $this->db->query($sql, 'object');
     }
     
@@ -84,13 +81,13 @@ class App_model extends Model {
         }
 
         if ($column !== '') {
-            $sql = 'SELECT '.$this->columns.' FROM '.$this->table_name.' WHERE '.$column.' LIKE :query ORDER BY id desc LIMIT '.$limit.' OFFSET '.$offset;
+            $sql = 'SELECT * FROM '.$this->table_name.' WHERE '.$column.' LIKE :query ORDER BY id desc LIMIT '.$limit.' OFFSET '.$offset;
         } else {
             $conditions = [];
             foreach ($searchable_columns as $col) {
                 $conditions[] = $col.' LIKE :query';
             }
-            $sql = 'SELECT '.$this->columns.' FROM '.$this->table_name.' WHERE ('.implode(' OR ', $conditions).') ORDER BY id desc LIMIT '.$limit.' OFFSET '.$offset;
+            $sql = 'SELECT * FROM '.$this->table_name.' WHERE ('.implode(' OR ', $conditions).') ORDER BY id desc LIMIT '.$limit.' OFFSET '.$offset;
         }
 
         return $this->db->query_bind($sql, ['query' => '%'.$query.'%'], 'object');
@@ -161,8 +158,6 @@ class App_model extends Model {
         $record_obj->source_provider = trim((string) $record_obj->source_provider);
         $record_obj->auto_deploy = ($record_obj->auto_deploy == 1) ? 'yes' : 'no';
         $record_obj->reconciled_at = trim((string) $record_obj->reconciled_at);
-        $record_obj->setup_sql_status = trim((string) $record_obj->setup_sql_status);
-        $record_obj->setup_sql_error = trim((string) $record_obj->setup_sql_error);
         $record_obj->created_at = trim((string) $record_obj->created_at);
         $record_obj->deleted_at = trim((string) $record_obj->deleted_at);
         return $record_obj;
