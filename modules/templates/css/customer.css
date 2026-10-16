@@ -300,6 +300,12 @@ a.card:hover {
     transition: color 0.2s;
 }
 
+/* Code in a label is something to type as shown, so keep its case */
+.form-label code {
+    text-transform: none;
+    letter-spacing: normal;
+}
+
 .form-input,
 .form-select {
     display: block;
