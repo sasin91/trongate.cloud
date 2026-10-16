@@ -6,8 +6,8 @@ require_once __DIR__ . '/../platform/mail/Mail_capture.php';
 /**
  * The deployment page's timeline: the steps of a deploy, how far this
  * deployment got (the worker logs a 'step' line as it enters each one,
- * Task_log::step), its log lines under the step they belong to, and what
- * the platform does in each step, filled in with the app's settings. The
+ * Task_log::step), and what the platform does in each step, filled in with
+ * the app's settings. The
  * config rows say in words what Trongate_config::rules() sets
  * (tests/Deploy_steps_test.php keeps the keys in step), never the secrets.
  *
@@ -74,36 +74,21 @@ final class Deploy_steps {
     }
 
     /**
-     * Whether the deployment's log has no steps to put its lines under: it
-     * finished before the worker logged them
+     * The log without its 'step' lines, which only mark where a step starts
      *
-     * @param list<object> $marks
+     * @param list<object> $logs log lines (level, ...)
+     * @return list<object>
      */
-    static function is_unsorted(array $deployment, array $marks): bool {
-        return $marks === [] && !in_array((string) ($deployment['status'] ?? ''), self::RUNNING, true);
-    }
-
-    /**
-     * The log lines under the step they were written in: each line belongs
-     * to the last 'step' line before it, lines before any to the first step.
-     * The 'step' lines themselves are left out.
-     *
-     * @param list<object> $logs log lines, oldest first (id, level, message, created_at)
-     * @param list<object> $marks the deployment's 'step' lines, oldest first
-     * @return array<string, list<object>> every step key, with its lines
-     */
-    static function group_logs(array $logs, array $marks): array {
-        $groups = array_fill_keys(self::KEYS, []);
+    static function without_marks(array $logs): array {
+        $lines = [];
 
         foreach ($logs as $line) {
-            if ($line->level === 'step') {
-                continue;
+            if ($line->level !== 'step') {
+                $lines[] = $line;
             }
-
-            $groups[self::step_of((int) $line->id, $marks)][] = $line;
         }
 
-        return $groups;
+        return $lines;
     }
 
     /**
@@ -233,27 +218,6 @@ final class Deploy_steps {
         }
 
         return 'waiting';
-    }
-
-    /**
-     * The key of the last 'step' line before the log line $id
-     *
-     * @param list<object> $marks
-     */
-    private static function step_of(int $id, array $marks): string {
-        $key = self::KEYS[0];
-
-        foreach ($marks as $mark) {
-            if ((int) $mark->id > $id) {
-                break;
-            }
-
-            if (in_array($mark->message, self::KEYS, true)) {
-                $key = $mark->message;
-            }
-        }
-
-        return $key;
     }
 
     private static function row(string $file, string $setting, string $value, array $keys): array {

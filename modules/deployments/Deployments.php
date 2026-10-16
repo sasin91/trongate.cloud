@@ -3,9 +3,8 @@ require_once APPPATH . 'modules/customer/traits/Customer_guard.php';
 require_once __DIR__ . '/Deploy_steps.php';
 
 /**
- * Deployment detail page: the deploy's steps as a timeline, each with its
- * live log lines (Deploy_steps). Any member of the deployment's project
- * may read it.
+ * Deployment detail page: the deploy's steps as a timeline (Deploy_steps)
+ * next to its live log. Any member of the deployment's project may read it.
  *
  * @property-read Deployments_model $model
  * @property-read Templates $templates
@@ -31,10 +30,8 @@ class Deployments extends Trongate {
             'view_file' => 'show',
             'deployment' => $deployment,
             'steps' => $steps,
-            'step_logs' => Deploy_steps::group_logs($logs, $marks),
             'step_now' => Deploy_steps::now($steps),
-            // Finished before the worker marked steps: one plain log instead
-            'unsorted_logs' => Deploy_steps::is_unsorted((array) $deployment, $marks) ? $logs : [],
+            'logs' => Deploy_steps::without_marks($logs),
             'last_log_id' => $this->_last_log_id($logs, 0),
             'is_finished' => in_array($deployment->status, self::FINISHED, true),
             'failure' => $this->_failure($deployment),
@@ -48,8 +45,8 @@ class Deployments extends Trongate {
     }
 
     /**
-     * HTML partial polled by MX: new log lines under their steps, the steps'
-     * states, the log cursor and the status pill (see _logs_partial.php).
+     * HTML partial polled by MX: new log lines, the steps' states, the log
+     * cursor and the status pill (see _logs_partial.php).
      */
     function logs_partial(): void {
         $this->_make_sure_allowed();
@@ -70,8 +67,8 @@ class Deployments extends Trongate {
         $this->view('_logs_partial', [
             'deployment' => $deployment,
             'steps' => $steps,
-            'step_logs' => Deploy_steps::group_logs($logs, $marks),
             'step_now' => Deploy_steps::now($steps),
+            'logs' => Deploy_steps::without_marks($logs),
             'last_log_id' => $this->_last_log_id($logs, $last_log_id),
             'is_finished' => in_array($deployment->status, self::FINISHED, true),
             'failure' => $this->_failure($deployment),
@@ -93,15 +90,14 @@ class Deployments extends Trongate {
     }
 
     /**
-     * The log poller's mx-select-oob (show.php): each step's new lines are
-     * appended to its log and its heading replaced, then the cursor, status,
-     * failure card and the stop signal (_logs_partial.php)
+     * The log poller's mx-select-oob (show.php): new lines appended to the
+     * log, each step's heading replaced, then the cursor, status, failure
+     * card and the stop signal (_logs_partial.php)
      */
     function _poll_swaps(): string {
-        $swaps = [];
+        $swaps = [['select' => '#new-logs', 'target' => '#logs-content', 'swap' => 'beforeend']];
 
         foreach (Deploy_steps::KEYS as $key) {
-            $swaps[] = ['select' => "#new-logs-{$key}", 'target' => "#step-logs-{$key}", 'swap' => 'beforeend'];
             $swaps[] = ['select' => "#step-head-{$key}", 'target' => "#step-head-{$key}", 'swap' => 'outerHTML'];
         }
 

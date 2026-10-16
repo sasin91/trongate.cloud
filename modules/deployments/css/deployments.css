@@ -9,6 +9,11 @@
     overflow-y: auto;
 }
 
+#logs-content:empty::before {
+    content: 'Waiting for logs...';
+    color: #666;
+}
+
 .log-line {
     margin-bottom: 2px;
     white-space: pre-wrap;
@@ -123,9 +128,40 @@
     word-break: break-all;
 }
 
-/* The deploy's steps as a timeline (Deploy_steps, views/_steps.php) */
-.steps-card {
-    margin-bottom: 1.5rem;
+/* The deploy's steps as a timeline (Deploy_steps, views/_steps.php), the log next to it */
+.deployment-layout {
+    display: grid;
+    grid-template-columns: minmax(320px, 2fr) 3fr;
+    gap: 1.5rem;
+    align-items: start;
+}
+
+.deployment-layout > * {
+    min-width: 0;
+}
+
+.deployment-logs h3 {
+    margin-top: 0;
+}
+
+/* The log stays in view while the steps are scrolled */
+.deployment-logs {
+    position: sticky;
+    top: 1rem;
+}
+
+.deployment-logs .log-container {
+    max-height: calc(100vh - 6rem);
+}
+
+@media (max-width: 900px) {
+    .deployment-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .deployment-logs {
+        position: static;
+    }
 }
 
 .steps-heading {
@@ -266,67 +302,39 @@
     font-size: 0.9rem;
 }
 
-.step-logs {
-    margin-top: 0.5rem;
-    min-height: 0;
-    max-height: 320px;
-    padding: 0.6rem 0.75rem;
-    border-radius: 6px;
-}
-
-.step-logs:empty {
-    display: none;
-}
-
 .step-config {
     overflow-x: auto;
     margin-top: 0.5rem;
 }
 
+/* The timeline column is narrow: each setting is a small block, not a row */
 .step-config table {
     border-collapse: collapse;
     font-size: 0.85rem;
     width: 100%;
 }
 
-.step-config th,
+.step-config thead {
+    display: none;
+}
+
+.step-config tr,
 .step-config td {
-    text-align: left;
-    padding: 0.35rem 0.75rem 0.35rem 0;
-    border-bottom: 1px solid var(--border);
-    vertical-align: top;
+    display: block;
     overflow-wrap: anywhere;
 }
 
-.step-config th {
-    color: var(--text-muted);
-    font-weight: 500;
+.step-config tr {
+    padding: 0.4rem 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.step-config td {
+    padding: 0.1rem 0;
 }
 
 .steps-later {
     margin: 0;
     font-size: 0.85rem;
     color: var(--text-muted);
-}
-
-/* Phones: each setting is a small block instead of a row */
-@media (max-width: 550px) {
-    .step-config thead {
-        display: none;
-    }
-
-    .step-config tr,
-    .step-config td {
-        display: block;
-    }
-
-    .step-config tr {
-        padding: 0.5rem 0;
-        border-bottom: 1px solid var(--border);
-    }
-
-    .step-config td {
-        border-bottom: none;
-        padding: 0.1rem 0;
-    }
 }

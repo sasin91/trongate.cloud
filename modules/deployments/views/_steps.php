@@ -1,8 +1,8 @@
 <?php
 /**
- * The deploy as a timeline (Deploy_steps::steps): each step's heading, what
- * the platform does in it, and its log lines (#step-logs-{key}), which the
- * log poller appends to while the deployment runs.
+ * The deploy as a timeline (Deploy_steps::steps): each step's heading,
+ * which the log poller replaces as the deployment moves on, and what the
+ * platform does in it.
  */
 ?>
 <ol class="steps">
@@ -34,8 +34,6 @@
                         </div>
                     <?php endif; ?>
                 </details>
-                <?php $logs = $step_logs[$step['key']]; ?>
-                <div id="step-logs-<?= $step['key'] ?>" class="log-container step-logs"><?php require __DIR__ . '/_log_lines.php'; ?></div>
             </div>
         </li>
     <?php endforeach; ?>

@@ -1,7 +1,7 @@
 <?php
 /**
  * Polled by #log-poller (see show.php; Deployments::_poll_swaps lists the swaps):
- *   #new-logs-{key}    appended to that step's log (#step-logs-{key})
+ *   #new-logs          appended to #logs-content
  *   #step-head-{key}   replaces that step's heading (its state)
  *   #step-now          replaces the step named next to "Steps"
  *   #log-cursor        written into the poller's value (next last_log_id)
@@ -12,9 +12,8 @@
  *                      so once finished the poller itself is removed and polling stops.
  */
 ?>
+<div id="new-logs"><?php require __DIR__ . '/_log_lines.php'; ?></div>
 <?php foreach ($steps as $step): ?>
-    <?php $logs = $step_logs[$step['key']]; ?>
-    <div id="new-logs-<?= $step['key'] ?>"><?php require __DIR__ . '/_log_lines.php'; ?></div>
     <?php require __DIR__ . '/_step_head.php'; ?>
 <?php endforeach; ?>
 <?php require __DIR__ . '/_step_now.php'; ?>

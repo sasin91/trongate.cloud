@@ -32,22 +32,23 @@
 
     <?php require __DIR__ . '/_failure.php'; ?>
 
-    <div class="card steps-card">
-        <div class="steps-heading">
-            <h3>Steps</h3>
-            <?php require __DIR__ . '/_step_now.php'; ?>
+    <div class="deployment-layout">
+        <div class="card steps-card">
+            <div class="steps-heading">
+                <h3>Steps</h3>
+                <?php require __DIR__ . '/_step_now.php'; ?>
+            </div>
+            <?php require __DIR__ . '/_steps.php'; ?>
+            <p class="steps-later">Later, without a build: step 3 runs again for this deployment when it is rolled back to, when your custom domain gets its certificate (BASE_URL moves to the domain), and when trongate.cloud changes what it sets. Changes in Settings take effect on the next deployment.</p>
         </div>
-        <?php require __DIR__ . '/_steps.php'; ?>
-        <p class="steps-later">Later, without a build: step 3 runs again for this deployment when it is rolled back to, when your custom domain gets its certificate (BASE_URL moves to the domain), and when trongate.cloud changes what it sets. Changes in Settings take effect on the next deployment.</p>
-    </div>
 
-    <?php if ($unsorted_logs): ?>
-        <h3>Logs</h3>
-        <div class="card log-container">
-            <?php $logs = $unsorted_logs; ?>
-            <?php require __DIR__ . '/_log_lines.php'; ?>
+        <div class="deployment-logs">
+            <h3>Logs</h3>
+            <div id="log-container" class="card log-container">
+                <div id="logs-content"><?php require __DIR__ . '/_log_lines.php'; ?></div>
+            </div>
         </div>
-    <?php endif; ?>
+    </div>
 
     <?php if (!$is_finished): ?>
         <!-- Polls for new log lines and step states; removed by _logs_partial.php once the deployment finishes -->

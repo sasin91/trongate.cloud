@@ -2,8 +2,7 @@
 
 /**
  * Tests for Deploy_steps, the timeline on a deployment page: step states
- * from the worker's 'step' log lines, log lines grouped under their steps,
- * and config rows that name exactly what Trongate_config::rules() sets
+ * from the worker's 'step' log lines, the log without them, and config rows that name exactly what Trongate_config::rules() sets
  * without showing a secret.
  *
  * Run: php tests/Deploy_steps_test.php (exits non-zero on a failure)
@@ -117,18 +116,18 @@ test('a rollback skips reading and building', function () use ($states, $marks) 
     );
 });
 
-test('a deployment from before steps were logged has no states and unsorted logs', function () use ($states) {
+test('a deployment from before steps were logged has no states', function () use ($states) {
     assert_same(['source' => '', 'build' => '', 'config' => '', 'start' => '', 'check' => '', 'restore' => 'hidden'], $states('success', []));
-    assert_same(true, Deploy_steps::is_unsorted(['status' => 'success'], []));
-    assert_same(false, Deploy_steps::is_unsorted(['status' => 'building'], []));
 });
 
-test('log lines go under the step they were written in', function () use ($marks) {
-    $line = fn(int $id, string $level = 'info') => (object) ['id' => $id, 'level' => $level, 'message' => "line {$id}", 'created_at' => '2026-10-16 22:00:00'];
-    $logs = [$line(5), $line(10, 'step'), $line(11), $line(20, 'step'), $line(21), $line(22)];
-    $ids = array_map(fn(array $lines) => array_map(fn(object $l) => $l->id, $lines), Deploy_steps::group_logs($logs, $marks('source', 'build')));
+test('the log leaves out the step lines', function () {
+    $logs = [
+        (object) ['id' => 1, 'level' => 'step', 'message' => 'source'],
+        (object) ['id' => 2, 'level' => 'info', 'message' => 'Downloaded source'],
+        (object) ['id' => 3, 'level' => 'error', 'message' => 'Build failed'],
+    ];
 
-    assert_same(['source' => [5, 11], 'build' => [21, 22], 'config' => [], 'start' => [], 'check' => [], 'restore' => []], $ids);
+    assert_same([2, 3], array_column(Deploy_steps::without_marks($logs), 'id'));
 });
 
 test('now names the current step', function () use ($app, $marks) {
