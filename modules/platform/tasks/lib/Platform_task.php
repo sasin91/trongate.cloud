@@ -69,7 +69,7 @@ class Platform_task {
      */
     static function app(PDO $db, int $project_id, int $app_id): array {
         $sql = <<<SQL
-            SELECT a.*, r.php_extensions, r.build_commands, r.persistent_paths, r.always_on, r.trongate_env, r.captures_mail, r.health_check_path,
+            SELECT a.*, r.php_extensions, r.build_commands, r.persistent_paths, r.always_on, r.trongate_env, r.default_module, r.captures_mail, r.health_check_path,
                 p.namespace, p.owner_id AS project_owner_id
             FROM app a
             JOIN project p ON p.id = a.project_id

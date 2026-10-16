@@ -349,6 +349,7 @@ class Apps extends Trongate {
             'processes' => $is_resubmit ? $this->_processes_from_post() : $this->model->app_processes((int) $app->id),
             'always_on' => $is_resubmit ? (bool) post('always_on') : Runtime_settings::always_on((array) $app),
             'trongate_env' => $is_resubmit ? (string) post('trongate_env', true) : Runtime_settings::trongate_env((array) $app),
+            'default_module' => $is_resubmit ? (string) post('default_module', true) : Runtime_settings::default_module((array) $app),
             'auto_deploy' => $is_resubmit ? (bool) post('auto_deploy') : (bool) $app->auto_deploy,
             'source_branch' => $is_resubmit ? (string) post('source_branch', true) : (string) $app->source_branch,
             'captures_mail' => $is_resubmit ? (bool) post('captures_mail') : Runtime_settings::captures_mail((array) $app),
@@ -422,6 +423,7 @@ class Apps extends Trongate {
         $this->validation->set_rules('build_commands', 'Build Commands', 'callback__validate_build_commands');
         $this->validation->set_rules('processes', 'Processes', 'callback__validate_processes');
         $this->validation->set_rules('trongate_env', 'Environment', 'required|callback__validate_trongate_env');
+        $this->validation->set_rules('default_module', 'Default module', 'callback__validate_default_module');
         $this->validation->set_rules('source_branch', 'Branch', 'required|max_length[100]|callback__validate_branch');
         $this->validation->set_rules('health_check_path', 'Health Check Path', 'max_length[200]|callback__validate_health_check_path');
 
@@ -440,6 +442,7 @@ class Apps extends Trongate {
             'auto_deploy' => (bool) post('auto_deploy'),
             'source_branch' => trim((string) post('source_branch', true)),
             'trongate_env' => trim((string) post('trongate_env', true)),
+            'default_module' => trim((string) post('default_module', true)),
             'captures_mail' => (bool) post('captures_mail'),
             'health_check_path' => $this->_parse_health_check_path((string) post('health_check_path', true)),
         ]);

@@ -20,6 +20,16 @@ final class Runtime_settings {
 
     const TRONGATE_ENV_PATTERN = '/^[A-Za-z0-9_-]{1,20}$/';
 
+    /**
+     * What the new-app wizard suggests for DEFAULT_MODULE: a fresh
+     * trongate-framework app opens on 'setup', which writes database.php
+     * and config.php, and those are the platform's to set
+     */
+    const SUGGESTED_DEFAULT_MODULE = 'welcome';
+
+    /** A module name for DEFAULT_MODULE (default_module()) */
+    const DEFAULT_MODULE_PATTERN = '/^[A-Za-z0-9_-]{1,50}$/';
+
     /** An app's health check path (health_check_path()): absolute, no query, no dot or empty segments */
     const HEALTH_CHECK_PATH_PATTERN = '#^(?!.*//)(?!.*/\.{1,2}(?:/|$))/[A-Za-z0-9._~/-]{0,199}$#';
 
@@ -104,6 +114,16 @@ final class Runtime_settings {
         $env = (string) ($app['trongate_env'] ?? '');
 
         return preg_match(self::TRONGATE_ENV_PATTERN, $env) ? $env : self::DEFAULT_TRONGATE_ENV;
+    }
+
+    /**
+     * The module the app opens on (Trongate's DEFAULT_MODULE); '' when unset
+     * or invalid, which keeps the app's own
+     */
+    static function default_module(array $app): string {
+        $module = trim((string) ($app['default_module'] ?? ''));
+
+        return preg_match(self::DEFAULT_MODULE_PATTERN, $module) ? $module : '';
     }
 
     /**

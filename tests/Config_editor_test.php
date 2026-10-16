@@ -351,32 +351,20 @@ test('a v1 app gets the database constants', function () use ($db) {
     assert_same("<?php\ndefine('HOST', 'shared-1.databases');\ndefine('PORT', '3306');\ndefine('USER', 'tc_p7');\ndefine('PASSWORD', 'pw');\ndefine('DATABASE', 'tc_p7');\n", $out['database.php']);
 });
 
-test("a fresh trongate-framework app opens on 'welcome' instead of 'setup'", function () use ($db) {
-    $files = ['config.php' => "<?php\ndefine('BASE_URL', '****');\ndefine('ENV', 'dev');\ndefine('DEFAULT_MODULE', 'setup');\ndefine('DEFAULT_METHOD', 'index');\n"];
-    $out = Trongate_config::config_files($files, ['id' => 7, 'slug' => 'shop'], $db);
+test("an app's default module replaces the config's, such as Trongate's 'setup'", function () use ($db) {
+    $files = ['config.php' => "<?php\ndefine('BASE_URL', '****');\ndefine('ENV', 'dev');\ndefine('DEFAULT_MODULE', 'setup');\n"];
+    $out = Trongate_config::config_files($files, ['id' => 7, 'slug' => 'shop', 'default_module' => 'welcome'], $db);
     assert_same(true, str_contains($out['config.php'], "define('DEFAULT_MODULE', 'welcome');"));
     assert_same(false, str_contains($out['config.php'], "'setup'"));
 });
 
-test("a default module the app chose is left alone", function () use ($db) {
-    $sources = [
-        "<?php\ndefine('DEFAULT_MODULE', 'shop');\n",
-        "<?php\ndefine('DEFAULT_MODULE', getenv('DEFAULT_MODULE') ?: 'setup');\n",
-        "<?php\ndefine('ENV', 'dev');\n",
-    ];
+test("without a default module the config's own is kept", function () use ($db) {
+    $files = ['config.php' => "<?php\ndefine('DEFAULT_MODULE', 'setup');\n"];
 
-    foreach ($sources as $source) {
-        $out = Trongate_config::config_files(['config.php' => $source], ['id' => 7, 'slug' => 'shop'], $db);
-        assert_same(substr_count($source, 'DEFAULT_MODULE'), substr_count($out['config.php'], 'DEFAULT_MODULE'));
-        assert_same(false, str_contains($out['config.php'], "'welcome'"));
+    foreach ([[], ['default_module' => ''], ['default_module' => "wel'come"]] as $setting) {
+        $out = Trongate_config::config_files($files, ['id' => 7, 'slug' => 'shop', ...$setting], $db);
+        assert_same(true, str_contains($out['config.php'], "define('DEFAULT_MODULE', 'setup');"));
     }
-});
-
-test("'setup' is replaced in whichever config file defines it", function () use ($db) {
-    $files = ['config.php' => "<?php\ndefine('ENV', 'dev');\n", 'site.php' => "<?php\ndefine('DEFAULT_MODULE', 'setup');\n"];
-    $out = Trongate_config::config_files($files, ['id' => 7, 'slug' => 'shop'], $db);
-    assert_same("<?php\ndefine('DEFAULT_MODULE', 'welcome');\n", $out['site.php']);
-    assert_same(false, str_contains($out['config.php'], 'DEFAULT_MODULE'));
 });
 
 test('config_files passes on the Config_error', function () use ($config_error, $db) {
