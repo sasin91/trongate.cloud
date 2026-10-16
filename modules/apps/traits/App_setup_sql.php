@@ -8,6 +8,7 @@ require_once APPPATH . 'modules/platform/live/Setup_sql.php';
  * file by path, and SQL typed in. They are read and checked when the form
  * is submitted, stored in app.setup_sql, and run once by the first
  * deploy, right after it creates the database (Platform_task::run_setup_sql).
+ * When that fails, the child module apps-setup shows why on the overview.
  *
  * Used by App_form. The using controller must also use Customer_guard and
  * Provider_clients.

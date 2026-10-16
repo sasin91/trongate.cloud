@@ -11,7 +11,8 @@ require_once APPPATH . 'modules/platform/mail/Mail_capture.php';
 
 /**
  * Apps inside a project: create, overview, deploy/rollback, logs, platform settings and delete.
- * The database page is the child module apps-database (database/Database.php), the custom domain apps-domain (domain/Domain.php).
+ * The database page is the child module apps-database (database/Database.php), the custom domain apps-domain (domain/Domain.php),
+ * a setup SQL that did not finish apps-setup (setup/Setup.php).
  * Every member of the app's project may do all of it except delete, which is the owner's.
  *
  * @property-read Apps_model $model
@@ -20,6 +21,7 @@ require_once APPPATH . 'modules/platform/mail/Mail_capture.php';
  * @property-read Validation $validation
  * @property-read Services $services
  * @property-read Secrets $secrets
+ * @property-read Setup $setup
  */
 class Apps extends Trongate {
     use Customer_guard;
@@ -87,6 +89,7 @@ class Apps extends Trongate {
         $current = empty($app->current_deployment_id)
             ? false
             : $this->model->find_project_deployment($project_id, (int) $app->current_deployment_id);
+        $this->module('apps-setup');
 
         $data = [
             'view_module' => 'apps',
@@ -102,7 +105,7 @@ class Apps extends Trongate {
             'live_state' => $this->_live_app_state($app),
             'log_rates' => $this->_log_rates($app),
             'database_name' => Manifests::database_name((int) $app->id),
-            'setup_sql_failure' => $this->_setup_sql_failure($app),
+            'setup_sql_failure' => $this->setup->_failure($app),
             'services' => $this->model->project_services($project_id),
             'crumbs' => $this->_app_crumbs($app),
             'additional_includes_top' => [
@@ -112,29 +115,6 @@ class Apps extends Trongate {
         ];
         $this->module('templates');
         $this->templates->customer($data);
-    }
-
-    /**
-     * Why the app's setup SQL stopped and the SQL that did not run, or
-     * null when it ran (or there was none)
-     *
-     * @return array{message: string, remaining_sql: string}|null
-     */
-    function _setup_sql_failure(object $app): ?array {
-        if (($app->setup_sql_status ?? null) !== 'failed') {
-            return null;
-        }
-
-        $remaining_sql = Setup_sql::decrypt((string) $app->setup_sql);
-
-        if ($remaining_sql === null) {
-            $remaining_sql = '-- It could not be decrypted (APP_KEY changed).';
-        }
-
-        return [
-            'message' => (string) $app->setup_sql_error,
-            'remaining_sql' => $remaining_sql,
-        ];
     }
 
     /**
@@ -242,19 +222,6 @@ class Apps extends Trongate {
         }
 
         redirect('deployments/' . $deployment_id);
-    }
-
-    /**
-     * POST apps/{id}/setup-sql/dismiss: hide the alert about a failed setup SQL
-     */
-    function dismiss_setup_sql(): void {
-        $this->_make_sure_allowed();
-        $app = $this->_member_app_or_redirect(segment(3, 'int'));
-        $this->_require_post_with_csrf();
-
-        $this->model->dismiss_setup_sql((int) $app->id);
-
-        redirect('apps/' . $app->id);
     }
 
     /**

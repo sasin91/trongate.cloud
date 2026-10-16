@@ -7,7 +7,7 @@
  * $live_state (array|null), $database_name, and optionally $processes and
  * $process_states (see _processes.php), $services (the project's services,
  * Platform_actions::project_services), $environment, $environments, $go_live_hint
- * and $can_add_staging (App_page::_environment_data), $setup_sql_failure (Apps::_setup_sql_failure)
+ * and $can_add_staging (App_page::_environment_data), $setup_sql_failure (Setup::_failure)
  * and $preview (true: no forms, no polling).
  */
 $preview = $preview ?? false;
@@ -52,21 +52,7 @@ $platform_host = $app->slug . '.' . PLATFORM_APPS_DOMAIN;
     <?php endif; ?>
 
     <?php if ($setup_sql_failure !== null): ?>
-        <div class="ov-setup-sql" role="alert">
-            <p><strong>The setup SQL did not finish.</strong> <?= $e($setup_sql_failure['message']) ?></p>
-            <details>
-                <summary>The SQL that did not run</summary>
-                <pre><?= $e($setup_sql_failure['remaining_sql']) ?></pre>
-            </details>
-            <div class="ov-setup-sql-foot">
-                <p class="muted">Fix it and run it from the <a href="apps/<?= (int) $app->id ?>/database?view=sql">Database tab</a>. Dismissing deletes this SQL.</p>
-                <?php if (!$preview): ?>
-                    <?= form_open('apps/' . $app->id . '/setup-sql/dismiss') ?>
-                        <button type="submit" class="btn-link">Dismiss</button>
-                    <?= form_close() ?>
-                <?php endif; ?>
-            </div>
-        </div>
+        <?php require APPPATH . 'modules/apps/setup/views/_failure.php'; ?>
     <?php endif; ?>
 
     <div class="ov-main">
