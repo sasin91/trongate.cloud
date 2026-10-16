@@ -85,6 +85,65 @@ trait App_records {
     }
 
     /**
+     * The extra PHP extensions the app's image build installs, in the order
+     * they were added
+     *
+     * @return list<string>
+     */
+    function app_php_extensions(int $app_id): array {
+        $rows = $this->db->query_bind('SELECT name FROM app_php_extension WHERE app_id = :app_id ORDER BY id', ['app_id' => $app_id], 'array');
+
+        return array_column($rows ?: [], 'name');
+    }
+
+    /**
+     * The shell lines the app's image build runs (Build_commands); '' when none
+     */
+    function app_build_commands(int $app_id): string {
+        $commands = $this->db->query_bind('SELECT commands FROM app_build WHERE app_id = :app_id', ['app_id' => $app_id], 'column');
+
+        return (string) ($commands ?: '');
+    }
+
+    /**
+     * Replace the app's extra PHP extensions with these (checked by
+     * _validate_php_extensions); they take effect on the next deploy
+     *
+     * @param list<string> $names
+     */
+    function save_app_php_extensions(int $app_id, array $names): void {
+        $keep = $names === [] ? "''" : implode(',', array_map(fn(int $i) => ":name_{$i}", array_keys($names)));
+        $params = ['app_id' => $app_id];
+        foreach ($names as $i => $name) {
+            $params["name_{$i}"] = $name;
+        }
+        $this->db->query_bind("DELETE FROM app_php_extension WHERE app_id = :app_id AND name NOT IN ({$keep})", $params);
+
+        foreach ($names as $name) {
+            $this->db->query_bind('INSERT IGNORE INTO app_php_extension (app_id, name) VALUES (:app_id, :name)', ['app_id' => $app_id, 'name' => $name]);
+        }
+    }
+
+    /**
+     * Set the app's build commands (checked by _validate_build_commands);
+     * '' removes them. They take effect on the next deploy.
+     */
+    function save_app_build_commands(int $app_id, string $commands): void {
+        $commands = Build_commands::normalise($commands);
+
+        if ($commands === '') {
+            $this->db->query_bind('DELETE FROM app_build WHERE app_id = :app_id', ['app_id' => $app_id]);
+            return;
+        }
+
+        $this->db->query_bind(
+            'INSERT INTO app_build (app_id, commands) VALUES (:app_id, :commands)
+             ON DUPLICATE KEY UPDATE commands = VALUES(commands)',
+            ['app_id' => $app_id, 'commands' => $commands]
+        );
+    }
+
+    /**
      * The SQL the app's database starts with (Setup_sql); its first
      * deploy runs it
      */
@@ -104,16 +163,22 @@ trait App_records {
      * Update an app's platform settings (the app must be in the project).
      * The custom domain goes through update_app_domain().
      *
-     * @param array{domain: ?string, persistent_paths: list<string>, php_extensions: string, build_commands: string, always_on: bool, auto_deploy: bool, source_branch: string, trongate_env: string, mail_capture: bool, health_path: string} $settings
+     * No transaction of its own, so app creation can run it inside one.
+     *
+     * @param array{domain: ?string, persistent_paths: list<string>, php_extensions: list<string>, build_commands: string, always_on: bool, auto_deploy: bool, source_branch: string, trongate_env: string, mail_capture: bool, health_path: string} $settings
      */
     function update_app_settings(int $project_id, int $app_id, array $settings): void {
+        if ($this->find_project_app($project_id, $app_id) === false) {
+            return;
+        }
+
         $this->update_app_domain($project_id, $app_id, $settings['domain']);
+        $this->save_app_php_extensions($app_id, $settings['php_extensions']);
+        $this->save_app_build_commands($app_id, $settings['build_commands']);
 
         $sql = <<<SQL
             UPDATE app
             SET persistent_paths = :persistent_paths,
-                php_extensions = :php_extensions,
-                build_commands = :build_commands,
                 always_on = :always_on,
                 trongate_env = :trongate_env,
                 mail_capture = :mail_capture,
@@ -124,8 +189,6 @@ trait App_records {
         SQL;
         $this->db->query_bind($sql, [
             'persistent_paths' => json_encode($settings['persistent_paths']),
-            'php_extensions' => $settings['php_extensions'],
-            'build_commands' => Build_commands::normalise($settings['build_commands']),
             'always_on' => $settings['always_on'] ? 1 : 0,
             'trongate_env' => $settings['trongate_env'],
             'mail_capture' => $settings['mail_capture'] ? 1 : 0,

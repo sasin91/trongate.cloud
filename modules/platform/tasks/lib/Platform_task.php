@@ -83,6 +83,22 @@ class Platform_task {
     }
 
     /**
+     * The app's build settings: its extra PHP extensions (app_php_extension)
+     * and its build commands (app_build, '' when none)
+     *
+     * @return array{php_extensions: list<string>, commands: string}
+     */
+    static function app_build(PDO $db, int $app_id): array {
+        $extensions = self::rows($db, 'SELECT name FROM app_php_extension WHERE app_id = ? ORDER BY id', [$app_id]);
+        $build = self::row($db, 'SELECT commands FROM app_build WHERE app_id = ?', [$app_id]);
+
+        return [
+            'php_extensions' => array_column($extensions, 'name'),
+            'commands' => (string) ($build['commands'] ?? ''),
+        ];
+    }
+
+    /**
      * Whether a project (customer) task is queued and waiting for the worker.
      * The worker runs one task at a time, so periodic tasks that loop over
      * apps check this and stop early rather than hold up a deploy.

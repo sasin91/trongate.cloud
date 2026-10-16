@@ -274,8 +274,8 @@ CREATE TABLE app (
 
   -- Runtime settings
   persistent_paths JSON DEFAULT '[]',
+  -- Unused since 0014_app_build (app_build, app_php_extension); dropped later
   php_extensions VARCHAR(255) NOT NULL DEFAULT '',
-  -- Shell lines run in the image build after composer (Build_commands)
   build_commands TEXT NOT NULL DEFAULT '',
   always_on TINYINT(1) NOT NULL DEFAULT 0,
   -- Trongate's ENV constant, patched into config/config.php (Trongate_config::env)
@@ -405,6 +405,26 @@ CREATE TABLE app_process (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY unique_app_process_name (app_id, name),
   CONSTRAINT fk_app_process_app FOREIGN KEY (app_id) REFERENCES app (id) ON DELETE CASCADE
+);
+
+-- An app's build commands (Build_commands): shell lines the image build runs
+-- after composer, such as npm ci and npm run build. No row runs none.
+CREATE TABLE app_build (
+  app_id INT PRIMARY KEY,
+  commands TEXT NOT NULL,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_app_build_app FOREIGN KEY (app_id) REFERENCES app (id) ON DELETE CASCADE
+);
+
+-- PHP extensions the image build installs on top of the base image's
+CREATE TABLE app_php_extension (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  app_id INT NOT NULL,
+  -- Lowercase, as install-php-extensions names it
+  name VARCHAR(40) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY unique_app_php_extension (app_id, name),
+  CONSTRAINT fk_app_php_extension_app FOREIGN KEY (app_id) REFERENCES app (id) ON DELETE CASCADE
 );
 
 -- A project's services (Project_service): an image that runs next to the
@@ -543,4 +563,5 @@ INSERT INTO schema_migrations (name) VALUES
   ('0010_app_setup_sql'),
   ('0011_app_setup_sql_dismissed'),
   ('0012_app_sql_import'),
-  ('0013_app_build_commands');
+  ('0013_app_build_commands'),
+  ('0014_app_build');

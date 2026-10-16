@@ -22,8 +22,20 @@
                 <div class="detail-value"><?= out($slug) ?></div>
             </div>
             <div class="detail-row">
+                <div class="detail-label">Serves Slug Host</div>
+                <div class="detail-value"><?= out($serves_slug_host) ?></div>
+            </div>
+            <div class="detail-row">
                 <div class="detail-label">Type</div>
                 <div class="detail-value"><?= out($type) ?></div>
+            </div>
+            <div class="detail-row">
+                <div class="detail-label">Environment</div>
+                <div class="detail-value"><?= out($environment) ?></div>
+            </div>
+            <div class="detail-row">
+                <div class="detail-label">Production App Id</div>
+                <div class="detail-value"><?= out($production_app_id) ?></div>
             </div>
             <div class="detail-row">
                 <div class="detail-label">Domain</div>
@@ -74,10 +86,6 @@
                 <div class="detail-content"><?= nl2br(out($persistent_paths)) ?></div>
             </div>
             <div class="detail-row">
-                <div class="detail-label">Php Extensions</div>
-                <div class="detail-value"><?= out($php_extensions) ?></div>
-            </div>
-            <div class="detail-row">
                 <div class="detail-label">Always On</div>
                 <div class="detail-value"><?= out($always_on) ?></div>
             </div>
@@ -88,6 +96,18 @@
             <div class="detail-row">
                 <div class="detail-label">Mail Capture</div>
                 <div class="detail-value"><?= out($mail_capture) ?></div>
+            </div>
+            <div class="detail-row">
+                <div class="detail-label">Health Path</div>
+                <div class="detail-value"><?= out($health_path) ?></div>
+            </div>
+            <div class="detail-row">
+                <div class="detail-label">Setup Sql Status</div>
+                <div class="detail-value"><?= out($setup_sql_status) ?></div>
+            </div>
+            <div class="detail-block">
+                <div class="detail-label">Setup Sql Error</div>
+                <div class="detail-content"><?= nl2br(out($setup_sql_error)) ?></div>
             </div>
             <div class="detail-row">
                 <div class="detail-label">Database Server Id</div>

@@ -384,8 +384,8 @@ trait Mcp_tools {
             'live_state' => $this->_live_app_state($app),
             'custom_domain' => $this->_domain_status($app),
             'persistent_paths' => Manifests::persistent_paths((array) $app),
-            'php_extensions' => $this->_parse_php_extensions((string) ($app->php_extensions ?? '')),
-            'build_commands' => (string) ($app->build_commands ?? ''),
+            'php_extensions' => $this->model->app_php_extensions((int) $app->id),
+            'build_commands' => $this->model->app_build_commands((int) $app->id),
             'processes' => $this->_processes_with_state($app),
             'auto_deploy' => (bool) ($app->auto_deploy ?? false),
             'trongate_env' => Trongate_config::env((array) $app),
@@ -545,8 +545,8 @@ trait Mcp_tools {
         $settings = [
             'domain' => $this->_normalise_domain((string) ($app->domain ?? '')),
             'persistent_paths' => Manifests::persistent_paths((array) $app),
-            'php_extensions' => (string) ($app->php_extensions ?? ''),
-            'build_commands' => (string) ($app->build_commands ?? ''),
+            'php_extensions' => $this->model->app_php_extensions((int) $app->id),
+            'build_commands' => $this->model->app_build_commands((int) $app->id),
             'always_on' => (bool) $app->always_on,
             'auto_deploy' => (bool) $app->auto_deploy,
             'source_branch' => (string) $app->source_branch,
@@ -574,7 +574,7 @@ trait Mcp_tools {
         if (array_key_exists('php_extensions', $args)) {
             $extensions = implode(',', $this->_strings_arg($args, 'php_extensions'));
             $this->_check($this->_validate_php_extensions($extensions));
-            $settings['php_extensions'] = implode(',', $this->_parse_php_extensions($extensions));
+            $settings['php_extensions'] = $this->_parse_php_extensions($extensions);
             $changed[] = 'php_extensions';
         }
 
@@ -647,8 +647,8 @@ trait Mcp_tools {
             'settings' => [
                 'domain' => $this->_domain_status($app),
                 'persistent_paths' => Manifests::persistent_paths((array) $app),
-                'php_extensions' => $this->_parse_php_extensions((string) $app->php_extensions),
-                'build_commands' => (string) $app->build_commands,
+                'php_extensions' => $this->model->app_php_extensions((int) $app->id),
+                'build_commands' => $this->model->app_build_commands((int) $app->id),
                 'processes' => $this->model->app_processes((int) $app->id),
                 'always_on' => (bool) $app->always_on,
                 'auto_deploy' => (bool) $app->auto_deploy,

@@ -217,7 +217,7 @@ trait App_form {
         $this->model->update_app_settings($project_id, $app_id, [
             'domain' => $domain,
             'persistent_paths' => $this->_parse_persistent_paths((string) post('persistent_paths')),
-            'php_extensions' => implode(',', $this->_parse_php_extensions((string) post('php_extensions', true))),
+            'php_extensions' => $this->_parse_php_extensions((string) post('php_extensions', true)),
             'build_commands' => (string) post('build_commands'),
             'always_on' => post('always_on') === '1',
             'auto_deploy' => post('auto_deploy') !== '0',

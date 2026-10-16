@@ -1,7 +1,7 @@
 <?php
 
 /**
- * An app's build commands (app.build_commands): shell lines the deploy runs
+ * An app's build commands (app_build.commands): shell lines the deploy runs
  * in the image build, after composer and the app's files are in /app, such
  * as `npm ci` and `npm run build`. They run in a build stage that has Node
  * or Bun when the commands name them; the app image takes only /app from
