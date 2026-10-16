@@ -5,6 +5,7 @@ require_once __DIR__ . '/Trongate_config.php';
 require_once __DIR__ . '/Runtime_settings.php';
 require_once __DIR__ . '/App_env.php';
 require_once __DIR__ . '/../mail/Mail_capture.php';
+require_once __DIR__ . '/../live/App_backup.php';
 require_once __DIR__ . '/../../../engine/Valkey_sessions.php';
 
 /**
@@ -71,6 +72,15 @@ class Manifests {
     const STARTUP_PROBE_PERIOD = 3;
     const STARTUP_PROBE_FAILURES = 40;
     const PROGRESS_DEADLINE_SECONDS = 180;
+
+    /**
+     * The backup Job (backup_job): its dump and archive are written to the
+     * files volume, not the pod's disk, so it needs little ephemeral storage
+     */
+    const BACKUP_RESOURCES = [
+        'requests' => ['cpu' => '100m', 'memory' => '128Mi', 'ephemeral-storage' => '64Mi'],
+        'limits' => ['memory' => '512Mi', 'ephemeral-storage' => '256Mi'],
+    ];
 
     const INIT_RESOURCES = [
         'requests' => ['cpu' => '10m', 'memory' => '32Mi', 'ephemeral-storage' => '64Mi'],
@@ -879,6 +889,13 @@ class Manifests {
      * @return list<array{string, string, string}>
      */
     static function app_objects(int $app_id): array {
+        return array_merge(self::app_serving_objects($app_id), self::app_data_objects($app_id));
+    }
+
+    /**
+     * The objects that serve an app's traffic: deleting them takes it offline
+     */
+    static function app_serving_objects(int $app_id): array {
         $name = self::app_name($app_id);
 
         return [
@@ -886,12 +903,102 @@ class Manifests {
             ['traefik.io/v1alpha1', 'Middleware', $name],
             ['v1', 'Service', $name],
             ['apps/v1', 'Deployment', $name],
+        ];
+    }
+
+    /**
+     * The objects that hold or reach an app's data: its database access,
+     * files volume and secrets. destroy_app removes them once the backup is
+     * taken (App_backup).
+     */
+    static function app_data_objects(int $app_id): array {
+        $name = self::app_name($app_id);
+
+        return [
+            ['batch/v1', 'Job', App_backup::job_name($app_id)],
             ['k8s.mariadb.com/v1alpha1', 'Grant', "{$name}-db-grant"],
             ['k8s.mariadb.com/v1alpha1', 'User', "{$name}-db-user"],
             ['k8s.mariadb.com/v1alpha1', 'Database', "{$name}-db"],
             ['v1', 'PersistentVolumeClaim', "p{$app_id}-files"],
             ['v1', 'Secret', "p{$app_id}-database"],
             ['v1', 'Secret', self::env_secret_name($app_id)],
+        ];
+    }
+
+    /** The backup script baked into the app base image (docker/app-base/backup.php) */
+    const BACKUP_SCRIPT = '/usr/local/bin/trongate-cloud-backup.php';
+
+    /**
+     * The one-off Job that backs up a deleted app (App_backup): it dumps the
+     * database and packs the persistent files, uploads both to $upload_links
+     * (signed PUT links, one per App_backup::PARTS), then drops the database
+     * and empties the files. Runs the app base image as the app's user, with
+     * the app's files volume and its database password, and nothing else.
+     *
+     * Its pod is labelled p{id}-backup, not p{id}-app, so the app's Service
+     * never sends it traffic.
+     *
+     * @param array $app      app row (id, namespace)
+     * @param array $database database server row (host, port)
+     * @param array{database: string, files: string} $upload_links
+     */
+    static function backup_job(array $app, array $database, array $upload_links): array {
+        $app_id = (int) $app['id'];
+        $namespace = self::namespace_name($app);
+        $name = App_backup::job_name($app_id);
+        $pod_labels = self::_labels([
+            'app.kubernetes.io/name' => $name,
+            self::APP_LABEL => (string) $app_id,
+        ]);
+
+        return [
+            'apiVersion' => 'batch/v1',
+            'kind' => 'Job',
+            'metadata' => self::_metadata($name, $namespace, self::app_labels($app_id)),
+            'spec' => [
+                'backoffLimit' => 0,
+                'activeDeadlineSeconds' => App_backup::JOB_SECONDS,
+                'template' => [
+                    'metadata' => ['labels' => $pod_labels],
+                    'spec' => [
+                        'restartPolicy' => 'Never',
+                        'automountServiceAccountToken' => false,
+                        'enableServiceLinks' => false,
+                        'securityContext' => [
+                            'runAsNonRoot' => true,
+                            'runAsUser' => self::RUN_AS_USER,
+                            'runAsGroup' => self::RUN_AS_USER,
+                            'fsGroup' => self::RUN_AS_USER,
+                            'seccompProfile' => ['type' => 'RuntimeDefault'],
+                        ],
+                        'containers' => [[
+                            'name' => 'backup',
+                            'image' => PLATFORM_APP_BASE_IMAGE,
+                            'command' => ['php', self::BACKUP_SCRIPT],
+                            'env' => [
+                                ['name' => 'DB_HOST', 'value' => (string) $database['host']],
+                                ['name' => 'DB_PORT', 'value' => (string) ($database['port'] ?? 3306)],
+                                ['name' => 'DB_NAME', 'value' => self::database_name($app_id)],
+                                ['name' => 'DB_PASSWORD', 'valueFrom' => ['secretKeyRef' => ['name' => "p{$app_id}-database", 'key' => 'password']]],
+                                ['name' => 'DATABASE_UPLOAD_URL', 'value' => $upload_links['database']],
+                                ['name' => 'FILES_UPLOAD_URL', 'value' => $upload_links['files']],
+                            ],
+                            'volumeMounts' => [['name' => 'files', 'mountPath' => '/files']],
+                            'securityContext' => [
+                                'allowPrivilegeEscalation' => false,
+                                'runAsNonRoot' => true,
+                                'capabilities' => ['drop' => ['ALL']],
+                                'seccompProfile' => ['type' => 'RuntimeDefault'],
+                            ],
+                            'resources' => self::BACKUP_RESOURCES,
+                        ]],
+                        'volumes' => [[
+                            'name' => 'files',
+                            'persistentVolumeClaim' => ['claimName' => "p{$app_id}-files"],
+                        ]],
+                    ],
+                ],
+            ],
         ];
     }
 

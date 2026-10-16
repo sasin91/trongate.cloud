@@ -10,7 +10,7 @@
 #    (platform image) Pods in the buildkit namespace.
 # 2. What: the content checks in trongate-worker-objects, so a compromised worker
 #    cannot loosen a tenant namespace, expose a Service, mount a token, claim a
-#    platform hostname, or point MariaDB CRs at anything but a tenant's own
+#    platform hostname, run anything but the backup script in a Job, or point MariaDB CRs at anything but a tenant's own
 #    tc_p{id} database on the shared servers.
 # 3. Deletes: trongate-worker-owned-deletes, so the worker only deletes objects
 #    it labelled itself (destroy_app, destroy_service, build daemon Pods), and a tenant Namespace
@@ -55,8 +55,9 @@
 # Keep the hostnames in trongate-worker-objects in sync with BASE_URL,
 # PLATFORM_APPS_DOMAIN and PLATFORM_REGISTRY (config.yaml), the gateway class
 # and issuer with PLATFORM_GATEWAY_CLASS and PLATFORM_DOMAIN_ISSUER, the ACME
-# Gateway with Manifests::ACME_GATEWAY, and the image with
-# Manifests::BUILDKIT_IMAGE.
+# Gateway with Manifests::ACME_GATEWAY, the images with
+# Manifests::BUILDKIT_IMAGE and PLATFORM_APP_BASE_IMAGE (backup Jobs), and the
+# backup command with Manifests::BACKUP_SCRIPT.
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
@@ -107,6 +108,10 @@ spec:
         apiVersions: ["*"]
         operations: ["CREATE", "UPDATE"]
         resources: ["deployments"]
+      - apiGroups: ["batch"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["jobs"]
       - apiGroups: ["k8s.mariadb.com"]
         apiVersions: ["*"]
         operations: ["CREATE", "UPDATE"]
@@ -137,6 +142,8 @@ spec:
       expression: "'letsencrypt-tenants'"
     - name: acme_gateway
       expression: "'acme-http01'"
+    - name: app_base_image
+      expression: "'registry.trongate.cloud/platform/app-base:php8.4'"
   validations:
     # Tenant namespaces stay restricted and never get a platform role label
     # (allow-gateway admits ingress from namespaces labelled role=gateway)
@@ -179,6 +186,37 @@ spec:
          (!has(object.spec.volumes) || object.spec.volumes.all(v, has(v.emptyDir))) &&
          has(object.spec.automountServiceAccountToken) && object.spec.automountServiceAccountToken == false)
       message: Build Pods must run the pinned BuildKit image without host access or extra volumes
+    # A deleted app's backup Job (Manifests::backup_job): p{id}-backup runs the
+    # backup script of the app base image, with the app's own files volume and
+    # database password only, no token and no host access
+    - expression: >-
+        request.kind.kind != 'Job' ||
+        (object.metadata.name.matches('^p[0-9]+-backup$') &&
+         object.spec.template.spec.containers.size() == 1 &&
+         object.spec.template.spec.containers.all(c,
+           c.image == variables.app_base_image &&
+           has(c.command) && c.command == ['php', '/usr/local/bin/trongate-cloud-backup.php'] &&
+           !has(c.args) && !has(c.envFrom) &&
+           (!has(c.env) || c.env.all(e, !has(e.valueFrom) ||
+             (has(e.valueFrom.secretKeyRef) &&
+              e.valueFrom.secretKeyRef.name == object.metadata.name.replace('-backup', '-database')))) &&
+           (!has(c.securityContext) ||
+            ((!has(c.securityContext.privileged) || c.securityContext.privileged == false) &&
+             (!has(c.securityContext.capabilities) || !has(c.securityContext.capabilities.add))))) &&
+         !has(object.spec.template.spec.initContainers) &&
+         !has(object.spec.template.spec.ephemeralContainers) &&
+         (!has(object.spec.template.spec.hostNetwork) || object.spec.template.spec.hostNetwork == false) &&
+         (!has(object.spec.template.spec.hostPID) || object.spec.template.spec.hostPID == false) &&
+         (!has(object.spec.template.spec.hostIPC) || object.spec.template.spec.hostIPC == false) &&
+         has(object.spec.template.spec.volumes) &&
+         object.spec.template.spec.volumes.all(v,
+           has(v.persistentVolumeClaim) &&
+           v.persistentVolumeClaim.claimName == object.metadata.name.replace('-backup', '-files')) &&
+         has(object.spec.template.spec.automountServiceAccountToken) &&
+         object.spec.template.spec.automountServiceAccountToken == false)
+      message: >-
+        Backup Jobs must be p{id}-backup running the app base image's backup script, with only
+        the app's own files volume and database Secret, no service account token and no host access
     # MariaDB CRs: only a tenant database/user on a server in the databases
     # namespace (the platform database lives in trongate-cloud), no grant option
     - expression: >-

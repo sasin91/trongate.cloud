@@ -3,13 +3,36 @@
 /**
  * Destroy App Task
  *
- * Deletes a deleted app's resources from its project's namespace. Queued by
+ * Deletes a deleted app's resources from its project's namespace, after
+ * backing up its database and files (App_backup). Queued by
  * Platform_actions::queue_app_delete, which soft-deletes the app row
- * (app.deleted_at) first.
+ * (app.deleted_at) first, and again by check_app_backups once the backup
+ * is taken.
  *
  * Payload: {app_id, project_id}. Works from the payload and the project's
  * stored namespace, so the app row may be gone. A row that still exists must
  * belong to the project and be soft-deleted, otherwise nothing is touched.
+ *
+ * Each run:
+ *  1. takes the app offline: custom-domain Gateways and their certificate
+ *     Secrets, the app's processes, HTTPRoute, Middleware, Service and
+ *     Deployment (Manifests::app_serving_objects);
+ *  2. sees to its backup. With no backups bucket configured, or an app
+ *     that never got a database, there is nothing to back up. Without a
+ *     backup yet (or after a failed one) it starts the backup Job and stops
+ *     here: check_app_backups queues this task again once the Job is done.
+ *     While the Job runs it stops here too, and after a failed backup it
+ *     starts a new one;
+ *  3. once backed up, removes the rest (Manifests::app_data_objects): the
+ *     Job, the MariaDB Grant and User CRs (cleanupPolicy Delete, so access is
+ *     revoked), the Database CR, the files PVC and the Secrets, then the
+ *     app's Valkey session user. Then the app's verified custom domain is
+ *     released.
+ *
+ * The backup Job drops the database and empties the files volume once both
+ * are uploaded. Without a backup (no bucket configured) they are kept, as
+ * before: the Database CR uses cleanupPolicy Skip and the tenant-files
+ * StorageClass reclaimPolicy Retain.
  *
  * Only objects carrying the app's ownership labels are deleted
  * (Platform_task::delete_owned); anything else under an expected name is
@@ -17,26 +40,16 @@
  * partial failure; nothing retries it automatically, the admin MCP does
  * (retry_app_cleanup, Platform_actions::requeue_app_destroy).
  *
- * Removed: custom-domain Gateways and their certificate Secrets, HTTPRoute,
- * Middleware, Service and Deployment (the app stops
- * serving), the MariaDB Grant and User CRs (cleanupPolicy Delete, so access is
- * revoked), the Database CR, the files PVC and the database Secret, and the
- * app's Valkey session user (its session keys expire on their own). Once all
- * of them are gone, the app's verified custom domain is released.
- *
- * Kept on purpose:
+ * Always kept:
  * - the project's namespace: other apps of the project live there (an empty
  *   one goes with the project, see destroy_project)
- * - the MariaDB database: the Database CR uses cleanupPolicy Skip, so the
- *   data survives deleting the CR (drop it by hand after the backup window)
- * - the uploaded files: the tenant-files StorageClass uses reclaimPolicy
- *   Retain, so the JuiceFS subdirectory survives deleting the PVC
  * - the app row (soft-deleted) with its deployments, logs and slug, so
  *   {slug}.PLATFORM_APPS_DOMAIN is never handed to another app
  * - the built images in PLATFORM_REGISTRY
  */
 
 require_once __DIR__ . '/lib/Platform_task.php';
+require_once __DIR__ . '/lib/App_backup_run.php';
 
 return function (Task_log $log) use ($payload, $runtime): int {
     $db = $runtime->db();
@@ -57,6 +70,67 @@ return function (Task_log $log) use ($payload, $runtime): int {
     $failures = 0;
 
     $namespace = Platform_task::project_namespace($db, $project_id);
+
+    // Deletes one of the app's objects; 1 when that failed, else 0
+    $delete_object = function (string $api_version, string $kind, string $name) use ($kube, $namespace, $app_id, $log): int {
+        try {
+            $deleted = Platform_task::delete_owned($kube, $api_version, $kind, $namespace, $app_id, $name);
+            // A Secret cannot be read, so "not there" and "not ours" look the same
+            $gone = $kind === 'Secret' ? "was already gone or does not carry the app's labels (left in place)" : 'was already gone';
+            $log->info($deleted ? "Deleted {$kind} {$name}" : "{$kind} {$name} {$gone}");
+
+            return 0;
+        } catch (Throwable $e) {
+            $log->error("Deleting {$kind} {$name} failed: {$e->getMessage()}");
+
+            return 1;
+        }
+    };
+
+    // 'done' when the data may go, 'waiting' while the backup runs (or was
+    // just started), 'failed' when it could not be started
+    $see_to_backup = function () use ($runtime, $db, $log, $app_id, $namespace): string {
+        $storage = Object_storage::for_app_backups();
+
+        if ($storage === null) {
+            $log->info('No backups bucket is configured (APP_BACKUPS_S3_*): the database and files are kept');
+
+            return 'done';
+        }
+
+        $app = Platform_task::row($db, 'SELECT id, database_server_id FROM app WHERE id = ?', [$app_id]);
+
+        if ($app === null || empty($app['database_server_id'])) {
+            $log->info('The app was never deployed: there is nothing to back up');
+
+            return 'done';
+        }
+
+        $backup = Platform_task::row($db, 'SELECT status FROM app_backup WHERE app_id = ?', [$app_id]);
+        $status = $backup['status'] ?? null;
+
+        if ($status === 'ready' || $status === 'expired') {
+            return 'done';
+        }
+
+        if ($status === 'backing_up') {
+            $log->info('The backup is still running; check_app_backups carries on once it is done');
+
+            return 'waiting';
+        }
+
+        $database = Platform_task::row($db, 'SELECT * FROM database_server WHERE id = ?', [(int) $app['database_server_id']]);
+
+        if ($database === null) {
+            $log->error("Database server #{$app['database_server_id']} no longer exists; cannot back up");
+
+            return 'failed';
+        }
+
+        App_backup_run::start($runtime, $log, $storage, ['id' => $app_id, 'namespace' => $namespace], $database);
+
+        return 'waiting';
+    };
 
     // Custom-domain Gateways first (traffic), found by label because their names
     // carry a domain hash; each is ownership-checked like everything else, and
@@ -97,16 +171,23 @@ return function (Task_log $log) use ($payload, $runtime): int {
         $log->error("Listing the app's processes failed: {$e->getMessage()}");
     }
 
-    foreach (Manifests::app_objects($app_id) as [$api_version, $kind, $name]) {
-        try {
-            $deleted = Platform_task::delete_owned($kube, $api_version, $kind, $namespace, $app_id, $name);
-            // A Secret cannot be read, so "not there" and "not ours" look the same
-            $gone = $kind === 'Secret' ? "was already gone or does not carry the app's labels (left in place)" : 'was already gone';
-            $log->info($deleted ? "Deleted {$kind} {$name}" : "{$kind} {$name} {$gone}");
-        } catch (Throwable $e) {
-            $failures++;
-            $log->error("Deleting {$kind} {$name} failed: {$e->getMessage()}");
-        }
+    foreach (Manifests::app_serving_objects($app_id) as [$api_version, $kind, $name]) {
+        $failures += $delete_object($api_version, $kind, $name);
+    }
+
+    if ($failures > 0) {
+        return 1;
+    }
+
+    // The app is offline. Its data goes once it is backed up.
+    $backup_state = $see_to_backup();
+
+    if ($backup_state !== 'done') {
+        return $backup_state === 'failed' ? 1 : 0;
+    }
+
+    foreach (Manifests::app_data_objects($app_id) as [$api_version, $kind, $name]) {
+        $failures += $delete_object($api_version, $kind, $name);
     }
 
     // The app has stopped serving, so its session store can go
@@ -126,7 +207,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
     // The route is gone, so another app may verify the domain now
     Platform_task::execute($db, 'UPDATE app SET verified_domain = NULL WHERE id = ? AND deleted_at IS NOT NULL', [$app_id]);
 
-    $log->info("App #{$app_id} removed from {$namespace}; its database and files are kept");
+    $log->info("App #{$app_id} removed from {$namespace}");
 
     return 0;
 };

@@ -4,6 +4,7 @@ require_once APPPATH . 'modules/customer/traits/Customer_guard.php';
 require_once APPPATH . 'modules/platform/traits/Live_app_state.php';
 require_once APPPATH . 'modules/platform/manifests/Project_service.php';
 require_once APPPATH . 'modules/platform/live/App_traffic.php';
+require_once APPPATH . 'modules/platform/live/App_backup.php';
 
 /**
  * Projects: a group of apps sharing one namespace, and the people who work on them.
@@ -86,6 +87,8 @@ class Projects extends Trongate {
             'project' => $project,
             'apps' => $apps,
             'members' => $this->model->project_members((int) $project->id),
+            'app_backups' => $this->_app_backup_rows((int) $project->id),
+            'backup_keep_days' => App_backup::KEEP_DAYS,
             'is_owner' => $this->_is_owner($project),
             'customer_id' => (int) $customer->id,
             'email' => REQUEST_TYPE === 'POST' ? (string) post('email', true) : '',
@@ -440,6 +443,82 @@ class Projects extends Trongate {
     /**
      * Form posts only; the CSRF token is checked by the validation run that follows.
      */
+    /**
+     * The project's deleted apps with a backup, ready for the "Deleted apps"
+     * card on the project page (views/_app_backups.php)
+     *
+     * @return list<array{name: string, pill_class: string, status: string, detail: string, downloads: array<string, string>}>
+     */
+    function _app_backup_rows(int $project_id): array {
+        $rows = [];
+
+        foreach ($this->model->project_app_backups($project_id) as $backup) {
+            $rows[] = $this->_app_backup_row($backup);
+        }
+
+        return $rows;
+    }
+
+    function _app_backup_row(object $backup): array {
+        $name = (string) $backup->label;
+
+        if ($backup->environment === 'staging') {
+            $name .= ' (staging)';
+        }
+
+        $row = [
+            'name' => $name,
+            'pill_class' => '',
+            'status' => '',
+            'detail' => '',
+            'downloads' => [],
+        ];
+
+        if ($backup->status === 'backing_up') {
+            $row['status'] = 'Backing up';
+            $row['pill_class'] = 'status-building';
+            $row['detail'] = 'Its database and files are being saved. They can be downloaded here once that is done.';
+        }
+
+        if ($backup->status === 'failed') {
+            $row['status'] = 'Backup failed';
+            $row['pill_class'] = 'status-failed';
+            $row['detail'] = 'Its database and files could not be saved, so nothing was deleted. We have been told and will look into it.';
+        }
+
+        if ($backup->status === 'ready') {
+            $expires_at = strtotime((string) $backup->expires_at);
+            $row['status'] = 'Ready';
+            $row['pill_class'] = 'status-success';
+            $row['detail'] = 'Downloadable until ' . gmdate('j M Y, H:i', $expires_at) . ' UTC. Then it is deleted for good.';
+            $row['downloads'] = [
+                'Database (' . $this->_size_label($backup->database_bytes) . ')' => 'apps/' . (int) $backup->app_id . '/backup/database',
+                'Files (' . $this->_size_label($backup->files_bytes) . ')' => 'apps/' . (int) $backup->app_id . '/backup/files',
+            ];
+        }
+
+        return $row;
+    }
+
+    /** "12.4 MB", or "size unknown" when the bucket did not say */
+    function _size_label(mixed $bytes): string {
+        if ($bytes === null) {
+            return 'size unknown';
+        }
+
+        $bytes = (int) $bytes;
+
+        if ($bytes < 1024 * 1024) {
+            return max(1, (int) round($bytes / 1024)) . ' KB';
+        }
+
+        if ($bytes < 1024 * 1024 * 1024) {
+            return round($bytes / (1024 * 1024), 1) . ' MB';
+        }
+
+        return round($bytes / (1024 * 1024 * 1024), 1) . ' GB';
+    }
+
     function _require_post(): void {
         if (REQUEST_TYPE !== 'POST') {
             http_response_code(405);

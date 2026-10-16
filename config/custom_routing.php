@@ -101,6 +101,7 @@ $routes = [
     'apps/(:num)/delete' => 'apps/delete/$1',
     'apps/(:num)/delete/submit' => 'apps/submit_delete/$1',
     'apps/(:num)/delete/confirm' => 'apps/delete_confirm/$1',
+    'apps/(:num)/backup/(database|files)' => 'apps-backups/download/$1/$2',
     'apps/(:num)' => 'apps/show/$1',
 
     // Deployments

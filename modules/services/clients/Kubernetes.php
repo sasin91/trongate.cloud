@@ -31,6 +31,7 @@ class Kubernetes extends Client {
         'v1/LimitRange' => ['limitranges', true],
         'apps/v1/Deployment' => ['deployments', true],
         'apps/v1/ReplicaSet' => ['replicasets', true],
+        'batch/v1/Job' => ['jobs', true],
         'networking.k8s.io/v1/NetworkPolicy' => ['networkpolicies', true],
         'gateway.networking.k8s.io/v1/HTTPRoute' => ['httproutes', true],
         'gateway.networking.k8s.io/v1/Gateway' => ['gateways', true],

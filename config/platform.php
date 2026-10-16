@@ -58,6 +58,10 @@ defined('APP_LOG_SAMPLE_INTERVAL') || define('APP_LOG_SAMPLE_INTERVAL', getenv('
 // Seconds between check_sql_imports runs: the worker carries on .sql file imports
 // whose task died and deletes stored files of abandoned or failed ones (Sql_import). 0 turns it off.
 defined('SQL_IMPORT_CHECK_INTERVAL') || define('SQL_IMPORT_CHECK_INTERVAL', getenv('SQL_IMPORT_CHECK_INTERVAL') !== false ? (int) getenv('SQL_IMPORT_CHECK_INTERVAL') : 300);
+// Seconds between check_app_backups runs: the worker finishes deleting an app
+// once its backup Job is done, and deletes backups past their download window
+// (App_backup). 0 turns it off.
+defined('APP_BACKUP_CHECK_INTERVAL') || define('APP_BACKUP_CHECK_INTERVAL', getenv('APP_BACKUP_CHECK_INTERVAL') !== false ? (int) getenv('APP_BACKUP_CHECK_INTERVAL') : 60);
 
 // The trongate.cloud GitHub App (docs/github-app.md). One App does both jobs:
 // its OAuth client signs customers in and lists the repositories they may
@@ -90,3 +94,14 @@ defined('PLATFORM_MAIL_PORT') || define('PLATFORM_MAIL_PORT', (int) (getenv('PLA
 // APP_KEY: the inbox is reachable from tenant pods, so it only gets this one.
 // The worker (which writes the passwords) and the inbox need it.
 defined('MAIL_KEY') || define('MAIL_KEY', getenv('MAIL_KEY') ?: '');
+
+// Deleting an app first backs up its database and files to this bucket
+// (App_backup, tasks/destroy_app.php) for its project to download for
+// App_backup::KEEP_DAYS, then deletes them for good. The panel signs the
+// download links, the worker the upload links. Unset: deleting an app keeps
+// its database and files instead, as before.
+defined('APP_BACKUPS_S3_ENDPOINT') || define('APP_BACKUPS_S3_ENDPOINT', getenv('APP_BACKUPS_S3_ENDPOINT') ?: '');
+defined('APP_BACKUPS_S3_REGION') || define('APP_BACKUPS_S3_REGION', getenv('APP_BACKUPS_S3_REGION') ?: '');
+defined('APP_BACKUPS_S3_BUCKET') || define('APP_BACKUPS_S3_BUCKET', getenv('APP_BACKUPS_S3_BUCKET') ?: '');
+defined('APP_BACKUPS_S3_ACCESS_KEY') || define('APP_BACKUPS_S3_ACCESS_KEY', getenv('APP_BACKUPS_S3_ACCESS_KEY') ?: '');
+defined('APP_BACKUPS_S3_SECRET_KEY') || define('APP_BACKUPS_S3_SECRET_KEY', getenv('APP_BACKUPS_S3_SECRET_KEY') ?: '');
