@@ -43,7 +43,8 @@
             "php tests/Domain_dns_test.php",
             "php tests/Setup_sql_test.php",
             "php tests/Sql_import_test.php",
-            "php tests/Github_link_test.php"
+            "php tests/Github_link_test.php",
+            "php tests/Build_commands_test.php"
         ],
         "qa": [
             "@lint",

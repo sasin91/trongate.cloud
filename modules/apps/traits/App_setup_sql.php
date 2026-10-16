@@ -26,7 +26,7 @@ trait App_setup_sql {
      * failed submit: the files that were offered, which were ticked, the
      * typed path and SQL
      *
-     * @return array{sql_files: list<array{path: string, checked: bool}>, sql_files_loaded_for: string, sql_path: string, sql: string, has_error: bool}
+     * @return array{sql_files: list<array{path: string, checked: bool}>, sql_files_loaded_for: string, sql_path: string, sql: string}
      */
     function _setup_sql_form(): array {
         $offered = post('sql_offered');
@@ -44,8 +44,6 @@ trait App_setup_sql {
             'sql_files_loaded_for' => is_array($offered) ? $this->_posted_source_key() : '',
             'sql_path' => (string) post('sql_path', true),
             'sql' => (string) post('setup_sql'),
-            // The form opens on this question when its check failed
-            'has_error' => isset($_SESSION['form_submission_errors']['setup_sql']),
         ];
     }
 

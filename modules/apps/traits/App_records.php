@@ -1,5 +1,7 @@
 <?php
 
+require_once APPPATH . 'modules/platform/manifests/Build_commands.php';
+
 /**
  * App writes shared by onboarding and the apps module.
  * Requires the Platform_actions trait in the same model (slug helper).
@@ -102,7 +104,7 @@ trait App_records {
      * Update an app's platform settings (the app must be in the project).
      * The custom domain goes through update_app_domain().
      *
-     * @param array{domain: ?string, persistent_paths: list<string>, php_extensions: string, always_on: bool, auto_deploy: bool, source_branch: string, trongate_env: string, mail_capture: bool, health_path: string} $settings
+     * @param array{domain: ?string, persistent_paths: list<string>, php_extensions: string, build_commands: string, always_on: bool, auto_deploy: bool, source_branch: string, trongate_env: string, mail_capture: bool, health_path: string} $settings
      */
     function update_app_settings(int $project_id, int $app_id, array $settings): void {
         $this->update_app_domain($project_id, $app_id, $settings['domain']);
@@ -111,6 +113,7 @@ trait App_records {
             UPDATE app
             SET persistent_paths = :persistent_paths,
                 php_extensions = :php_extensions,
+                build_commands = :build_commands,
                 always_on = :always_on,
                 trongate_env = :trongate_env,
                 mail_capture = :mail_capture,
@@ -122,6 +125,7 @@ trait App_records {
         $this->db->query_bind($sql, [
             'persistent_paths' => json_encode($settings['persistent_paths']),
             'php_extensions' => $settings['php_extensions'],
+            'build_commands' => Build_commands::normalise($settings['build_commands']),
             'always_on' => $settings['always_on'] ? 1 : 0,
             'trongate_env' => $settings['trongate_env'],
             'mail_capture' => $settings['mail_capture'] ? 1 : 0,

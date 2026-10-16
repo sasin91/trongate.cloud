@@ -1,11 +1,12 @@
 <?php
 /**
- * New-app questions, one at a time: repository, branch, environment, name, Trongate version, database, settings.
+ * New-app questions, one at a time: repository, branch, environment, name, Trongate version, database, build, settings.
  * Shared by onboarding/app and projects/{id}/apps/new.
  *
  * Expects: $provider, $github_connected, $repositories, $connect_url, $public_link, $install_url, $app_types, $branches_url (returns <option>s),
- * $env_url (returns the Environment inputs), $sql_url (returns the Database question's files), $env_fields,
- * $env_loaded_for, $settings and $setup_sql (App_form::_app_form_data),
+ * $env_url (returns the Environment inputs), $sql_url (returns the Database question's files),
+ * $build_url (returns the Build question's fields), $env_fields, $env_loaded_for, $settings, $setup_sql,
+ * $build and $error_step (App_form::_app_form_data),
  * $form_action, $q_offset (questions answered before this page), $q_total,
  * $back_href (optional link for the first question's Back).
  */
@@ -20,7 +21,7 @@ $errors = validation_errors('<p>', '</p>');
 ?>
 <div class="wz-wrap">
     <main class="wz-main">
-        <?= form_open($form_action, ['class' => 'wz-stage', 'data-steps' => '', 'data-offset' => (string) (int) $q_offset, 'data-total' => (string) (int) $q_total, 'data-branches' => $branches_url, 'data-env' => $env_url, 'data-sql' => $sql_url, 'data-provider' => $provider, 'data-error-step' => $setup_sql['has_error'] ? 'database' : '', 'data-apps-domain' => PLATFORM_APPS_DOMAIN]) ?>
+        <?= form_open($form_action, ['class' => 'wz-stage', 'data-steps' => '', 'data-offset' => (string) (int) $q_offset, 'data-total' => (string) (int) $q_total, 'data-branches' => $branches_url, 'data-env' => $env_url, 'data-sql' => $sql_url, 'data-build' => $build_url, 'data-provider' => $provider, 'data-error-step' => $error_step, 'data-apps-domain' => PLATFORM_APPS_DOMAIN]) ?>
             <?= form_hidden('provider', $provider) ?>
 
             <button type="button" class="wz-back" data-back hidden>
@@ -166,9 +167,19 @@ $errors = validation_errors('<p>', '</p>');
                 </label>
             </fieldset>
 
-            <fieldset class="wz-step" data-step="settings" data-label="Settings">
+            <fieldset class="wz-step" data-step="build" data-label="Build">
                 <div class="wz-q">
                     <span class="wz-num"><?= $q_offset + 7 ?> &rarr;</span>
+                    <legend>How is it built?</legend>
+                </div>
+                <div data-build-fields data-loaded-for="<?= $e($build['loaded_for']) ?>">
+                    <?php require __DIR__ . '/_build_fields.php'; ?>
+                </div>
+            </fieldset>
+
+            <fieldset class="wz-step" data-step="settings" data-label="Settings">
+                <div class="wz-q">
+                    <span class="wz-num"><?= $q_offset + 8 ?> &rarr;</span>
                     <legend>Anything else before launch?</legend>
                 </div>
                 <div class="wz-settings">
@@ -186,10 +197,6 @@ $errors = validation_errors('<p>', '</p>');
                         <span class="wz-label">Health check path</span>
                         <input type="text" name="health_path" class="wz-in mono" placeholder="/" value="<?= $e($settings['health_path']) ?>">
                         <span class="wz-hint">A deploy goes live once this path answers with a 2xx or 3xx. The home page by default.</span>
-                    </label>
-                    <label class="wz-field">
-                        <span class="wz-label">Extra PHP extensions</span>
-                        <input type="text" name="php_extensions" class="wz-in mono" placeholder="gd, intl" value="<?= $e($settings['php_extensions']) ?>">
                     </label>
                     <label class="wz-field">
                         <span class="wz-label">Persistent paths</span>
@@ -245,6 +252,7 @@ $errors = validation_errors('<p>', '</p>');
                 <div><dt>domain</dt><dd data-show="domain"></dd></div>
                 <div><dt>trongate</dt><dd data-show="type"></dd></div>
                 <div><dt>database</dt><dd data-show="database"></dd></div>
+                <div><dt>build</dt><dd data-show="build"></dd></div>
             </dl>
         </div>
     </aside>

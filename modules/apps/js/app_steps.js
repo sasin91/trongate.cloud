@@ -198,6 +198,34 @@ document.addEventListener('DOMContentLoaded', function () {
 
     branch.addEventListener('change', loadSqlFiles);
 
+    // Build: commands and PHP extensions suggested from the branch's root, read again only when the branch changes
+    const buildFields = form.querySelector('[data-build-fields]');
+
+    const loadBuild = function () {
+        if (!source() || !branch.value) return;
+
+        const loadedFor = source() + '@' + branch.value;
+        if (buildFields.dataset.loadedFor === loadedFor) return;
+        buildFields.dataset.loadedFor = loadedFor;
+
+        const url = form.dataset.build + '?' + sourceQuery() + '&branch=' + encodeURIComponent(branch.value);
+        fetch(url, { credentials: 'same-origin' })
+            .then(function (response) {
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                return response.text();
+            })
+            .then(function (html) {
+                if (buildFields.dataset.loadedFor !== loadedFor) return;
+                buildFields.innerHTML = html;
+                updateSheet();
+            })
+            .catch(function () {
+                buildFields.dataset.loadedFor = '';
+            });
+    };
+
+    branch.addEventListener('change', loadBuild);
+
     // Repository: load its branches, suggest a name, move on
     const loadBranches = function () {
         const loadingFor = source();
@@ -218,6 +246,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (preferred) branch.value = preferred;
                 loadEnv();
                 loadSqlFiles();
+                loadBuild();
                 updateSheet();
             })
             .catch(function () {
@@ -288,6 +317,10 @@ document.addEventListener('DOMContentLoaded', function () {
             if (files > 0) parts.push(files + (files === 1 ? ' SQL file' : ' SQL files'));
             if (form.querySelector('[name="setup_sql"]').value.trim() !== '') parts.push('typed SQL');
             sheet.database.textContent = parts.join(' + ');
+        }
+        if (sheet.build) {
+            const commands = form.querySelector('[name="build_commands"]').value.split('\n').filter(function (line) { return line.trim() !== ''; });
+            sheet.build.textContent = commands.length === 0 ? '' : commands[0] + (commands.length > 1 ? ' +' + (commands.length - 1) : '');
         }
         if (sheet.address) sheet.address.textContent = slug ? slug + '.' + form.dataset.appsDomain : '';
         if (sheet.domain) sheet.domain.textContent = domain;

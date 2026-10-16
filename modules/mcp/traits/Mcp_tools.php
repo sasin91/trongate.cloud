@@ -164,6 +164,7 @@ trait Mcp_tools {
                     'domain' => ['type' => ['string', 'null'], 'description' => 'Custom domain; null or "" removes it'],
                     'persistent_paths' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => "Directories (relative to the app's root) kept across deploys, e.g. modules/blog/uploads"],
                     'php_extensions' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Extra PHP extensions'],
+                    'build_commands' => ['type' => 'string', 'description' => 'Shell commands, one per line, run in the image build after composer install, e.g. "npm ci\nnpm run build"; Node (npm, pnpm, yarn) and Bun are added when a command uses them; "" runs none'],
                     'processes' => ['type' => 'array', 'description' => 'The full list of processes run next to the app, which never sleep, e.g. [{"name": "worker", "command": "php bin/queue.php work --time-limit=3600", "replicas": 1}]; [] removes them all. Replicas run side by side.', 'items' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string', 'description' => 'Lowercase letters, numbers and -, at most 20'], 'command' => ['type' => 'string'], 'replicas' => ['type' => 'integer', 'minimum' => 1, 'maximum' => Manifests::MAX_PROCESS_REPLICAS]], 'required' => ['name', 'command']]],
                     'always_on' => ['type' => 'boolean', 'description' => 'Never sleep when idle (needed when other apps call it directly)'],
                     'auto_deploy' => ['type' => 'boolean', 'description' => 'Deploy on every push to the branch'],
@@ -384,6 +385,7 @@ trait Mcp_tools {
             'custom_domain' => $this->_domain_status($app),
             'persistent_paths' => Manifests::persistent_paths((array) $app),
             'php_extensions' => $this->_parse_php_extensions((string) ($app->php_extensions ?? '')),
+            'build_commands' => (string) ($app->build_commands ?? ''),
             'processes' => $this->_processes_with_state($app),
             'auto_deploy' => (bool) ($app->auto_deploy ?? false),
             'trongate_env' => Trongate_config::env((array) $app),
@@ -544,6 +546,7 @@ trait Mcp_tools {
             'domain' => $this->_normalise_domain((string) ($app->domain ?? '')),
             'persistent_paths' => Manifests::persistent_paths((array) $app),
             'php_extensions' => (string) ($app->php_extensions ?? ''),
+            'build_commands' => (string) ($app->build_commands ?? ''),
             'always_on' => (bool) $app->always_on,
             'auto_deploy' => (bool) $app->auto_deploy,
             'source_branch' => (string) $app->source_branch,
@@ -573,6 +576,13 @@ trait Mcp_tools {
             $this->_check($this->_validate_php_extensions($extensions));
             $settings['php_extensions'] = implode(',', $this->_parse_php_extensions($extensions));
             $changed[] = 'php_extensions';
+        }
+
+        if (array_key_exists('build_commands', $args)) {
+            $commands = $this->_string_arg($args, 'build_commands', false);
+            $this->_check($this->_validate_build_commands($commands));
+            $settings['build_commands'] = Build_commands::normalise($commands);
+            $changed[] = 'build_commands';
         }
 
         if (array_key_exists('processes', $args)) {
@@ -638,6 +648,7 @@ trait Mcp_tools {
                 'domain' => $this->_domain_status($app),
                 'persistent_paths' => Manifests::persistent_paths((array) $app),
                 'php_extensions' => $this->_parse_php_extensions((string) $app->php_extensions),
+                'build_commands' => (string) $app->build_commands,
                 'processes' => $this->model->app_processes((int) $app->id),
                 'always_on' => (bool) $app->always_on,
                 'auto_deploy' => (bool) $app->auto_deploy,

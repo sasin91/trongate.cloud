@@ -10,13 +10,14 @@
 </head>
 
 <body class="wz-body">
-    <?php $q_current = 2; $q_total = 8; require APPPATH . 'modules/apps/views/_wizard_top.php'; ?>
+    <?php $q_current = 2; $q_total = 9; require APPPATH . 'modules/apps/views/_wizard_top.php'; ?>
 
     <?php
     $form_action = 'onboarding/submit_app';
     $branches_url = 'onboarding/branches';
     $env_url = 'onboarding/env-suggestions';
     $sql_url = 'onboarding/sql-files';
+    $build_url = 'onboarding/build-suggestions';
     $q_offset = 1;
     require APPPATH . 'modules/apps/views/_app_steps.php';
     ?>

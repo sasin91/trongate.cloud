@@ -92,10 +92,10 @@ return function (Task_log $log) use ($payload, $runtime): int {
             $db,
             "INSERT INTO app (project_id, label, slug, type, environment, production_app_id,
                 source_url, source_provider, source_branch, auto_deploy,
-                persistent_paths, php_extensions, always_on, trongate_env, mail_capture, health_path)
+                persistent_paths, php_extensions, build_commands, always_on, trongate_env, mail_capture, health_path)
              SELECT project_id, label, slug, type, 'staging', id,
                 source_url, source_provider, ?, auto_deploy,
-                persistent_paths, php_extensions, 0, trongate_env, 1, health_path
+                persistent_paths, php_extensions, build_commands, 0, trongate_env, 1, health_path
              FROM app
              WHERE id = ?",
             [$staging_branch, $app_id],

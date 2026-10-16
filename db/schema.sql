@@ -275,6 +275,8 @@ CREATE TABLE app (
   -- Runtime settings
   persistent_paths JSON DEFAULT '[]',
   php_extensions VARCHAR(255) NOT NULL DEFAULT '',
+  -- Shell lines run in the image build after composer (Build_commands)
+  build_commands TEXT NOT NULL DEFAULT '',
   always_on TINYINT(1) NOT NULL DEFAULT 0,
   -- Trongate's ENV constant, patched into config/config.php (Trongate_config::env)
   trongate_env VARCHAR(20) NOT NULL DEFAULT 'dev',
@@ -540,4 +542,5 @@ INSERT INTO schema_migrations (name) VALUES
   ('0009_app_environments'),
   ('0010_app_setup_sql'),
   ('0011_app_setup_sql_dismissed'),
-  ('0012_app_sql_import');
+  ('0012_app_sql_import'),
+  ('0013_app_build_commands');

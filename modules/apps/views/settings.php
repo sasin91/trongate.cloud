@@ -46,6 +46,12 @@
             <p class="form-hint">Comma-separated. Installed at build time.</p>
         </div>
 
+        <div class="form-group">
+            <label for="build_commands" class="form-label">Build Commands</label>
+            <textarea name="build_commands" id="build_commands" class="form-input mono" rows="3" spellcheck="false" placeholder="npm ci&#10;npm run build"><?= htmlspecialchars($build_commands) ?></textarea>
+            <p class="form-hint">One command per line, run in your app's folder on every deploy after <code>composer install</code>. <code>npm</code>, <code>pnpm</code>, <code>yarn</code> and <code>bun</code> are there when a command uses them, and only the files they write ship. Environment variables are not available while building.</p>
+        </div>
+
         <div class="form-group" id="processes">
             <label class="form-label">Processes</label>
             <input type="hidden" name="processes" value="1">

@@ -2,6 +2,7 @@
 
 require_once APPPATH . 'modules/platform/manifests/App_env.php';
 require_once APPPATH . 'modules/platform/manifests/Trongate_config.php';
+require_once APPPATH . 'modules/platform/manifests/Build_commands.php';
 
 /**
  * Rules for an app's settings, shared by the forms (App_form, Apps) and the
@@ -179,6 +180,13 @@ trait App_rules {
         }
 
         return true;
+    }
+
+    /**
+     * Shell lines run in the image build (Build_commands)
+     */
+    function _validate_build_commands(string $value): bool|string {
+        return Build_commands::error($value) ?? true;
     }
 
     function _validate_php_extensions(string $value): bool|string {
