@@ -117,6 +117,7 @@ $routes = [
     // Deployments
     'deployments/(:num)' => 'deployments/show/$1',
     'deployments/(:num)/logs' => 'deployments/logs_partial/$1',
+    'deployments/(:num)/log' => 'deployments/log_modal/$1',
 
     // The GitHub App's webhook (public, HMAC-signed with GITHUB_APP_WEBHOOK_SECRET)
     'webhooks/github' => 'webhooks/github',

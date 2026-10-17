@@ -29,6 +29,7 @@
         "cs:fix": "php-cs-fixer fix",
         "test": [
             "php tests/Config_editor_test.php",
+            "php tests/Deploy_steps_test.php",
             "php tests/App_wizard_draft_test.php",
             "php tests/Trongate_upgrade_test.php",
             "php tests/News_test.php",

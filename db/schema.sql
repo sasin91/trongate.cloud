@@ -495,7 +495,8 @@ CREATE TABLE tasks (
 CREATE TABLE task_logs (
   id INT PRIMARY KEY AUTO_INCREMENT,
   task_id INT NOT NULL,
-  level ENUM('info', 'warn', 'error') DEFAULT 'info',
+  -- 'step' marks where a deploy enters a step (Task_log::step)
+  level ENUM('info', 'warn', 'error', 'step') DEFAULT 'info',
   message TEXT NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   KEY idx_task_id (task_id, id),
@@ -586,4 +587,5 @@ INSERT INTO schema_migrations (name) VALUES
   ('0015_app_setup_sql'),
   ('0016_app_backup'),
   ('0017_app_database_log_credentials'),
-  ('0018_app_default_module');
+  ('0018_app_default_module'),
+  ('0019_task_log_steps');

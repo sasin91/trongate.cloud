@@ -342,6 +342,27 @@ trait Platform_actions {
     }
 
     /**
+     * The 'step' lines of a deployment's log (Task_log::step), oldest first:
+     * where it entered each step of the deploy (Deploy_steps)
+     */
+    function deployment_step_marks(int $project_id, int $deployment_id): array {
+        $sql = <<<SQL
+            SELECT l.id, l.message, l.created_at
+            FROM task_logs l
+            JOIN tasks t ON t.id = l.task_id
+            JOIN deployment d ON d.id = t.deployment_id
+            WHERE d.id = :deployment_id
+              AND d.project_id = :project_id
+              AND l.level = 'step'
+            ORDER BY l.id ASC
+        SQL;
+        return $this->db->query_bind($sql, [
+            'deployment_id' => $deployment_id,
+            'project_id' => $project_id,
+        ], 'object');
+    }
+
+    /**
      * Log lines from the deployment's tasks after a given log id, oldest first.
      * Empty when the deployment is not the project's.
      */

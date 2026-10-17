@@ -32,6 +32,8 @@ return function (Task_log $log) use ($payload, $runtime): int {
 
     // --- Source --------------------------------------------------------------
 
+    $log->step('source');
+
     $provider = (string) ($app['source_provider'] ?? '');
     $source_url = rtrim((string) ($app['source_url'] ?? ''), '/');
     $branch = (string) ($app['source_branch'] ?: 'main');
@@ -162,6 +164,9 @@ return function (Task_log $log) use ($payload, $runtime): int {
         $config_json = json_encode($config_files, JSON_THROW_ON_ERROR);
 
         // --- Dockerfile ------------------------------------------------------
+
+        $log->step('build');
+
         // Every Trongate app has the same shape, so the platform writes the
         // Dockerfile: the prebuilt base (docker/app-base) plus the app's extra
         // extensions, its composer packages, its files and its build commands

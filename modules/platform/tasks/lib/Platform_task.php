@@ -493,13 +493,22 @@ class Platform_task {
     static function roll_out(Runtime $runtime, Task_log $log, array &$app, array $deployment, array $database): bool {
         $current_id = (int) ($app['current_deployment_id'] ?? 0);
 
+        // The steps the deployment page shows (Deploy_steps::KEYS)
+        $log->step('config');
         self::apply($runtime, $log, $app, $deployment, $database);
         self::run_setup_sql($runtime, $log, (int) $app['id'], $database);
 
-        if (self::wait_for_rollout($runtime, $log, $app) && self::smoke_test($runtime, $log, $app)) {
-            return true;
+        $log->step('start');
+
+        if (self::wait_for_rollout($runtime, $log, $app)) {
+            $log->step('check');
+
+            if (self::smoke_test($runtime, $log, $app)) {
+                return true;
+            }
         }
 
+        $log->step('restore');
         self::restore($runtime, $log, $app, $current_id, (int) $deployment['id'], $database);
 
         return false;

@@ -127,3 +127,209 @@
 .deploy-failure-reason code {
     word-break: break-all;
 }
+
+/* The deploy's steps as a timeline (Deploy_steps, views/_steps.php) */
+.steps-card {
+    margin-bottom: 1.5rem;
+}
+
+/* The log in the Logs modal (views/_log_modal.php) */
+.log-modal-box {
+    max-height: 70vh;
+    text-align: left;
+}
+
+.steps-heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 1rem;
+}
+
+.steps-heading h3 {
+    margin: 0;
+}
+
+.step-now {
+    color: var(--accent);
+    font-size: 0.875rem;
+}
+
+.steps-logs-button {
+    margin-left: auto;
+}
+
+.steps {
+    list-style: none;
+    margin: 1.25rem 0 0 0;
+    padding: 0;
+}
+
+.step {
+    position: relative;
+    padding: 0 0 1.25rem 2.5rem;
+}
+
+/* An optional step (Deploy_steps::OPTIONAL) the deployment did not reach */
+.step:has(> .step-hidden) {
+    display: none;
+}
+
+/* The line down to the next step */
+.step::after {
+    content: '';
+    position: absolute;
+    left: 0.8rem;
+    top: 1.75rem;
+    bottom: 0.25rem;
+    border-left: 2px solid var(--border);
+}
+
+.step:last-child::after {
+    display: none;
+}
+
+.step:has(> .step-done)::after {
+    border-left-color: #6ee7b7;
+}
+
+.step-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 0.75rem;
+}
+
+.step-head h4 {
+    margin: 0.15rem 0 0.25rem 0;
+}
+
+.step-dot {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1.6rem;
+    height: 1.6rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    font-weight: 600;
+    background: var(--bg-subtle);
+    color: var(--text-muted);
+    border: 2px solid var(--border);
+    box-sizing: border-box;
+}
+
+.step-label,
+.step-time {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.step-done .step-dot {
+    font-size: 0;
+    background: #d1fae5;
+    border-color: #6ee7b7;
+}
+
+.step-done .step-dot::before {
+    content: '\2713';
+    font-size: 0.8rem;
+    color: #065f46;
+}
+
+.step-current .step-dot {
+    background: var(--accent);
+    color: var(--white);
+    border-color: var(--accent);
+}
+
+.step-current .step-label {
+    color: var(--accent);
+}
+
+.step-failed .step-dot {
+    background: #fee2e2;
+    color: #991b1b;
+    border-color: #fca5a5;
+}
+
+.step-failed .step-label {
+    color: #991b1b;
+}
+
+.step-waiting h4,
+.step-skipped h4 {
+    color: var(--text-muted);
+}
+
+.step-skipped .step-dot {
+    border-style: dashed;
+}
+
+.step-about summary {
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    width: max-content;
+}
+
+.step-about p {
+    margin: 0.35rem 0;
+    font-size: 0.9rem;
+}
+
+.step-config {
+    overflow-x: auto;
+    margin-top: 0.5rem;
+}
+
+.step-config table {
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    width: 100%;
+}
+
+.step-config th,
+.step-config td {
+    text-align: left;
+    padding: 0.35rem 0.75rem 0.35rem 0;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+    overflow-wrap: anywhere;
+}
+
+.step-config th {
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.steps-later {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+/* Phones: each setting is a small block instead of a row */
+@media (max-width: 550px) {
+    .step-config thead {
+        display: none;
+    }
+
+    .step-config tr,
+    .step-config td {
+        display: block;
+    }
+
+    .step-config tr {
+        padding: 0.5rem 0;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .step-config td {
+        border-bottom: none;
+        padding: 0.1rem 0;
+    }
+}

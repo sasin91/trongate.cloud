@@ -7,7 +7,7 @@
  * and mirrors them to STDOUT for the worker's container logs.
  */
 class Task_log {
-    const LEVELS = ['info', 'warn', 'error'];
+    const LEVELS = ['info', 'warn', 'error', 'step'];
 
     private PDO $db;
 
@@ -28,6 +28,14 @@ class Task_log {
 
     function error(string $message): void {
         $this->write('error', $message);
+    }
+
+    /**
+     * Mark where the task enters one of a deploy's steps (Deploy_steps::KEYS):
+     * the deployment page shows the lines after it under that step
+     */
+    function step(string $key): void {
+        $this->write('step', $key);
     }
 
     function task_id(): int {
