@@ -8,9 +8,10 @@
  *
  * A panel is an array:
  *   heading        Card heading, e.g. 'Projects'
- *   columns        Column labels; the first is the linked column
- *   rows           Each ['url' => ..., 'link_text' => ..., 'cells' => [...]]
- *                  with one cell per remaining column
+ *   url_path       Each row links to url_path . its id, e.g. 'project/show/'
+ *   link_column    The column whose value is the link
+ *   columns        Record field => column label, in display order
+ *   rows           The records as fetched (objects with an id)
  *   empty_message  Shown when there are no rows
  */
 class Related_records extends Trongate {

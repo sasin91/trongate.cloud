@@ -162,16 +162,38 @@ class Admin_model extends Model {
      */
     public function related_panels(int $customer_id): array {
         $projects = $this->fetch_projects($customer_id);
-
-        $project_ids = [];
-        foreach ($projects as $project) {
-            $project_ids[] = (int) $project->id;
-        }
-        $apps = $this->fetch_apps($project_ids);
+        $apps = $this->fetch_apps(array_column($projects, 'id'));
 
         return [
-            $this->projects_panel($projects),
-            $this->apps_panel($apps),
+            [
+                'heading' => 'Projects',
+                'url_path' => 'project/show/',
+                'link_column' => 'name',
+                'columns' => [
+                    'name' => 'Name',
+                    'namespace' => 'Namespace',
+                    'role' => 'Role',
+                    'created_at' => 'Created At',
+                    'deleted_at' => 'Deleted At',
+                ],
+                'rows' => $projects,
+                'empty_message' => 'This customer owns no projects and is a member of none.',
+            ],
+            [
+                'heading' => 'Apps',
+                'url_path' => 'app/show/',
+                'link_column' => 'label',
+                'columns' => [
+                    'label' => 'Label',
+                    'slug' => 'Slug',
+                    'environment' => 'Environment',
+                    'project_name' => 'Project',
+                    'created_at' => 'Created At',
+                    'deleted_at' => 'Deleted At',
+                ],
+                'rows' => $apps,
+                'empty_message' => 'None of this customer\'s projects has an app.',
+            ],
         ];
     }
 
@@ -182,15 +204,17 @@ class Admin_model extends Model {
      * @return array<object>
      */
     private function fetch_projects(int $customer_id): array {
-        $sql = 'SELECT project.id, project.name, project.namespace,
-                    COALESCE(project_member.role, \'owner\') AS role,
-                    project.created_at, project.deleted_at
-                FROM project
-                LEFT JOIN project_member
-                    ON project_member.project_id = project.id
-                    AND project_member.customer_id = :member_id
-                WHERE project.owner_id = :owner_id OR project_member.id IS NOT NULL
-                ORDER BY project.id';
+        $sql = <<<SQL
+            SELECT project.id, project.name, project.namespace,
+                COALESCE(project_member.role, 'owner') AS role,
+                project.created_at, project.deleted_at
+            FROM project
+            LEFT JOIN project_member
+                ON project_member.project_id = project.id
+                AND project_member.customer_id = :member_id
+            WHERE project.owner_id = :owner_id OR project_member.id IS NOT NULL
+            ORDER BY project.id
+        SQL;
         $params = ['member_id' => $customer_id, 'owner_id' => $customer_id];
         return $this->db->query_bind($sql, $params, 'object');
     }
@@ -198,7 +222,7 @@ class Admin_model extends Model {
     /**
      * Fetch the apps in the given projects, deleted ones included.
      *
-     * @param array<int> $project_ids Project IDs.
+     * @param array<int|string> $project_ids Project IDs, from fetch_projects().
      * @return array<object>
      */
     private function fetch_apps(array $project_ids): array {
@@ -206,68 +230,16 @@ class Admin_model extends Model {
             return [];
         }
 
-        $sql = 'SELECT app.id, app.label, app.slug, app.environment,
-                    project.name AS project_name, app.created_at, app.deleted_at
-                FROM app
-                JOIN project ON project.id = app.project_id
-                WHERE app.project_id IN ('.implode(', ', $project_ids).')
-                ORDER BY app.project_id, app.id';
+        $ids = implode(', ', array_map('intval', $project_ids));
+        $sql = <<<SQL
+            SELECT app.id, app.label, app.slug, app.environment,
+                project.name AS project_name, app.created_at, app.deleted_at
+            FROM app
+            JOIN project ON project.id = app.project_id
+            WHERE app.project_id IN ($ids)
+            ORDER BY app.project_id, app.id
+        SQL;
         return $this->db->query($sql, 'object');
-    }
-
-    /**
-     * @param array<object> $projects From fetch_projects().
-     * @return array<string, mixed>
-     */
-    private function projects_panel(array $projects): array {
-        $rows = [];
-        foreach ($projects as $project) {
-            $rows[] = [
-                'url' => BASE_URL.'project/show/'.$project->id,
-                'link_text' => $project->name,
-                'cells' => [
-                    $project->namespace,
-                    $project->role,
-                    (string) $project->created_at,
-                    (string) $project->deleted_at,
-                ],
-            ];
-        }
-
-        return [
-            'heading' => 'Projects',
-            'columns' => ['Name', 'Namespace', 'Role', 'Created At', 'Deleted At'],
-            'rows' => $rows,
-            'empty_message' => 'This customer owns no projects and is a member of none.',
-        ];
-    }
-
-    /**
-     * @param array<object> $apps From fetch_apps().
-     * @return array<string, mixed>
-     */
-    private function apps_panel(array $apps): array {
-        $rows = [];
-        foreach ($apps as $app) {
-            $rows[] = [
-                'url' => BASE_URL.'app/show/'.$app->id,
-                'link_text' => $app->label,
-                'cells' => [
-                    $app->slug,
-                    $app->environment,
-                    $app->project_name,
-                    (string) $app->created_at,
-                    (string) $app->deleted_at,
-                ],
-            ];
-        }
-
-        return [
-            'heading' => 'Apps',
-            'columns' => ['Label', 'Slug', 'Environment', 'Project', 'Created At', 'Deleted At'],
-            'rows' => $rows,
-            'empty_message' => 'None of this customer\'s projects has an app.',
-        ];
     }
 
 }
