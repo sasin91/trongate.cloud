@@ -14,6 +14,7 @@ parameters:
         - modules/overview
         - modules/platform
         - modules/projects
+        - modules/related_records
         - modules/secrets
         - modules/services
         - modules/templates
