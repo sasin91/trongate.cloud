@@ -102,6 +102,7 @@ class Admin extends Trongate {
         $data['update_id'] = $update_id;
         $data['headline'] = 'Customer Details';
         $data['back_url'] = $this->get_back_url();
+        $data['related_panels'] = $this->model->related_panels($update_id);
         $data['view_module'] = 'customer/admin';
         $data['view_file'] = 'show';
         $this->templates->admin($data);

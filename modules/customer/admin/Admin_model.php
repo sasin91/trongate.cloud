@@ -154,6 +154,92 @@ class Admin_model extends Model {
         return $record_obj;
     }
 
+    /**
+     * Build the related records panels shown below a customer's record.
+     *
+     * @param int $customer_id Customer ID.
+     * @return array<array<string, mixed>> Panels for related_records/draw_panel
+     */
+    public function related_panels(int $customer_id): array {
+        $projects = $this->fetch_projects($customer_id);
+        $apps = $this->fetch_apps(array_column($projects, 'id'));
 
+        return [
+            [
+                'heading' => 'Projects',
+                'url_path' => 'project/show/',
+                'link_column' => 'name',
+                'columns' => [
+                    'name' => 'Name',
+                    'namespace' => 'Namespace',
+                    'role' => 'Role',
+                    'created_at' => 'Created At',
+                    'deleted_at' => 'Deleted At',
+                ],
+                'rows' => $projects,
+                'empty_message' => 'This customer owns no projects and is a member of none.',
+            ],
+            [
+                'heading' => 'Apps',
+                'url_path' => 'app/show/',
+                'link_column' => 'label',
+                'columns' => [
+                    'label' => 'Label',
+                    'slug' => 'Slug',
+                    'environment' => 'Environment',
+                    'project_name' => 'Project',
+                    'created_at' => 'Created At',
+                    'deleted_at' => 'Deleted At',
+                ],
+                'rows' => $apps,
+                'empty_message' => 'None of this customer\'s projects has an app.',
+            ],
+        ];
+    }
+
+    /**
+     * Fetch the projects a customer owns or is a member of, deleted ones included.
+     *
+     * @param int $customer_id Customer ID.
+     * @return array<object>
+     */
+    private function fetch_projects(int $customer_id): array {
+        $sql = <<<SQL
+            SELECT project.id, project.name, project.namespace,
+                COALESCE(project_member.role, 'owner') AS role,
+                project.created_at, project.deleted_at
+            FROM project
+            LEFT JOIN project_member
+                ON project_member.project_id = project.id
+                AND project_member.customer_id = :member_id
+            WHERE project.owner_id = :owner_id OR project_member.id IS NOT NULL
+            ORDER BY project.id
+        SQL;
+        $params = ['member_id' => $customer_id, 'owner_id' => $customer_id];
+        return $this->db->query_bind($sql, $params, 'object');
+    }
+
+    /**
+     * Fetch the apps in the given projects, deleted ones included.
+     *
+     * @param array<int|string> $project_ids Project IDs, from fetch_projects().
+     * @return array<object>
+     */
+    private function fetch_apps(array $project_ids): array {
+        if (count($project_ids) === 0) {
+            return [];
+        }
+
+        $ids = implode(', ', array_map('intval', $project_ids));
+        $sql = <<<SQL
+            SELECT app.id, app.label, app.slug, app.environment,
+                project.name AS project_name, app.created_at, app.deleted_at
+            FROM app
+            JOIN project ON project.id = app.project_id
+            WHERE app.project_id IN ($ids)
+            ORDER BY app.project_id, app.id
+        SQL;
+        return $this->db->query($sql, 'object');
+    }
 
 }

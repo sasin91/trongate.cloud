@@ -40,3 +40,6 @@
         </div>
     </div>
 </div>
+<?php foreach ($related_panels as $panel): ?>
+    <?= Modules::run('related_records/draw_panel', $panel) ?>
+<?php endforeach; ?>
