@@ -40,6 +40,9 @@ class Platform_task {
      */
     const DATABASE_READY_ATTEMPTS = 30;
 
+    /** ensure_app_base's probe exit code when the registry has no app base image */
+    const APP_BASE_MISSING = 3;
+
     /**
      * Fetch one row with a prepared statement
      */
@@ -996,6 +999,11 @@ class Platform_task {
      * build is the previous release, which may not know about the base yet (the
      * first rollout of it), and a registry can lose it. When it is missing, it
      * is built from the copy of docker/app-base in this worker's image.
+     *
+     * Only a "not found" counts as missing. Any other failure (a registry
+     * answering 503) fails the build instead: rebuilding then would overwrite
+     * a newer base with this worker's older copy, as on 2026-10-21 when a
+     * 503 put PHP 8.4.26 back over 8.4.27.
      */
     static function ensure_app_base(Runtime $runtime, Task_log $log, string $host, string $work): bool {
         $q = fn(string $value) => Trongate_config::sh_quote($value);
@@ -1007,15 +1015,26 @@ class Platform_task {
 
         file_put_contents("{$probe}/Dockerfile", 'FROM ' . PLATFORM_APP_BASE_IMAGE . "\n");
 
-        // Resolving the FROM is all this does: no output, nothing pushed
-        $resolve = 'buildctl --addr ' . $q($host) . ' build --progress=plain'
+        // Resolving the FROM is all this does: nothing pushed. Exits
+        // APP_BASE_MISSING when the registry says the image doesn't exist.
+        $resolve = 'out=$(buildctl --addr ' . $q($host) . ' build --progress=plain'
             . ' --frontend=dockerfile.v0'
             . ' --local context=' . $q($probe)
             . ' --local dockerfile=' . $q($probe)
-            . ' --opt platform=linux/amd64 >/dev/null 2>&1';
+            . ' --opt platform=linux/amd64 2>&1) && exit 0' . "\n"
+            . 'case "$out" in *": not found"*) exit ' . self::APP_BASE_MISSING . ' ;; esac' . "\n"
+            . 'printf \'%s\\n\' "$out" | tail -n 5 >&2' . "\n"
+            . 'exit 1';
 
-        if ($runtime->shell($resolve, $log) === 0) {
+        $status = $runtime->shell($resolve, $log);
+
+        if ($status === 0) {
             return true;
+        }
+
+        if ($status !== self::APP_BASE_MISSING) {
+            $log->error('Could not check the app base image ' . PLATFORM_APP_BASE_IMAGE . ' (registry error above); not rebuilding it');
+            return false;
         }
 
         $log->warn('App base image ' . PLATFORM_APP_BASE_IMAGE . ' is not in the registry; building it first');
