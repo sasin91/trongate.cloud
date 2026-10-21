@@ -3,6 +3,8 @@
  * Template management class for rendering application templates.
  * Handles theme displays with support for additional CSS/JS includes.
  * Provides secure template rendering with URL invocation blocking and error handling.
+ *
+ * @property-read Impersonation $impersonation
  */
 class Templates extends Trongate {
 
@@ -43,12 +45,15 @@ class Templates extends Trongate {
     /**
      * Display customer dashboard template with provided data.
      * Optional $data['crumbs']: list of [href, label] shown after the logo (project, app).
+     * While tg-admin is signed in as the customer, a banner says so (modules/impersonation).
      *
      * @param array $data The data to pass to the template view
      * @return void
      */
     public function customer(array $data): void {
         $data['crumbs'] = $data['crumbs'] ?? [];
+        $this->module('impersonation');
+        $data['impersonation'] = $this->impersonation->_banner();
         $this->display('customer', $data);
     }
 

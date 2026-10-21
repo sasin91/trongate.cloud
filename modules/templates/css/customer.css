@@ -597,3 +597,34 @@ dialog::backdrop {
     padding: 1rem 1.25rem 1.25rem;
     border: none;
 }
+
+/* While tg-admin is signed in as this customer (modules/impersonation) */
+.impersonation-banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 8px 16px;
+    padding: 8px 16px;
+    background-color: var(--primary);
+    color: var(--white);
+    font-size: 14px;
+}
+
+.impersonation-banner form {
+    margin: 0;
+}
+
+.impersonation-banner button {
+    padding: 4px 12px;
+    border: 1px solid var(--white);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--white);
+    font: inherit;
+    cursor: pointer;
+}
+
+.impersonation-banner button:hover {
+    background-color: var(--primary-hover);
+}

@@ -7,6 +7,7 @@ $routes = [
     'logout' => 'login/logout',
     'register' => 'customer/register',
     'register/submit' => 'customer/submit_register',
+    'impersonate/stop' => 'impersonation/stop', // the panel banner while tg-admin is signed in as a customer
     'auth/github' => 'github_auth/start',
     'auth/github/callback' => 'github_auth/callback',
     'auth/github/installed' => 'github_auth/installed',

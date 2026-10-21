@@ -13,12 +13,20 @@ trait Current_customer {
     /**
      * Get the current customer from the auth token.
      * Not cached in session, so logout/login and membership changes take effect immediately.
+     * Only a customer token counts: the browser may also hold a tg-admin
+     * token (the admin's own sign-in, or while impersonating a customer).
      *
      * @return object|false The customer object or false if not found/logged in
      */
     function _get_current_customer(): object|false {
         $this->module('trongate_tokens');
-        $trongate_user_id = $this->trongate_tokens->get_user_id();
+        $token = $this->trongate_tokens->attempt_get_valid_token(2);
+
+        if ($token === false) {
+            return false;
+        }
+
+        $trongate_user_id = $this->trongate_tokens->get_user_id($token);
 
         if ($trongate_user_id === false) {
             return false;

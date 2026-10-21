@@ -1,4 +1,7 @@
 <?php
+
+require_once APPPATH . 'modules/impersonation/Impersonation_rules.php';
+
 /**
  * Admin Controller (customer)
  *
@@ -103,12 +106,30 @@ class Admin extends Trongate {
         $data['headline'] = 'Customer Details';
         $data['back_url'] = $this->get_back_url();
         $data['related_panels'] = $this->model->related_panels($update_id);
+        $data['impersonate_refusal'] = Impersonation_rules::refusal((object) $this->model->get_data_from_db($update_id));
+        $data['impersonate_button'] = $this->impersonate_button($update_id);
         $data['view_module'] = 'customer/admin';
         $data['view_file'] = 'show';
         $this->templates->admin($data);
     }
 
 
+
+    /**
+     * The "Sign in as customer" button: opens impersonation/confirm in an MX modal.
+     *
+     * @return array<string, string>
+     */
+    private function impersonate_button(int $customer_id): array {
+        return [
+            'mx-get' => 'impersonation/confirm/' . $customer_id,
+            'mx-build-modal' => json_encode([
+                'id' => 'impersonate-modal',
+                'modalHeading' => 'Sign in as customer',
+                'modalFooter' => '<button class="alt" onclick="closeModal()">Cancel</button><button form="impersonate-form">Sign in</button>'
+            ])
+        ];
+    }
 
     /**
      * Set number of records per page for pagination.
