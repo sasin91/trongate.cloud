@@ -94,6 +94,26 @@ class Impersonation extends Trongate {
     }
 
     /**
+     * For Customer_guard, when the browser holds no valid customer token: an
+     * impersonation that ran out (or whose token is gone) ends here and goes
+     * back to tg-admin. Without this the customer login page would destroy
+     * every token, the admin's session token included.
+     */
+    function _return_to_tg_admin_if_ended(): void {
+        $state = $_SESSION['impersonation'] ?? null;
+
+        if ($state === null) {
+            return;
+        }
+
+        $this->_end_impersonation($state);
+        error_log(Impersonation_rules::stopped_line($state['admin'], $state['customer_label'], (int) $state['started_at'], time()));
+
+        set_flashdata('Your sign-in as ' . $state['customer_label'] . ' has ended.');
+        redirect('customer-admin/show/' . $state['customer_id']);
+    }
+
+    /**
      * For the panel template: the banner's text while the browser is signed
      * in as a customer from tg-admin, or null
      *

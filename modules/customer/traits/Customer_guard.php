@@ -20,6 +20,7 @@ trait Customer_guard {
         $token = $this->trongate_tokens->attempt_get_valid_token(2);
 
         if ($token === false) {
+            Modules::run('impersonation/_return_to_tg_admin_if_ended');
             redirect('login');
         }
 
