@@ -3,6 +3,8 @@
  * Template management class for rendering application templates.
  * Handles theme displays with support for additional CSS/JS includes.
  * Provides secure template rendering with URL invocation blocking and error handling.
+ *
+ * @property-read Impersonation $impersonation
  */
 class Templates extends Trongate {
 
