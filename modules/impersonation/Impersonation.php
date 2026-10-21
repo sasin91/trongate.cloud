@@ -40,7 +40,7 @@ class Impersonation extends Trongate {
      */
     function start(): void {
         $admin_token = $this->trongate_security->make_sure_allowed();
-        $this->_require_post_with_csrf();
+        $this->validation->run(); // blocks the request without a posted CSRF token, so a GET too
         $customer = $this->_customer_or_back(segment(3, 'int'));
 
         $refusal = Impersonation_rules::refusal($customer);
@@ -79,7 +79,7 @@ class Impersonation extends Trongate {
      * and go back to their tg-admin page
      */
     function stop(): void {
-        $this->_require_post_with_csrf();
+        $this->validation->run(); // blocks the request without a posted CSRF token, so a GET too
         $state = $_SESSION['impersonation'] ?? null;
 
         if ($state === null) {
@@ -164,17 +164,5 @@ class Impersonation extends Trongate {
         }
 
         return $customer;
-    }
-
-    /**
-     * Only accept POSTs carrying a valid CSRF token (Validation::run() blocks the request otherwise).
-     */
-    private function _require_post_with_csrf(): void {
-        if (REQUEST_TYPE !== 'POST') {
-            http_response_code(405);
-            die('Method not allowed');
-        }
-
-        $this->validation->run();
     }
 }
