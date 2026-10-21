@@ -2,7 +2,6 @@
 title: Two critical PHP bugs, and what we did about them
 kind: writing
 summary: CVE-2026-109618 and CVE-2026-109619 affected every app on trongate.cloud and the panel itself. Here is what we found, what we changed, and what it means for your app.
-draft: true
 ---
 On October 21 the PHP project published two critical security bugs, CVE-2026-109618 and CVE-2026-109619. Every app on trongate.cloud ran an affected version of PHP, and so did the trongate.cloud panel. The same day we turned off what the bugs rely on, and every app now runs PHP 8.4.27, which fixes both.
 
@@ -40,6 +39,6 @@ Session upload progress stays off. Trongate doesn't use it. If your app reads `$
 
 ## Under the hood
 
-Apps run on FrankenPHP in classic mode, which PHP's advisory names as likely exposed to the first bug, in the same way as Apache's mod_php. FrankenPHP's own images are the official `php:8.4-zts` image with the `frankenphp` binary on top, and that binary loads PHP when it starts. Its 8.4.27 build wasn't out yet, so we put the FrankenPHP 1.12.7 binary onto `php:8.4.27-zts` ourselves. The build worker went from `php:8.4-cli` to `php:8.4.27-cli`. The cluster components we checked and found free of PHP are k3s, Traefik, cert-manager, Flux, Sablier, MariaDB, Valkey and JuiceFS.
+Apps run on FrankenPHP in classic mode, which PHP's advisory names as likely exposed to the first bug, in the same way as Apache's mod_php. FrankenPHP's own images are the official `php:8.4-zts` image with the `frankenphp` binary on top, and that binary loads PHP when it starts. Its 8.4.27 build wasn't out yet, so we put the FrankenPHP 1.12.7 binary onto `php:8.4.27-zts` ourselves. The build worker went from `php:8.4-cli` to `php:8.4.27-cli`. The cluster components we checked and found free of PHP are Kubernetes itself, Traefik, cert-manager, Flux, Sablier, MariaDB, Valkey and JuiceFS.
 
 PHP's advisories: [CVE-2026-109618](https://github.com/php/php-src/security/advisories/GHSA-w8hw-w9fx-j79w) and [CVE-2026-109619](https://github.com/php/php-src/security/advisories/GHSA-6wmf-4rv5-p3rp).
