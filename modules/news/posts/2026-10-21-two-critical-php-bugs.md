@@ -30,7 +30,7 @@ Everything else we run has no PHP in it and isn't affected: Kubernetes, the rout
 ## What we changed
 
 1. **October 21, the day the bugs were published:** session upload progress is off for every app and the panel, and the panel runs without PHP's memory limit, the same as apps. Both are the mitigations PHP's advisories give, and they cut off the confirmed paths of both bugs.
-2. **When images with the fixed PHP came out:** the base image of every app, the panel and the build worker moved to PHP 8.4.27. Each is now pinned to an exact PHP version, so a build can't quietly fall back to an older one. Then we redeployed every app.
+2. **Once the official PHP images had 8.4.27:** the base image of every app, the panel and the build worker moved to it, without waiting for a new FrankenPHP release. Each is pinned to an exact PHP version, so a build can't quietly fall back to an older one. Then we redeployed every app.
 
 ## What it means for your app
 
@@ -40,6 +40,6 @@ Session upload progress stays off. Trongate doesn't use it. If your app reads `$
 
 ## Under the hood
 
-Apps run on FrankenPHP in classic mode, which PHP's advisory names as likely exposed to the first bug, in the same way as Apache's mod_php. The base images went from `dunglas/frankenphp:1.12-php8.4` (PHP 8.4.26) to `dunglas/frankenphp:1.12-php8.4.27`, and the build worker from `php:8.4-cli` to `php:8.4.27-cli`. The cluster components we checked and found free of PHP are k3s, Traefik, cert-manager, Flux, Sablier, MariaDB, Valkey and JuiceFS.
+Apps run on FrankenPHP in classic mode, which PHP's advisory names as likely exposed to the first bug, in the same way as Apache's mod_php. FrankenPHP's own images are the official `php:8.4-zts` image with the `frankenphp` binary on top, and that binary loads PHP when it starts. Its 8.4.27 build wasn't out yet, so we put the FrankenPHP 1.12.7 binary onto `php:8.4.27-zts` ourselves. The build worker went from `php:8.4-cli` to `php:8.4.27-cli`. The cluster components we checked and found free of PHP are k3s, Traefik, cert-manager, Flux, Sablier, MariaDB, Valkey and JuiceFS.
 
 PHP's advisories: [CVE-2026-109618](https://github.com/php/php-src/security/advisories/GHSA-w8hw-w9fx-j79w) and [CVE-2026-109619](https://github.com/php/php-src/security/advisories/GHSA-6wmf-4rv5-p3rp).

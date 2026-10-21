@@ -9,7 +9,8 @@ WORKDIR /app
 COPY composer.json composer.lock ./
 RUN composer install --no-dev --no-interaction --no-progress --no-scripts --ignore-platform-reqs --optimize-autoloader
 
-FROM php:8.4-cli-bookworm
+# Pinned to the release that fixes CVE-2026-109618 and CVE-2026-109619
+FROM php:8.4.27-cli-bookworm
 
 ARG BUILDKIT_VERSION=0.33.1
 # Set by BuildKit from --platform (linux/amd64 -> amd64, linux/arm64 -> arm64);
