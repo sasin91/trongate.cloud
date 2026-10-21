@@ -10,6 +10,9 @@
     <title>trongate.cloud</title>
 </head>
 <body>
+    <?php if ($impersonation !== null): ?>
+        <?php require __DIR__ . '/_impersonation_banner.php'; ?>
+    <?php endif; ?>
     <header>
         <div class="header-left">
             <a href="dashboard" class="header-logo-link">
@@ -29,7 +32,9 @@
         <nav class="header-nav">
             <a href="dashboard" class="nav-link header-projects">Projects</a>
             <a href="integrations/claude" class="nav-link header-projects">Claude</a>
-            <a href="logout" class="nav-link">Sign out</a>
+            <?php if ($impersonation === null): ?>
+                <a href="logout" class="nav-link">Sign out</a>
+            <?php endif; ?>
         </nav>
     </header>
 

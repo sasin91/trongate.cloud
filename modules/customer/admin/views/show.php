@@ -7,7 +7,13 @@
     <div class="card-body">
         <div class="text-right mb-3">
             <?= anchor($back_url, 'Back', array('class' => 'button alt')) ?>
+            <?php if ($impersonate_refusal === null): ?>
+                <?= form_button('impersonate_btn', 'Sign in as customer', $impersonate_button) ?>
+            <?php endif; ?>
         </div>
+        <?php if ($impersonate_refusal !== null): ?>
+            <p class="text-right">Signing in as this customer is not possible: <?= out($impersonate_refusal) ?></p>
+        <?php endif; ?>
         <div class="detail-grid">
             <div class="detail-row">
                 <div class="detail-label">Trongate User Id</div>
