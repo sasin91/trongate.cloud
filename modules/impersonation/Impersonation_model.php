@@ -3,6 +3,8 @@
 /**
  * The customer and admin rows an impersonation names, and the customer token
  * it signs in with (trongate_tokens, like a password or GitHub sign-in).
+ *
+ * @property-read Db $db
  */
 class Impersonation_model extends Model {
 
