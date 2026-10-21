@@ -6,7 +6,29 @@
 # The app pod (Manifests::_deployment) runs it as uid 1000 with PORT=8080,
 # mounts config/config.php, config/database.php and the Valkey sessions ini, and
 # points Caddy's XDG dirs at /tmp.
-FROM dunglas/frankenphp:1.12-php8.4-trixie
+
+# FrankenPHP's own image is php:<version>-zts plus its frankenphp binary, which
+# links libphp.so at run time. Its 1.12-php8.4 image is still on PHP 8.4.26
+# (CVE-2026-109618, CVE-2026-109619), so the binary goes onto the fixed stock
+# image instead. Back to plain dunglas/frankenphp once it ships 8.4.27.
+FROM dunglas/frankenphp:1.12.7-php8.4-trixie AS frankenphp
+
+FROM php:8.4.27-zts-trixie
+
+# What FrankenPHP's image adds to the stock one (php/frankenphp Dockerfile)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends mailcap libcap2-bin libbrotli1 libstdc++6 \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+COPY --from=frankenphp /usr/local/lib/libwatcher-c.so* /usr/local/lib/
+COPY --from=frankenphp /usr/local/bin/frankenphp /usr/local/bin/install-php-extensions /usr/local/bin/
+# `frankenphp version` names the PHP it was compiled against; the build log
+# shows the one it runs
+RUN ldconfig \
+    && setcap cap_net_bind_service=+ep /usr/local/bin/frankenphp \
+    && echo '<?php echo "Serving PHP ", PHP_VERSION, "\n";' > /tmp/version.php \
+    && frankenphp php-cli /tmp/version.php \
+    && rm /tmp/version.php
+ENV GODEBUG=cgocheck=0
 
 # git, zip and unzip: what composer needs to install packages
 RUN apt-get update \
