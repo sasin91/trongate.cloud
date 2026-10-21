@@ -145,8 +145,8 @@ class Impersonation extends Trongate {
         $this->model->delete_token($state['token']);
         unset($_SESSION['impersonation']);
 
-        $previous_token = $state['previous_token'] ?? null;
-        $previous_expiry = $previous_token === null ? null : $this->model->token_expiry($previous_token);
+        $previous_token = (string) ($state['previous_token'] ?? '');
+        $previous_expiry = $previous_token === '' ? null : $this->model->token_expiry($previous_token);
 
         if ($previous_expiry === null) {
             setcookie('trongatetoken', 'x', time() - 86400, '/');
