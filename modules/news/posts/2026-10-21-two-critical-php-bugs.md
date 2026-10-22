@@ -9,7 +9,7 @@ On October 21 the PHP project published two critical security bugs, CVE-2026-109
 
 Both can let an attacker run their own code inside a PHP app, and both score 9.2 out of 10.
 
-- **CVE-2026-109618, running out of memory.** When a request runs out of memory, PHP can leave half-prepared memory behind, and cleaning up after that request can be steered into running an attacker's code. A crafted upload request is enough. It needs no sign-in and works whatever the app's own code does.
+- **CVE-2026-109618, running out of memory.** When a request runs out of memory, PHP can leave half-prepared memory behind, and cleaning up after that request can be steered into running an attacker's code. It can be reached with a crafted upload request that needs no sign-in, whatever the app's own code does. PHP showed full code execution this way on Apache's mod_php. For FrankenPHP, which our apps run on, the advisory says it is likely exposed, based on reading the source, and that how well an attack works depends on the build and setup.
 - **CVE-2026-109619, stale state between requests.** A request that ends in a fatal error, such as hitting the time limit or a failed `require`, can leave PHP pointing at memory it has already freed. A later request handled by the same PHP worker can then use it. The confirmed way in goes through PHP's session upload progress feature.
 
 Affected are PHP 8.2 before 8.2.35, 8.3 before 8.3.36, 8.4 before 8.4.27 and 8.5 before 8.5.12. The fixed versions came out the same day.
