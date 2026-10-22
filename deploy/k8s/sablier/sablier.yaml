@@ -81,6 +81,10 @@ spec:
           args:
             - start
             - --provider.name=kubernetes
+            # An app switched to always on loses its sablier.enable label, but a
+            # session Sablier still holds for it would scale it to zero when it
+            # expires, with no Middleware left to wake it ("no available server")
+            - --provider.verify-enabled-on-expiration=true
           ports:
             - name: http
               containerPort: 10000
