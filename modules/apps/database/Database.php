@@ -651,7 +651,7 @@ class Database extends Trongate {
                 'apps-database_module/js/select.js',
                 'apps-database_module/js/workspace.js',
                 'apps-database_module/js/import.js',
-                'apps-database_module/js/credentials.js',
+                'apps-database_module/js/copy.js',
                 'sql_check_module/js/sql_check.js',
             ],
         ];
@@ -1313,10 +1313,11 @@ class Database extends Trongate {
     }
 
     /**
-     * One panel per statement the SQL box ran: what it was, its outcome, and its rows
+     * One panel per statement the SQL box ran: what it was, its outcome, its
+     * rows, and the rows as tab-separated text for Copy
      *
      * @param list<array{statement: string, columns: list<string>, rows: list<array<int|string, string|null>>, affected: int|null, truncated: bool, seconds: float}> $results
-     * @return list<array{statement: string, statement_short: string, outcome: string, columns: list<string>, rows: list<list<array<string, mixed>>>, shows_rows: bool}>
+     * @return list<array{statement: string, statement_short: string, outcome: string, columns: list<string>, rows: list<list<array<string, mixed>>>, shows_rows: bool, copy_text: string}>
      */
     function _result_panels(array $results): array {
         $panels = [];
@@ -1341,6 +1342,7 @@ class Database extends Trongate {
                 'columns' => $result['columns'],
                 'rows' => $rows,
                 'shows_rows' => $result['affected'] === null,
+                'copy_text' => App_database::tsv($result['columns'], $result['rows']),
             ];
         }
 

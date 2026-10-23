@@ -7,6 +7,7 @@
  * $database_name, $sql, $sql_placeholder, $statement_seconds, $query_error,
  * $result_panels, $results_summary, $backup_link, $history, $backup_entries,
  * $sql_url, $history_url, $backups_url, $import_url, $base.
+ * Copy buttons are handled by js/copy.js.
  */
 $e = fn($value) => htmlspecialchars((string) $value);
 ?>
@@ -97,6 +98,9 @@ $e = fn($value) => htmlspecialchars((string) $value);
                 <span class="db-statement"><?= $i + 1 ?>. <code title="<?= $e($panel['statement']) ?>"><?= $e($panel['statement_short']) ?></code></span>
             <?php endif; ?>
             <?= $e($panel['outcome']) ?>.
+            <?php if ($panel['shows_rows']): ?>
+                <button type="button" class="db-button db-copy db-result-copy" data-copy="<?= $e($panel['copy_text']) ?>" title="Copies the rows shown as tab-separated text, with the column names first">Copy</button>
+            <?php endif; ?>
         </p>
         <?php if ($panel['shows_rows']): ?>
         <div class="db-grid-wrap db-result">

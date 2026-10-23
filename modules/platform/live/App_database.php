@@ -1304,6 +1304,55 @@ class App_database {
     }
 
     /**
+     * A query result as tab-separated text, the column names first, so it
+     * pastes into a spreadsheet: NULL as NULL, a value that is not UTF-8 as
+     * its size, and a value holding a tab, line break or quote in quotes
+     *
+     * @param list<string> $columns
+     * @param list<array<int|string, string|null>> $rows
+     */
+    static function tsv(array $columns, array $rows): string {
+        $lines = [self::tsv_line($columns)];
+
+        foreach ($rows as $row) {
+            $values = [];
+
+            foreach ($row as $value) {
+                $values[] = self::tsv_value($value);
+            }
+
+            $lines[] = self::tsv_line($values);
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * @param list<string> $values
+     */
+    static function tsv_line(array $values): string {
+        $fields = [];
+
+        foreach ($values as $value) {
+            $fields[] = strpbrk($value, "\t\r\n\"") === false ? $value : '"' . str_replace('"', '""', $value) . '"';
+        }
+
+        return implode("\t", $fields);
+    }
+
+    static function tsv_value(?string $value): string {
+        if ($value === null) {
+            return 'NULL';
+        }
+
+        if (!self::is_text($value)) {
+            return strlen($value) . ' bytes';
+        }
+
+        return $value;
+    }
+
+    /**
      * Backtick-quoted identifier
      */
     static function quote_name(string $name): string {
