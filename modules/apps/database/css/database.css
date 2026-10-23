@@ -1221,6 +1221,15 @@ button.db-rownum:focus {
     display: inline-block;
 }
 
+/* Copy on a SQL result's outcome line (trongate.css makes buttons full width on phones) */
+.db-result-copy {
+    width: auto;
+    margin: 0 0 0 0.5rem;
+    padding: 0 0.5rem;
+    font-size: 0.75rem;
+    vertical-align: baseline;
+}
+
 @media (max-width: 640px) {
     .db-credentials-list {
         grid-template-columns: minmax(0, 1fr);

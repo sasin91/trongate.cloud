@@ -3,7 +3,7 @@
  * The Credentials dialog, loaded into a Trongate MX modal (mx-build-modal)
  * by Database::credentials. Show posts to show_password, which logs it and
  * answers with views/_credentials_password.php in place of the dots.
- * Copy buttons are handled by js/credentials.js.
+ * Copy buttons are handled by js/copy.js.
  * Expects: $base (apps/{id}/database), $error (null, or why there is nothing
  * to show), $fields (label, value).
  */
