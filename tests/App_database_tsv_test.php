@@ -33,6 +33,16 @@ test('a value that is not UTF-8 becomes its size', function () {
     assert_same("blob\n3 bytes", App_database::tsv(['blob'], [["\xff\xfe\x00"]]));
 });
 
+test('a value a spreadsheet would run as a formula gets a quote in front', function () {
+    $text = App_database::tsv(['=1+1'], [['=HYPERLINK("http://example.com")'], ['+45 12 34'], ['@SUM(A1)'], ['-cmd'], ["\tx"]]);
+
+    assert_same("'=1+1\n\"'=HYPERLINK(\"\"http://example.com\"\")\"\n'+45 12 34\n'@SUM(A1)\n'-cmd\n\"'\tx\"", $text);
+});
+
+test('a plain number keeps its sign', function () {
+    assert_same("n\n-5\n+3.5\n-1e3", App_database::tsv(['n'], [['-5'], ['+3.5'], ['-1e3']]));
+});
+
 test('a result with no rows is just its column names', function () {
     assert_same("count", App_database::tsv(['count'], []));
 });
