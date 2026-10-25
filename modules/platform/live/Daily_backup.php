@@ -58,9 +58,7 @@ final class Daily_backup {
     }
 
     /**
-     * The object key of a backup
-     *
-     * @param 'app'|'platform' $source
+     * The object key of a backup; $source is daily_backup.source, 'app' or 'platform'
      */
     static function key(string $prefix, string $source): string {
         if (!isset(self::OBJECTS[$source])) {
