@@ -924,6 +924,127 @@ body.lp {
     border-top: 1px solid var(--line);
 }
 
+/* Docs (modules/docs) */
+
+.lp-docs-grid {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    gap: 64px;
+    align-items: start;
+}
+
+.lp-docs-nav {
+    position: sticky;
+    top: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    font-size: 15px;
+}
+
+.lp-docs-nav ol {
+    list-style: none;
+    margin: 0;
+    padding: 0 0 0 12px;
+    border-left: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.lp .lp-docs-nav a {
+    color: var(--muted);
+    text-decoration: none;
+}
+
+.lp .lp-docs-nav-home {
+    font-weight: 600;
+}
+
+.lp .lp-docs-nav a:hover,
+.lp .lp-docs-nav a[aria-current] {
+    color: var(--navy);
+}
+
+.lp .lp-docs-nav a[aria-current] {
+    font-weight: 600;
+}
+
+.lp-docs-sample {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px 24px;
+    margin-top: 16px;
+    padding: 22px 26px;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+}
+
+.lp-docs-sample strong {
+    color: var(--navy);
+}
+
+.lp-docs-sample p {
+    margin: 6px 0 10px;
+    color: var(--muted);
+}
+
+.lp-docs-sample ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: 14px;
+}
+
+.lp-docs-sample code {
+    font-family: var(--mono);
+    overflow-wrap: anywhere;
+}
+
+.lp-docs-sample span {
+    color: var(--muted);
+}
+
+.lp-docs-pager {
+    display: flex;
+    gap: 16px;
+    margin-top: 24px;
+    padding-top: 32px;
+    border-top: 1px solid var(--line);
+}
+
+.lp .lp-docs-pager a {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 16px 20px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #fff;
+    color: var(--ink);
+    font-weight: 500;
+    text-decoration: none;
+}
+
+.lp .lp-docs-pager a:hover {
+    border-color: var(--line-strong);
+}
+
+.lp-docs-pager span {
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 400;
+}
+
+.lp .lp-docs-pager-next {
+    margin-left: auto;
+    text-align: right;
+}
+
 @media (max-width: 960px) {
     .lp-nav {
         display: none;
@@ -945,7 +1066,8 @@ body.lp {
     .lp-2,
     .lp-faq,
     .lp-stable,
-    .lp-news-grid {
+    .lp-news-grid,
+    .lp-docs-grid {
         grid-template-columns: minmax(0, 1fr);
     }
 
@@ -972,7 +1094,8 @@ body.lp {
         height: 420px;
     }
 
-    .lp-news-aside {
+    .lp-news-aside,
+    .lp-docs-nav {
         position: static;
     }
 

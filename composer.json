@@ -33,6 +33,7 @@
             "php tests/App_wizard_draft_test.php",
             "php tests/Trongate_upgrade_test.php",
             "php tests/News_test.php",
+            "php tests/Docs_test.php",
             "php tests/App_traffic_test.php",
             "php tests/Mail_capture_test.php",
             "php tests/App_state_test.php",
