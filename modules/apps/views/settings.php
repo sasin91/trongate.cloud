@@ -117,11 +117,26 @@
 
     <h2 id="environment">Environment variables</h2>
     <div class="card settings-card">
-        <p class="form-hint">For API keys and other secrets. Your app reads them with <code>getenv('NAME')</code>. Values are stored encrypted and never shown again; to change one, save it again under the same name. Changes take effect on the next deployment.</p>
+        <p class="form-hint">Your app reads them with <code>getenv('NAME')</code>. Paste them as <code>NAME=value</code> lines, like a <code>.env</code> file. Changes take effect on the next deployment.</p>
 
-        <?php if ($env_names !== []): ?>
+        <h3>Variables</h3>
+        <?= form_open('apps/' . $app->id . '/env/variables') ?>
+        <div class="form-group">
+            <label for="plain_env" class="form-label">Shown here and editable</label>
+            <textarea name="plain_env" id="plain_env" class="form-input mono" rows="6" placeholder="APP_ENV=production&#10;MAIL_FROM=hello@example.com" spellcheck="false" autocomplete="off"><?= htmlspecialchars($plain_env) ?></textarea>
+            <p class="form-hint">For settings that are not secret. Remove a line to remove the variable.</p>
+        </div>
+        <div class="form-actions">
+            <button type="submit" class="btn-secondary">Save variables</button>
+        </div>
+        <?= form_close() ?>
+
+        <h3>Secrets</h3>
+        <p class="form-hint">For API keys and passwords. Values are stored encrypted and never shown again; to change one, add it again under the same name.</p>
+
+        <?php if ($secret_env_names !== []): ?>
         <ul class="env-list">
-            <?php foreach ($env_names as $name): ?>
+            <?php foreach ($secret_env_names as $name): ?>
             <li>
                 <code><?= htmlspecialchars((string) $name) ?></code>
                 <?= form_open('apps/' . $app->id . '/env/delete', ['class' => 'row-actions']) ?>
@@ -134,18 +149,12 @@
         <?php endif; ?>
 
         <?= form_open('apps/' . $app->id . '/env/submit') ?>
-        <div class="env-fields">
-            <div class="form-group">
-                <label for="env_name" class="form-label">Name</label>
-                <input type="text" name="env_name" id="env_name" class="form-input mono" placeholder="ANTHROPIC_API_KEY" autocomplete="off" value="<?= htmlspecialchars($env_name) ?>">
-            </div>
-            <div class="form-group">
-                <label for="env_value" class="form-label">Value</label>
-                <input type="password" name="env_value" id="env_value" class="form-input mono" autocomplete="new-password">
-            </div>
+        <div class="form-group">
+            <label for="secret_env" class="form-label">Add secrets</label>
+            <textarea name="secret_env" id="secret_env" class="form-input mono" rows="3" placeholder="ANTHROPIC_API_KEY=sk-ant-..." spellcheck="false" autocomplete="off"><?= htmlspecialchars($secret_env) ?></textarea>
         </div>
         <div class="form-actions">
-            <button type="submit" class="btn-secondary">Save variable</button>
+            <button type="submit" class="btn-secondary">Save secrets</button>
         </div>
         <?= form_close() ?>
     </div>

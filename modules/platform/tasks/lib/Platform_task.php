@@ -315,15 +315,17 @@ class Platform_task {
     }
 
     /**
-     * The app's environment variables (App_env), decrypted. Names only go to
-     * the log.
+     * The app's environment variables (App_env), secrets and visible ones,
+     * decrypted. Names only go to the log.
      *
      * @return array<string, string>
      */
     static function app_env(Runtime $runtime, Task_log $log, int $app_id): array {
-        $env = $runtime->resolve_reference(App_env::reference($app_id));
+        $secrets = $runtime->resolve_reference(App_env::reference($app_id, App_env::SERVICE));
+        $plain = $runtime->resolve_reference(App_env::reference($app_id, App_env::PLAIN_SERVICE));
+        $env = (is_array($secrets) ? $secrets : []) + (is_array($plain) ? $plain : []);
 
-        if (!is_array($env) || $env === []) {
+        if ($env === []) {
             return [];
         }
 

@@ -34,8 +34,11 @@ class Apps extends Trongate {
     /** The app submit_delete() checks the typed confirmation against */
     private ?object $app_to_delete = null;
 
-    /** settings() is redisplaying the environment variable form, not the settings form */
+    /** settings() is redisplaying one of the environment variable forms, not the settings form */
     private bool $env_form_posted = false;
+
+    /** ...and it is the visible variables form */
+    private bool $plain_env_posted = false;
 
     /**
      * projects/{id}/apps/new[/{step}]: the new-app questions, open on the
@@ -354,8 +357,9 @@ class Apps extends Trongate {
             'source_branch' => $is_resubmit ? (string) post('source_branch', true) : (string) $app->source_branch,
             'captures_mail' => $is_resubmit ? (bool) post('captures_mail') : Runtime_settings::captures_mail((array) $app),
             'health_check_path' => $is_resubmit ? (string) post('health_check_path', true) : Runtime_settings::health_check_path((array) $app),
-            'env_names' => array_keys($this->_app_env($app)),
-            'env_name' => $this->env_form_posted ? (string) post('env_name', true) : '',
+            'secret_env_names' => array_keys($this->_app_secret_env($app)),
+            'plain_env' => $this->plain_env_posted ? (string) post('plain_env') : App_env::to_lines($this->_app_plain_env($app)),
+            'secret_env' => $this->plain_env_posted ? '' : (string) post('secret_env'),
             'can_delete' => $this->_is_owner($app),
             'crumbs' => $this->_app_crumbs($app),
             'additional_includes_top' => ['apps_module/css/apps.css'],
@@ -365,7 +369,7 @@ class Apps extends Trongate {
     }
 
     /**
-     * POST apps/{id}/env/submit: add or replace one environment variable.
+     * POST apps/{id}/env/submit: add or replace secrets, pasted as NAME=value lines.
      * Values are write-only: they are never shown again.
      */
     function submit_env(): void {
@@ -373,8 +377,7 @@ class Apps extends Trongate {
         $app = $this->_member_app_or_redirect(segment(3, 'int'));
         $this->editing_app_id = (int) $app->id;
 
-        $this->validation->set_rules('env_name', 'Name', 'required|callback__validate_env_name');
-        $this->validation->set_rules('env_value', 'Value', 'required|max_length[' . App_env::MAX_VALUE_BYTES . ']');
+        $this->validation->set_rules('secret_env', 'Secrets', 'required|callback__validate_secret_lines');
 
         if ($this->validation->run() !== true) {
             $this->env_form_posted = true;
@@ -382,15 +385,39 @@ class Apps extends Trongate {
             return;
         }
 
-        $name = trim((string) post('env_name'));
-        $this->secrets->update(App_env::MODULE, (int) $app->id, App_env::SERVICE, [$name => (string) post('env_value')]);
+        $env = App_env::parse_lines((string) post('secret_env'));
+        $this->_save_app_secrets((int) $app->id, $env);
 
-        set_flashdata(htmlspecialchars($name) . ' saved. It takes effect on the next deployment.');
-        redirect('apps/' . $app->id . '/settings');
+        set_flashdata(htmlspecialchars(implode(', ', array_keys($env))) . ' saved. Changes take effect on the next deployment.');
+        redirect('apps/' . $app->id . '/settings#environment');
     }
 
     /**
-     * POST apps/{id}/env/delete: remove one environment variable (POST env_name).
+     * POST apps/{id}/env/variables: the app's visible variables become the posted
+     * NAME=value lines; a name left out is removed.
+     */
+    function submit_plain_env(): void {
+        $this->_make_sure_allowed();
+        $app = $this->_member_app_or_redirect(segment(3, 'int'));
+        $this->editing_app_id = (int) $app->id;
+
+        $this->validation->set_rules('plain_env', 'Variables', 'callback__validate_plain_lines');
+
+        if ($this->validation->run() !== true) {
+            $this->env_form_posted = true;
+            $this->plain_env_posted = true;
+            $this->settings();
+            return;
+        }
+
+        $this->_replace_app_plain_env((int) $app->id, App_env::parse_lines((string) post('plain_env')));
+
+        set_flashdata('Variables saved. Changes take effect on the next deployment.');
+        redirect('apps/' . $app->id . '/settings#environment');
+    }
+
+    /**
+     * POST apps/{id}/env/delete: remove one secret (POST env_name).
      */
     function delete_env(): void {
         $this->_make_sure_allowed();
@@ -398,19 +425,12 @@ class Apps extends Trongate {
         $this->_require_post_with_csrf();
 
         $name = (string) post('env_name', true);
-        $env = $this->_app_env($app);
 
-        if (array_key_exists($name, $env)) {
-            unset($env[$name]);
-
-            $env === []
-                ? $this->secrets->delete(App_env::MODULE, (int) $app->id, App_env::SERVICE)
-                : $this->secrets->save(App_env::MODULE, (int) $app->id, App_env::SERVICE, $env);
-
+        if ($this->_delete_app_env((int) $app->id, $name)) {
             set_flashdata(htmlspecialchars($name) . ' removed. It is gone from the app after the next deployment.');
         }
 
-        redirect('apps/' . $app->id . '/settings');
+        redirect('apps/' . $app->id . '/settings#environment');
     }
 
     function submit_settings(): void {

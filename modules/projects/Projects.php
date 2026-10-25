@@ -403,35 +403,13 @@ class Projects extends Trongate {
     }
 
     /**
-     * KEY=value lines (blank lines and # comments skipped)
+     * KEY=value lines (App_env::parse_lines)
      *
      * @return array<string, string>
      * @throws InvalidArgumentException
      */
     function _parse_service_env(string $text): array {
-        $env = [];
-
-        foreach (preg_split('/\r\n|\r|\n/', $text) ?: [] as $line) {
-            $line = trim($line);
-
-            if ($line === '' || str_starts_with($line, '#')) {
-                continue;
-            }
-
-            [$name, $value] = array_pad(explode('=', $line, 2), 2, null);
-            $name = trim((string) $name);
-            $error = $value === null ? "Write {$name} as {$name}=value." : App_env::name_error($name);
-
-            if ($error !== null) {
-                throw new InvalidArgumentException($error);
-            }
-
-            if (strlen((string) $value) > App_env::MAX_VALUE_BYTES) {
-                throw new InvalidArgumentException("{$name} is too long.");
-            }
-
-            $env[$name] = (string) $value;
-        }
+        $env = App_env::parse_lines($text);
 
         if (count($env) > App_env::MAX_VARIABLES) {
             throw new InvalidArgumentException('A service can have at most ' . App_env::MAX_VARIABLES . ' environment variables.');

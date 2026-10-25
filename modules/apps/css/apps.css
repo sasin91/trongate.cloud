@@ -246,17 +246,8 @@ textarea.form-input {
     border-bottom: 1px solid var(--border);
 }
 
-.env-fields {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0 1rem;
-    margin-top: 1rem;
-}
-
-@media (max-width: 550px) {
-    .env-fields {
-        grid-template-columns: 1fr;
-    }
+.settings-card h3 {
+    margin-top: 1.5rem;
 }
 
 .process-table {
