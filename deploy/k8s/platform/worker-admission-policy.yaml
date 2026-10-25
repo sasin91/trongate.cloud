@@ -10,7 +10,7 @@
 #    (platform image) Pods in the buildkit namespace.
 # 2. What: the content checks in trongate-worker-objects, so a compromised worker
 #    cannot loosen a tenant namespace, expose a Service, mount a token, claim a
-#    platform hostname, run anything but the backup scripts in a Job, or point MariaDB CRs at anything but a tenant's own
+#    platform hostname, run anything but the backup script in a deleted app's backup Job, or point MariaDB CRs at anything but a tenant's own
 #    tc_p{id} database on the shared servers.
 # 3. Deletes: trongate-worker-owned-deletes, so the worker only deletes objects
 #    it labelled itself (destroy_app, destroy_service, build daemon Pods), and a tenant Namespace
@@ -56,10 +56,8 @@
 # PLATFORM_APPS_DOMAIN and PLATFORM_REGISTRY (config.yaml), the gateway class
 # and issuer with PLATFORM_GATEWAY_CLASS and PLATFORM_DOMAIN_ISSUER, the ACME
 # Gateway with Manifests::ACME_GATEWAY, the images with
-# Manifests::BUILDKIT_IMAGE and PLATFORM_APP_BASE_IMAGE (backup Jobs), the
-# worker image with kustomization.yaml (nightly backup Jobs), and the backup
-# commands with Manifests::BACKUP_SCRIPT, DAILY_BACKUP_DUMP_SCRIPT and
-# DAILY_BACKUP_UPLOAD_SCRIPT.
+# Manifests::BUILDKIT_IMAGE and PLATFORM_APP_BASE_IMAGE (backup Jobs), and the
+# backup command with Manifests::BACKUP_SCRIPT.
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
@@ -146,18 +144,6 @@ spec:
       expression: "'acme-http01'"
     - name: app_base_image
       expression: "'registry.trongate.cloud/platform/app-base:php8.4'"
-    # The worker's own image, whatever its tag: nightly backup Jobs run their
-    # own steps from it (Daily_backup_run::worker_image)
-    - name: worker_image
-      expression: "'registry.trongate.cloud/platform/trongate-cloud-worker'"
-    # "p{id}" for a nightly backup Job (p{id}-daily-backup), else ''
-    - name: daily_backup_app
-      expression: >-
-        request.kind.kind == 'Job' && object.metadata.name.matches('^p[0-9]+-daily-backup$')
-        ? object.metadata.name.replace('-daily-backup', '') : ''
-    # A Job's pod; only read once a check knows the object is a Job
-    - name: job_pod
-      expression: object.spec.template.spec
   validations:
     # Tenant namespaces stay restricted and never get a platform role label
     # (allow-gateway admits ingress from namespaces labelled role=gateway)
@@ -232,43 +218,15 @@ spec:
       message: >-
         Backup Jobs must be p{id}-backup running the app base image's backup script, with only
         the app's own files volume and database Secret, no service account token and no host access
-    # A running app's nightly backup Job (Manifests::daily_backup_job), in
-    # three checks. Host access, privileges and host volumes need no check
-    # here: tenant namespaces enforce restricted Pod Security (above).
-    # 1. Its steps: the worker image runs only the dump and upload scripts
-    #    (only the upload step gets the upload link); the app step runs the
-    #    app's own image.
+    # A running app's nightly backup Job (Manifests::daily_backup_job): the
+    # same as an app's Deployment, which may already run any image with the
+    # app's Secrets, so only no token. Host access and privileges are left to
+    # the tenant namespaces' restricted Pod Security (above).
     - expression: >-
-        variables.daily_backup_app == '' ||
-        (has(variables.job_pod.initContainers) &&
-         size(variables.job_pod.initContainers) == 2 &&
-         size(variables.job_pod.containers) == 1 &&
-         variables.job_pod.initContainers[0].image.startsWith(variables.worker_image + ':') &&
-         variables.job_pod.initContainers[0].command == ['php', '/app/modules/platform/backup/dump_database.php'] &&
-         !variables.job_pod.initContainers[1].image.startsWith(variables.worker_image + ':') &&
-         variables.job_pod.containers[0].image.startsWith(variables.worker_image + ':') &&
-         variables.job_pod.containers[0].command == ['php', '/app/modules/platform/backup/pack_and_upload.php'] &&
-         !has(variables.job_pod.containers[0].args) &&
-         !has(variables.job_pod.initContainers[0].args))
-      message: >-
-        Nightly backup Jobs run the worker image's dump script, then the app's own image, then
-        the worker image's upload script
-    # 2. Only the app's own Secrets and files volume
-    - expression: >-
-        variables.daily_backup_app == '' ||
-        ((variables.job_pod.initContainers + variables.job_pod.containers).all(c,
-           (!has(c.envFrom) || c.envFrom.all(f, has(f.secretRef) && f.secretRef.name == variables.daily_backup_app + '-env')) &&
-           (!has(c.env) || c.env.all(e, !has(e.valueFrom) ||
-             (has(e.valueFrom.secretKeyRef) && e.valueFrom.secretKeyRef.name == variables.daily_backup_app + '-database')))) &&
-         has(variables.job_pod.volumes) &&
-         variables.job_pod.volumes.all(v, has(v.emptyDir) ||
-           (has(v.persistentVolumeClaim) && v.persistentVolumeClaim.claimName == variables.daily_backup_app + '-files') ||
-           (has(v.secret) && v.secret.secretName == variables.daily_backup_app + '-database')))
-      message: Nightly backup Jobs may use only their own app's Secrets and files volume
-    # 3. No service account token
-    - expression: >-
-        variables.daily_backup_app == '' ||
-        (has(variables.job_pod.automountServiceAccountToken) && variables.job_pod.automountServiceAccountToken == false)
+        request.kind.kind != 'Job' ||
+        !object.metadata.name.matches('^p[0-9]+-daily-backup$') ||
+        (has(object.spec.template.spec.automountServiceAccountToken) &&
+         object.spec.template.spec.automountServiceAccountToken == false)
       message: Nightly backup Jobs must set automountServiceAccountToken=false
     # MariaDB CRs: only a tenant database/user on a server in the databases
     # namespace (the platform database lives in trongate-cloud), no grant option

@@ -219,16 +219,11 @@ test('an app without a running Deployment is refused', function () {
     assert_throws(fn() => Manifests::daily_backup_job(['id' => 12, 'namespace' => 'project-3'], ['host' => 'h'], [], 'w:1', 'u', 'k'), 'no running Deployment');
 });
 
-test('the policy pins the nightly scripts and the worker image Manifests uses', function () {
+test('the policy keeps the token out of nightly backup Jobs', function () {
     $policy = file_get_contents(dirname(__DIR__) . '/deploy/k8s/platform/worker-admission-policy.yaml');
-    $kustomization = file_get_contents(dirname(__DIR__) . '/deploy/k8s/platform/kustomization.yaml');
 
-    assert_contains("['php', '" . Manifests::DAILY_BACKUP_DUMP_SCRIPT . "']", $policy);
-    assert_contains("['php', '" . Manifests::DAILY_BACKUP_UPLOAD_SCRIPT . "']", $policy);
-    assert_contains("'^p[0-9]+-daily-backup$'", $policy);
-
-    preg_match("/newName: (\\S+trongate-cloud-worker)/", $kustomization, $m);
-    assert_contains("'{$m[1]}'", $policy);
+    assert_contains("!object.metadata.name.matches('^p[0-9]+-daily-backup$')", $policy);
+    assert_contains('Nightly backup Jobs must set automountServiceAccountToken=false', $policy);
 });
 
 test('the app step backs up /app, then runs the module and survives its failure', function () {
