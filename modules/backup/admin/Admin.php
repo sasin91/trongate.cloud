@@ -54,7 +54,6 @@ class Admin extends Trongate {
         } else {
             $rows = $this->model->fetch_records($limit, $offset);
         }
-        $rows = $this->model->prepare_records_for_display($rows);
 
         $data = [
             'rows' => $rows,

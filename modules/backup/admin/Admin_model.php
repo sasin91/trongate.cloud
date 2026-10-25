@@ -101,39 +101,4 @@ class Admin_model extends Model {
         $result = $this->db->query_bind($sql, ['query' => '%'.$query.'%'], 'object');
         return (int) ($result[0]->total ?? 0);
     }
-
-    /**
-     * Prepare multiple backups records for display in list views.
-     *
-     * @param array $rows Array of backups record objects from database
-     * @return array Array of objects with formatted display fields
-     */
-    public function prepare_records_for_display(array $rows): array {
-        $prepared = [];
-        foreach ($rows as $row) {
-            $prepared[] = $this->prepare_record_for_display($row);
-        }
-        return $prepared;
-    }
-
-    /**
-     * Prepare raw backups database data for display in views.
-     *
-     * @param object $record_obj Raw data from database
-     * @return object Enhanced data with formatted fields
-     */
-    public function prepare_record_for_display(object $record_obj): object {
-        $record_obj->status = trim((string) $record_obj->status);
-        $record_obj->error = trim((string) $record_obj->error);
-        $record_obj->type = trim((string) $record_obj->type);
-        $record_obj->object_prefix = trim((string) $record_obj->object_prefix);
-        $record_obj->size_bytes = trim((string) $record_obj->size_bytes);
-        $record_obj->started_at = trim((string) $record_obj->started_at);
-        $record_obj->finished_at = trim((string) $record_obj->finished_at);
-        $record_obj->expires_at = trim((string) $record_obj->expires_at);
-        return $record_obj;
-    }
-
-
-
 }
