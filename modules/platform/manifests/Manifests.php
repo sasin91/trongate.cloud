@@ -929,9 +929,6 @@ class Manifests {
     /** The backup script baked into the app base image (docker/app-base/backup.php) */
     const BACKUP_SCRIPT = '/usr/local/bin/trongate-cloud-backup.php';
 
-    /** The nightly backup script baked into the app base image (docker/app-base/daily-backup.php) */
-    const DAILY_BACKUP_SCRIPT = '/usr/local/bin/trongate-cloud-daily-backup.php';
-
     /**
      * The one-off Job that backs up a deleted app (App_backup): it dumps the
      * database and packs the persistent files, uploads both to $upload_links
@@ -947,36 +944,9 @@ class Manifests {
      * @param array{database: string, files: string} $upload_links
      */
     static function backup_job(array $app, array $database, array $upload_links): array {
-        return self::_backup_job($app, $database, $upload_links, App_backup::job_name((int) $app['id']), self::BACKUP_SCRIPT, App_backup::JOB_SECONDS);
-    }
-
-    /**
-     * The nightly backup Job of a running app (Daily_backup): it dumps the
-     * database and packs the files like backup_job, but encrypts both to
-     * $public_key (base64, Backup_file) before uploading them, and removes
-     * nothing. The image is always pulled, so a node's older copy of the app
-     * base image (without the script) is never what runs.
-     *
-     * @param array $app      app row (id, namespace)
-     * @param array $database database server row (host, port)
-     * @param array{database: string, files: string} $upload_links
-     */
-    static function daily_backup_job(array $app, array $database, array $upload_links, string $public_key): array {
-        $job = self::_backup_job($app, $database, $upload_links, Daily_backup::job_name((int) $app['id']), self::DAILY_BACKUP_SCRIPT, Daily_backup::JOB_SECONDS);
-        $container = &$job['spec']['template']['spec']['containers'][0];
-        $container['imagePullPolicy'] = 'Always';
-        $container['env'][] = ['name' => 'BACKUP_PUBLIC_KEY', 'value' => $public_key];
-
-        return $job;
-    }
-
-    /**
-     * A backup Job named $name running $script of the app base image with the
-     * app's database and files volume (backup_job, daily_backup_job)
-     */
-    static function _backup_job(array $app, array $database, array $upload_links, string $name, string $script, int $seconds): array {
         $app_id = (int) $app['id'];
         $namespace = self::namespace_name($app);
+        $name = App_backup::job_name($app_id);
         $pod_labels = self::_labels([
             'app.kubernetes.io/name' => $name,
             self::APP_LABEL => (string) $app_id,
@@ -988,7 +958,7 @@ class Manifests {
             'metadata' => self::_metadata($name, $namespace, self::app_labels($app_id)),
             'spec' => [
                 'backoffLimit' => 0,
-                'activeDeadlineSeconds' => $seconds,
+                'activeDeadlineSeconds' => App_backup::JOB_SECONDS,
                 'template' => [
                     'metadata' => ['labels' => $pod_labels],
                     'spec' => [
@@ -1005,7 +975,7 @@ class Manifests {
                         'containers' => [[
                             'name' => 'backup',
                             'image' => PLATFORM_APP_BASE_IMAGE,
-                            'command' => ['php', $script],
+                            'command' => ['php', self::BACKUP_SCRIPT],
                             'env' => [
                                 ['name' => 'DB_HOST', 'value' => (string) $database['host']],
                                 ['name' => 'DB_PORT', 'value' => (string) ($database['port'] ?? 3306)],
@@ -1027,6 +997,187 @@ class Manifests {
                             'name' => 'files',
                             'persistentVolumeClaim' => ['claimName' => "p{$app_id}-files"],
                         ]],
+                    ],
+                ],
+            ],
+        ];
+    }
+
+    /** The worker image's scripts the nightly backup Job runs (modules/platform/backup) */
+    const DAILY_BACKUP_DUMP_SCRIPT = '/app/modules/platform/backup/dump_database.php';
+    const DAILY_BACKUP_UPLOAD_SCRIPT = '/app/modules/platform/backup/pack_and_upload.php';
+
+    /** Where the steps of the nightly backup Job leave their parts, on the app's files volume */
+    const DAILY_BACKUP_STAGING = '.trongate-cloud-backup';
+
+    /** The app's own optional backup module (docs/backups.md), relative to /app */
+    const DAILY_BACKUP_MODULE = 'modules/trongate-cloud/backup/runtime.php';
+
+    /** How long the app's own backup module may run before it is stopped */
+    const DAILY_BACKUP_MODULE_SECONDS = 1800;
+
+    /**
+     * The app step of the nightly backup Job, run in the app's own image: packs
+     * /app as the app sees it (code, config, persistent files) into app.tar,
+     * then runs the app's backup module, if it has one, into custom/. A
+     * failing module is noted in custom.failed; the backup goes ahead.
+     */
+    static function daily_backup_app_script(): string {
+        $module = self::DAILY_BACKUP_MODULE;
+        $seconds = self::DAILY_BACKUP_MODULE_SECONDS;
+
+        return <<<SH
+            set -u
+            cd /app
+            # 1: a file changed while it was read; it is in the archive as it was then
+            tar -cf /backup/app.tar --warning=no-file-changed -C /app . || [ \$? -eq 1 ] || exit 1
+            echo "Packed /app"
+            if [ -f {$module} ]; then
+              mkdir -p /backup/custom
+              echo "Running {$module}"
+              if BACKUP_DIR=/backup/custom timeout {$seconds} php {$module} > /backup/custom.log 2>&1; then
+                echo "{$module} finished"
+              else
+                code=\$?
+                { echo "exit \$code"; tail -n 5 /backup/custom.log; } > /backup/custom.failed
+                echo "{$module} failed (exit \$code); the backup goes ahead without it"
+              fi
+            fi
+
+            SH;
+    }
+
+    /**
+     * The nightly backup Job of a running app (Daily_backup). Three steps in
+     * one pod, sharing a staging folder (DAILY_BACKUP_STAGING) on the app's
+     * files volume:
+     *
+     *  1. database (worker image): dumps the app's database
+     *  2. app (the app's own image, with its config files, variables and
+     *     persistent files as its Deployment mounts them): packs /app, then
+     *     runs the app's own backup module, if any (daily_backup_app_script())
+     *  3. upload (worker image): packs it all into one tar.gz, encrypts it to
+     *     $public_key (Backup_file) and uploads it to $upload_link
+     *
+     * The app's code only runs in step 2, which gets neither the upload link
+     * nor anything of the platform's, and can only write its own folder.
+     *
+     * @param array $app            app row (id, namespace)
+     * @param array $database       database server row (host, port)
+     * @param array $app_deployment the app's Deployment as it runs (p{id}-app)
+     * @param string $worker_image  the image this worker runs
+     */
+    static function daily_backup_job(array $app, array $database, array $app_deployment, string $worker_image, string $upload_link, string $public_key): array {
+        $app_id = (int) $app['id'];
+        $namespace = self::namespace_name($app);
+        $name = Daily_backup::job_name($app_id);
+        $pvc_name = "p{$app_id}-files";
+        $app_pod = $app_deployment['spec']['template']['spec'] ?? [];
+        $app_container = $app_pod['containers'][0] ?? null;
+
+        if (!is_array($app_container) || empty($app_container['image'])) {
+            throw new RuntimeException("App #{$app_id} has no running Deployment to back up");
+        }
+
+        $security = [
+            'allowPrivilegeEscalation' => false,
+            'runAsNonRoot' => true,
+            'capabilities' => ['drop' => ['ALL']],
+            'seccompProfile' => ['type' => 'RuntimeDefault'],
+        ];
+        $staging = self::DAILY_BACKUP_STAGING;
+        $database_env = [
+            ['name' => 'DB_HOST', 'value' => (string) $database['host']],
+            ['name' => 'DB_PORT', 'value' => (string) ($database['port'] ?? 3306)],
+            ['name' => 'DB_NAME', 'value' => self::database_name($app_id)],
+            ['name' => 'DB_PASSWORD', 'valueFrom' => ['secretKeyRef' => ['name' => "p{$app_id}-database", 'key' => 'password']]],
+            ['name' => 'STAGING_DIR', 'value' => '/files/' . self::DAILY_BACKUP_STAGING],
+        ];
+
+        // The app's config files and persistent files, as its Deployment mounts them
+        $volumes = [
+            ['name' => 'tmp', 'emptyDir' => ['sizeLimit' => '256Mi']],
+            ['name' => 'files', 'persistentVolumeClaim' => ['claimName' => $pvc_name]],
+        ];
+
+        foreach ($app_pod['volumes'] ?? [] as $volume) {
+            if (($volume['name'] ?? '') === 'config-files') {
+                $volumes[] = $volume;
+            }
+        }
+
+        $app_mounts = [
+            ['name' => 'tmp', 'mountPath' => '/tmp'],
+            ['name' => 'files', 'mountPath' => '/backup', 'subPath' => "{$staging}/app"],
+        ];
+
+        foreach ($app_container['volumeMounts'] ?? [] as $mount) {
+            if (in_array($mount['name'] ?? '', ['config-files', 'files'], true)) {
+                $app_mounts[] = $mount;
+            }
+        }
+
+        $pod_labels = self::_labels([
+            'app.kubernetes.io/name' => $name,
+            self::APP_LABEL => (string) $app_id,
+        ]);
+
+        return [
+            'apiVersion' => 'batch/v1',
+            'kind' => 'Job',
+            'metadata' => self::_metadata($name, $namespace, self::app_labels($app_id)),
+            'spec' => [
+                'backoffLimit' => 0,
+                'activeDeadlineSeconds' => Daily_backup::JOB_SECONDS,
+                'template' => [
+                    'metadata' => ['labels' => $pod_labels],
+                    'spec' => [
+                        'restartPolicy' => 'Never',
+                        'automountServiceAccountToken' => false,
+                        'enableServiceLinks' => false,
+                        'securityContext' => [
+                            'runAsNonRoot' => true,
+                            'runAsUser' => self::RUN_AS_USER,
+                            'runAsGroup' => self::RUN_AS_USER,
+                            'fsGroup' => self::RUN_AS_USER,
+                            'seccompProfile' => ['type' => 'RuntimeDefault'],
+                        ],
+                        'initContainers' => [
+                            [
+                                'name' => 'database',
+                                'image' => $worker_image,
+                                'command' => ['php', self::DAILY_BACKUP_DUMP_SCRIPT],
+                                'env' => $database_env,
+                                // The whole volume: it creates the staging folders, so they
+                                // belong to the app's user before the app step mounts its own
+                                'volumeMounts' => [['name' => 'files', 'mountPath' => '/files']],
+                                'securityContext' => $security,
+                                'resources' => self::BACKUP_RESOURCES,
+                            ],
+                            [
+                                'name' => 'app',
+                                'image' => (string) $app_container['image'],
+                                'command' => ['sh', '-c', self::daily_backup_app_script()],
+                                'envFrom' => $app_container['envFrom'] ?? [],
+                                'volumeMounts' => $app_mounts,
+                                'securityContext' => $security,
+                                'resources' => self::BACKUP_RESOURCES,
+                            ],
+                        ],
+                        'containers' => [[
+                            'name' => 'upload',
+                            'image' => $worker_image,
+                            'command' => ['php', self::DAILY_BACKUP_UPLOAD_SCRIPT],
+                            'env' => [
+                                ['name' => 'STAGING_DIR', 'value' => '/files/' . self::DAILY_BACKUP_STAGING],
+                                ['name' => 'BACKUP_PUBLIC_KEY', 'value' => $public_key],
+                                ['name' => 'UPLOAD_URL', 'value' => $upload_link],
+                            ],
+                            'volumeMounts' => [['name' => 'files', 'mountPath' => '/files']],
+                            'securityContext' => $security,
+                            'resources' => self::BACKUP_RESOURCES,
+                        ]],
+                        'volumes' => $volumes,
                     ],
                 ],
             ],

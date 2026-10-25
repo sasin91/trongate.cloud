@@ -230,12 +230,7 @@ final class App_backup_run {
 
     /** The last lines the backup pod wrote, or why there are none */
     static function job_log_tail(Kubernetes $kube, string $namespace, int $app_id): string {
-        return self::job_log_tail_of($kube, $namespace, App_backup::job_name($app_id));
-    }
-
-    /** The last lines the pod of Job $job_name wrote, or why there are none */
-    static function job_log_tail_of(Kubernetes $kube, string $namespace, string $job_name): string {
-        $pods = $kube->list('v1', 'Pod', $namespace, 'job-name=' . $job_name);
+        $pods = $kube->list('v1', 'Pod', $namespace, 'job-name=' . App_backup::job_name($app_id));
 
         if ($pods === []) {
             return 'The backup Job is gone or never started a pod (it may have run out of time)';

@@ -17,6 +17,9 @@ require_once __DIR__ . '/../../live/Object_storage.php';
  */
 final class Daily_backup_run {
 
+    /** The worker's own namespace (deploy/k8s/platform) */
+    const WORKER_NAMESPACE = 'trongate-cloud';
+
     /** Where the worker writes the platform database's dump before uploading it */
     const WORK_DIR = '/tmp/tc-daily-backup';
 
@@ -91,15 +94,39 @@ final class Daily_backup_run {
             App_backup_run::wait_until_job_gone($kube, $namespace, $job_name);
         }
 
-        $upload_links = [];
+        $app_deployment = $kube->get('apps/v1', 'Deployment', $namespace, Manifests::app_name($app_id));
 
-        foreach (array_keys(Daily_backup::PARTS) as $part) {
-            $upload_links[$part] = $storage->link('PUT', Daily_backup::key($prefix, 'app', $part), Daily_backup::UPLOAD_LINK_SECONDS, [], $now);
+        if ($app_deployment === null) {
+            throw new RuntimeException("Its Deployment {$namespace}/" . Manifests::app_name($app_id) . ' is missing');
         }
 
+        $link = $storage->link('PUT', Daily_backup::key($prefix, 'app'), Daily_backup::UPLOAD_LINK_SECONDS, [], $now);
         $database = ['host' => $app['host'], 'port' => $app['port']];
-        $kube->apply(Manifests::daily_backup_job($app, $database, $upload_links, APP_BACKUPS_PUBLIC_KEY));
+
+        $kube->apply(Manifests::daily_backup_job($app, $database, $app_deployment, self::worker_image($kube), $link, APP_BACKUPS_PUBLIC_KEY));
         $log->info("App #{$app_id}: started {$job_name}");
+    }
+
+    /**
+     * The image this worker runs, which the backup Jobs run their own steps
+     * from: read from its own Pod (HOSTNAME is the Pod's name), so it is
+     * always the release that is running
+     */
+    static function worker_image(Kubernetes $kube): string {
+        static $image = null;
+
+        if ($image !== null) {
+            return $image;
+        }
+
+        $pod = $kube->get('v1', 'Pod', self::WORKER_NAMESPACE, (string) gethostname());
+        $found = $pod['spec']['containers'][0]['image'] ?? '';
+
+        if (!is_string($found) || $found === '') {
+            throw new RuntimeException('Cannot read the worker\'s own image from its Pod ' . gethostname());
+        }
+
+        return $image = $found;
     }
 
     /**
@@ -159,19 +186,17 @@ final class Daily_backup_run {
         $failed = 0;
 
         if ($state === 'succeeded') {
-            $prefix = (string) $backup['object_prefix'];
+            $bytes = App_backup_run::object_bytes($storage, Daily_backup::key((string) $backup['object_prefix'], 'app'));
+            $note = self::module_failure($kube, $namespace, $job_name);
+
             Platform_task::execute(
                 $db,
-                "UPDATE daily_backup SET status = 'ready', database_bytes = ?, files_bytes = ?, ready_at = NOW() WHERE id = ?",
-                [
-                    App_backup_run::object_bytes($storage, Daily_backup::key($prefix, 'app', 'database')),
-                    App_backup_run::object_bytes($storage, Daily_backup::key($prefix, 'app', 'files')),
-                    (int) $backup['id'],
-                ]
+                "UPDATE daily_backup SET status = 'ready', bytes = ?, error = ?, ready_at = NOW() WHERE id = ?",
+                [$bytes, $note, (int) $backup['id']]
             );
-            $log->info("App #{$app_id}: nightly backup ready");
+            $log->info("App #{$app_id}: nightly backup ready" . ($note !== null ? ", but its backup module failed: {$note}" : ''));
         } else {
-            $reason = App_backup_run::job_log_tail_of($kube, $namespace, $job_name);
+            $reason = self::failure_reason($kube, $namespace, $job_name);
             Platform_task::execute($db, "UPDATE daily_backup SET status = 'failed', error = ? WHERE id = ?", [$reason, (int) $backup['id']]);
             $log->error("App #{$app_id}: nightly backup failed: {$reason}");
             $failed = 1;
@@ -180,6 +205,68 @@ final class Daily_backup_run {
         Platform_task::delete_owned($kube, 'batch/v1', 'Job', $namespace, $app_id, $job_name);
 
         return $failed;
+    }
+
+    /**
+     * The line pack_and_upload.php logs when the app's own backup module
+     * failed, or null when it did not (or the app has none)
+     */
+    static function module_failure(Kubernetes $kube, string $namespace, string $job_name): ?string {
+        $pod = self::job_pod($kube, $namespace, $job_name);
+
+        if ($pod === null) {
+            return null;
+        }
+
+        $log = $kube->pod_log($namespace, (string) $pod['metadata']['name'], App_backup_run::ERROR_LOG_LINES, ['container' => 'upload']);
+
+        foreach (explode("\n", $log) as $line) {
+            if (str_starts_with($line, 'runtime.php failed')) {
+                return $line;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Why a backup Job failed: the step that failed and its last log lines
+     * (the Job's pod runs database, app, then upload)
+     */
+    static function failure_reason(Kubernetes $kube, string $namespace, string $job_name): string {
+        $pod = self::job_pod($kube, $namespace, $job_name);
+
+        if ($pod === null) {
+            return 'The backup Job is gone or never started a pod (it may have run out of time)';
+        }
+
+        $pod_name = (string) $pod['metadata']['name'];
+        $statuses = array_merge($pod['status']['initContainerStatuses'] ?? [], $pod['status']['containerStatuses'] ?? []);
+
+        foreach ($statuses as $status) {
+            $terminated = $status['state']['terminated'] ?? null;
+            $waiting = $status['state']['waiting'] ?? null;
+            $step = (string) ($status['name'] ?? '');
+
+            if (is_array($terminated) && (int) ($terminated['exitCode'] ?? 0) !== 0) {
+                $tail = trim($kube->pod_log($namespace, $pod_name, App_backup_run::ERROR_LOG_LINES, ['container' => $step]));
+
+                return "The {$step} step failed (exit {$terminated['exitCode']}): " . ($tail !== '' ? $tail : (string) ($terminated['reason'] ?? 'no output'));
+            }
+
+            if (is_array($waiting)) {
+                return "The {$step} step never started: " . ($waiting['reason'] ?? '') . ' ' . ($waiting['message'] ?? '');
+            }
+        }
+
+        return "The backup pod {$pod_name} stopped without a failing step; it may have run out of time";
+    }
+
+    /** The pod of a backup Job, or null */
+    static function job_pod(Kubernetes $kube, string $namespace, string $job_name): ?array {
+        $pods = $kube->list('v1', 'Pod', $namespace, 'job-name=' . $job_name);
+
+        return $pods[0] ?? null;
     }
 
     /** Whether the platform database has been backed up (or tried) today */
@@ -230,10 +317,10 @@ final class Daily_backup_run {
             Backup_file::encrypt($plain, $encrypted, APP_BACKUPS_PUBLIC_KEY);
             unlink($plain);
 
-            $link = $storage->link('PUT', Daily_backup::key($prefix, 'platform', 'database'), Daily_backup::UPLOAD_LINK_SECONDS);
+            $link = $storage->link('PUT', Daily_backup::key($prefix, 'platform'), Daily_backup::UPLOAD_LINK_SECONDS);
             $bytes = Object_storage::upload($encrypted, $link);
 
-            Platform_task::execute($db, "UPDATE daily_backup SET status = 'ready', database_bytes = ?, ready_at = NOW() WHERE id = ?", [$bytes, $id]);
+            Platform_task::execute($db, "UPDATE daily_backup SET status = 'ready', bytes = ?, ready_at = NOW() WHERE id = ?", [$bytes, $id]);
             $log->info("Platform database backed up ({$bytes} bytes encrypted)");
 
             return true;
@@ -268,19 +355,14 @@ final class Daily_backup_run {
         );
 
         foreach ($expired as $backup) {
-            $source = (string) $backup['source'];
-            $parts = $source === 'platform' ? Daily_backup::PLATFORM_PARTS : Daily_backup::PARTS;
-            $deleted = true;
+            $key = Daily_backup::key((string) $backup['object_prefix'], (string) $backup['source']);
+            $status = App_backup_run::request($storage->link('DELETE', $key, 600), 'DELETE');
 
-            foreach (array_keys($parts) as $part) {
-                $key = Daily_backup::key((string) $backup['object_prefix'], $source, $part);
-                $status = App_backup_run::request($storage->link('DELETE', $key, 600), 'DELETE');
+            // 204 deleted; 404 already gone (or never uploaded)
+            $deleted = in_array($status, [200, 204, 404], true);
 
-                // 204 deleted; 404 already gone (or never uploaded)
-                if ($status !== 204 && $status !== 404 && $status !== 200) {
-                    $deleted = false;
-                    $log->error("Nightly backup #{$backup['id']}: deleting its {$part} failed (HTTP {$status})");
-                }
+            if (!$deleted) {
+                $log->error("Nightly backup #{$backup['id']}: deleting it failed (HTTP {$status})");
             }
 
             if (!$deleted) {

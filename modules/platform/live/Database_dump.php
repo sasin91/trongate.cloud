@@ -9,9 +9,10 @@
  * the dump runs do not tear it (InnoDB tables; the CREATE statements are
  * read as they are at that moment).
  *
- * Used by the backup scripts of the app base image (docker/app-base, which
- * copies this file into /usr/local/lib/trongate-cloud) and by the worker for
- * the platform's own database (Daily_backup_run). Framework-free.
+ * Used by the nightly backup Job's database step (modules/platform/backup,
+ * run from the worker image) and by the worker for the platform's own
+ * database (Daily_backup_run). backup.php in the app base image keeps its own
+ * copy, since that image carries none of the platform's code. Framework-free.
  */
 final class Database_dump {
 

@@ -10,7 +10,7 @@ class Daily_backups_model extends Model {
     private string $table_name = 'daily_backup';
 
     // Never object_prefix (where the backup sits in the bucket)
-    private string $columns = '`id`, `source`, `app_id`, `status`, `database_bytes`, `files_bytes`, `error`, `created_at`, `ready_at`, `expires_at`';
+    private string $columns = '`id`, `source`, `app_id`, `status`, `bytes`, `error`, `created_at`, `ready_at`, `expires_at`';
 
     /**
      * Return the list of searchable column names (used by the controller for validation).
@@ -128,8 +128,7 @@ class Daily_backups_model extends Model {
     public function prepare_record_for_display(object $record_obj): object {
         $record_obj->status = trim((string) $record_obj->status);
         $record_obj->error = trim((string) $record_obj->error);
-        $record_obj->database_bytes = trim((string) $record_obj->database_bytes);
-        $record_obj->files_bytes = trim((string) $record_obj->files_bytes);
+        $record_obj->bytes = trim((string) $record_obj->bytes);
         $record_obj->created_at = trim((string) $record_obj->created_at);
         $record_obj->ready_at = trim((string) $record_obj->ready_at);
         $record_obj->expires_at = trim((string) $record_obj->expires_at);

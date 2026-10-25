@@ -3,12 +3,13 @@
 /**
  * Reads a nightly backup (Backup_file) downloaded from the backups bucket:
  *
- *   APP_BACKUPS_PRIVATE_KEY=... php bin/decrypt-backup.php database.sql.gz.enc database.sql.gz
+ *   APP_BACKUPS_PRIVATE_KEY=... php bin/decrypt-backup.php backup.tar.gz.enc backup.tar.gz
  *
- * The result is the plain database.sql.gz (import it with
- * `gunzip -c database.sql.gz | mariadb {database}`), files.tar.gz (unpack it
- * with `tar -xzf files.tar.gz -C {folder}`) or platform.sql.gz. It refuses a
- * backup that was changed, cut off or encrypted for another key.
+ * An app's backup.tar.gz holds database/database.sql.gz, app/app.tar (its
+ * /app: code, config and persistent files) and app/custom/ (what its own
+ * backup module wrote, if any); docs/backups.md says how to restore each.
+ * The platform's backup is platform.sql.gz. It refuses a backup that was
+ * changed, cut off or encrypted for another key.
  */
 
 require __DIR__ . '/../modules/platform/live/Backup_file.php';

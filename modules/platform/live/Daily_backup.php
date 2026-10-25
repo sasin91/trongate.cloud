@@ -1,16 +1,17 @@
 <?php
 
 /**
- * The nightly backups, one row each in daily_backup: every running app's
- * database and files, and the platform's own database.
+ * The nightly backups, one row each in daily_backup: every running app, and
+ * the platform's own database.
  *
  * Every night from HOUR (UTC) the periodic task back_up_daily starts a Job
- * per app (Manifests::daily_backup_job, docker/app-base/daily-backup.php), a
- * few at a time. The Job dumps the database, packs the files, encrypts both
- * to APP_BACKUPS_PUBLIC_KEY (Backup_file) and uploads them through signed
- * links into the backups bucket (Object_storage::for_app_backups). The worker
- * dumps the platform database itself the same way. Each backup is kept
- * KEEP_DAYS, then deleted from the bucket.
+ * per app (Manifests::daily_backup_job), a few at a time. The Job dumps the
+ * app's database, packs /app as the app sees it (code, config, persistent
+ * files), runs the app's own backup module if it has one (docs/backups.md),
+ * and uploads all of it as one tar.gz, encrypted to APP_BACKUPS_PUBLIC_KEY
+ * (Backup_file), through a signed link into the backups bucket
+ * (Object_storage::for_app_backups). The worker dumps the platform database
+ * itself the same way. Each backup is kept KEEP_DAYS, then deleted.
  *
  * Framework-free: the worker and the panel both use it.
  */
@@ -31,15 +32,10 @@ final class Daily_backup {
     /** Upload links outlive the Job, so an upload that started in time can finish */
     const UPLOAD_LINK_SECONDS = self::JOB_SECONDS + 900;
 
-    /** The parts of an app's backup: what its Job writes */
-    const PARTS = [
-        'database' => 'database.sql.gz.enc',
-        'files' => 'files.tar.gz.enc',
-    ];
-
-    /** The platform's backup has its database only */
-    const PLATFORM_PARTS = [
-        'database' => 'platform.sql.gz.enc',
+    /** The one object of a backup, by source */
+    const OBJECTS = [
+        'app' => 'backup.tar.gz.enc',
+        'platform' => 'platform.sql.gz.enc',
     ];
 
     const STATUSES = ['backing_up', 'ready', 'failed', 'expired'];
@@ -62,18 +58,16 @@ final class Daily_backup {
     }
 
     /**
-     * The object key of one part of a backup
+     * The object key of a backup
      *
      * @param 'app'|'platform' $source
      */
-    static function key(string $prefix, string $source, string $part): string {
-        $parts = $source === 'platform' ? self::PLATFORM_PARTS : self::PARTS;
-
-        if (!isset($parts[$part])) {
-            throw new InvalidArgumentException("Unknown backup part: {$part}");
+    static function key(string $prefix, string $source): string {
+        if (!isset(self::OBJECTS[$source])) {
+            throw new InvalidArgumentException("Unknown backup source: {$source}");
         }
 
-        return $prefix . $parts[$part];
+        return $prefix . self::OBJECTS[$source];
     }
 
     /**

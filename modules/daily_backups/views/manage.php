@@ -29,7 +29,7 @@ echo Modules::run('pagination/display', $pagination_data);
     <table class="records-table">
         <thead>
             <tr>
-                <th colspan="10">
+                <th colspan="9">
                     <div>
                         <div>&nbsp;</div>
                         <div>Records Per Page: <?php
@@ -44,8 +44,7 @@ echo Modules::run('pagination/display', $pagination_data);
             <th class="text-left">Source</th>
             <th class="text-left">App Id</th>
             <th class="text-left">Status</th>
-            <th class="text-left">Database Bytes</th>
-            <th class="text-left">Files Bytes</th>
+            <th class="text-left">Bytes</th>
             <th class="text-left">Error</th>
             <th class="text-left">Created At</th>
             <th class="text-left">Ready At</th>
@@ -60,8 +59,7 @@ echo Modules::run('pagination/display', $pagination_data);
                 <td><?= out($row->source) ?></td>
                 <td><?= out($row->app_id) ?></td>
                 <td><?= out($row->status) ?></td>
-                <td><?= out($row->database_bytes) ?></td>
-                <td><?= out($row->files_bytes) ?></td>
+                <td><?= out($row->bytes) ?></td>
                 <td><?= out($row->error) ?></td>
                 <td><?= out($row->created_at) ?></td>
                 <td><?= out($row->ready_at) ?></td>

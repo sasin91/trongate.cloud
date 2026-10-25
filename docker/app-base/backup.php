@@ -22,9 +22,11 @@
 const FILES_DIR = '/files';
 const WORK_DIR_NAME = '.trongate-cloud-backup';
 
-// Copied in from modules/platform/live (docker/app-base/Dockerfile)
-require '/usr/local/lib/trongate-cloud/Database_dump.php';
-require '/usr/local/lib/trongate-cloud/Object_storage.php';
+/** A single upload (S3 PUT) can be at most this big */
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024 * 1024;
+
+/** Rows per INSERT statement in the dump */
+const ROWS_PER_INSERT = 100;
 
 function say(string $message): void {
     fwrite(STDOUT, $message . PHP_EOL);
@@ -46,7 +48,115 @@ function setting(string $name): string {
 }
 
 function connect(): PDO {
-    return Database_dump::connect(setting('DB_HOST'), (int) setting('DB_PORT'), setting('DB_NAME'), setting('DB_NAME'), setting('DB_PASSWORD'));
+    $dsn = 'mysql:host=' . setting('DB_HOST') . ';port=' . setting('DB_PORT') . ';dbname=' . setting('DB_NAME') . ';charset=utf8mb4';
+
+    return new PDO($dsn, setting('DB_NAME'), setting('DB_PASSWORD'), [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::MYSQL_ATTR_USE_BUFFERED_QUERY => false,
+    ]);
+}
+
+/**
+ * The database's tables and views, by name
+ *
+ * @return array{tables: list<string>, views: list<string>}
+ */
+function list_tables(PDO $pdo): array {
+    $tables = [];
+    $views = [];
+
+    foreach ($pdo->query('SHOW FULL TABLES')->fetchAll(PDO::FETCH_NUM) as $row) {
+        if ($row[1] === 'VIEW') {
+            $views[] = $row[0];
+        } else {
+            $tables[] = $row[0];
+        }
+    }
+
+    return ['tables' => $tables, 'views' => $views];
+}
+
+function quote_name(string $name): string {
+    return '`' . str_replace('`', '``', $name) . '`';
+}
+
+function sql_value(PDO $pdo, mixed $value): string {
+    if ($value === null) {
+        return 'NULL';
+    }
+
+    return $pdo->quote((string) $value);
+}
+
+/** One table's CREATE TABLE and INSERTs */
+function dump_table(PDO $pdo, $out, string $table): int {
+    $name = quote_name($table);
+    $create = $pdo->query("SHOW CREATE TABLE {$name}")->fetch(PDO::FETCH_NUM)[1];
+
+    gzwrite($out, "\n-- Table {$table}\nDROP TABLE IF EXISTS {$name};\n{$create};\n");
+
+    $rows = $pdo->query("SELECT * FROM {$name}", PDO::FETCH_NUM);
+    $batch = [];
+    $count = 0;
+
+    foreach ($rows as $row) {
+        $values = [];
+
+        foreach ($row as $value) {
+            $values[] = sql_value($pdo, $value);
+        }
+
+        $batch[] = '(' . implode(', ', $values) . ')';
+        $count++;
+
+        if (count($batch) === ROWS_PER_INSERT) {
+            gzwrite($out, "INSERT INTO {$name} VALUES\n" . implode(",\n", $batch) . ";\n");
+            $batch = [];
+        }
+    }
+
+    if ($batch !== []) {
+        gzwrite($out, "INSERT INTO {$name} VALUES\n" . implode(",\n", $batch) . ";\n");
+    }
+
+    $rows->closeCursor();
+
+    return $count;
+}
+
+function dump_view(PDO $pdo, $out, string $view): void {
+    $name = quote_name($view);
+    $create = $pdo->query("SHOW CREATE VIEW {$name}")->fetch(PDO::FETCH_NUM)[1];
+    // Without its DEFINER the view belongs to whoever restores it, so it imports anywhere
+    $create = preg_replace('/ DEFINER=`[^`]*`@`[^`]*`/', '', $create);
+
+    gzwrite($out, "\n-- View {$view}\nDROP VIEW IF EXISTS {$name};\n{$create};\n");
+}
+
+function dump_database(PDO $pdo, string $path): void {
+    $out = gzopen($path, 'wb6');
+
+    if ($out === false) {
+        stop("cannot write {$path}");
+    }
+
+    gzwrite($out, '-- Backup of database ' . setting('DB_NAME') . ' taken by trongate.cloud on ' . gmdate('Y-m-d H:i:s') . " UTC\n");
+    gzwrite($out, "SET NAMES utf8mb4;\nSET FOREIGN_KEY_CHECKS = 0;\n");
+
+    $names = list_tables($pdo);
+
+    foreach ($names['tables'] as $table) {
+        $rows = dump_table($pdo, $out, $table);
+        say("Dumped table {$table} ({$rows} rows)");
+    }
+
+    foreach ($names['views'] as $view) {
+        dump_view($pdo, $out, $view);
+        say("Dumped view {$view}");
+    }
+
+    gzwrite($out, "\nSET FOREIGN_KEY_CHECKS = 1;\n");
+    gzclose($out);
 }
 
 /** Runs a command, its output passed through; stops on a non-zero exit */
@@ -69,10 +179,31 @@ function pack_files(string $path): void {
 }
 
 function upload(string $path, string $url): void {
-    try {
-        $bytes = Object_storage::upload($path, $url);
-    } catch (RuntimeException $e) {
-        stop($e->getMessage());
+    $bytes = filesize($path);
+
+    if ($bytes > MAX_UPLOAD_BYTES) {
+        stop(basename($path) . " is {$bytes} bytes; one upload can be at most 5 GB");
+    }
+
+    $file = fopen($path, 'rb');
+    $curl = curl_init($url);
+
+    curl_setopt_array($curl, [
+        CURLOPT_UPLOAD => true,
+        CURLOPT_INFILE => $file,
+        CURLOPT_INFILESIZE => $bytes,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CONNECTTIMEOUT => 30,
+    ]);
+
+    $response = curl_exec($curl);
+    $status = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
+    $error = curl_error($curl);
+    curl_close($curl);
+    fclose($file);
+
+    if ($status < 200 || $status > 299) {
+        stop('uploading ' . basename($path) . " failed (HTTP {$status}) {$error} " . substr((string) $response, 0, 500));
     }
 
     say('Uploaded ' . basename($path) . " ({$bytes} bytes)");
@@ -84,7 +215,7 @@ function warn(string $message): void {
 
 function drop_database(PDO $pdo): void {
     try {
-        $pdo->exec('DROP DATABASE ' . Database_dump::quote_name(setting('DB_NAME')));
+        $pdo->exec('DROP DATABASE ' . quote_name(setting('DB_NAME')));
         say('Dropped database ' . setting('DB_NAME'));
     } catch (PDOException $e) {
         warn('the backup is taken, but dropping the database failed: ' . $e->getMessage());
@@ -113,13 +244,7 @@ $database_path = $work_dir . '/database.sql.gz';
 $files_path = $work_dir . '/files.tar.gz';
 
 $pdo = connect();
-
-try {
-    Database_dump::write($pdo, setting('DB_NAME'), $database_path, 'say');
-} catch (Throwable $e) {
-    stop($e->getMessage());
-}
-
+dump_database($pdo, $database_path);
 pack_files($files_path);
 
 upload($database_path, setting('DATABASE_UPLOAD_URL'));

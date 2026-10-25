@@ -106,13 +106,12 @@ test('backup folders: per app and day, never the same twice', function () {
     assert_same(1, preg_match('#^daily/platform/2026-10-25-[0-9a-f]{16}/$#', Daily_backup::new_platform_prefix($now)));
 });
 
-test('keys per part, and the platform has its database only', function () {
-    assert_same('daily/app-12/x/database.sql.gz.enc', Daily_backup::key('daily/app-12/x/', 'app', 'database'));
-    assert_same('daily/app-12/x/files.tar.gz.enc', Daily_backup::key('daily/app-12/x/', 'app', 'files'));
-    assert_same('daily/platform/x/platform.sql.gz.enc', Daily_backup::key('daily/platform/x/', 'platform', 'database'));
+test('one object per backup', function () {
+    assert_same('daily/app-12/x/backup.tar.gz.enc', Daily_backup::key('daily/app-12/x/', 'app'));
+    assert_same('daily/platform/x/platform.sql.gz.enc', Daily_backup::key('daily/platform/x/', 'platform'));
 
     try {
-        Daily_backup::key('daily/platform/x/', 'platform', 'files');
+        Daily_backup::key('daily/app-12/x/', '../secrets');
     } catch (InvalidArgumentException $e) {
         return;
     }
@@ -126,57 +125,120 @@ test('backups are due from the night hour until midnight UTC', function () {
     assert_same(true, Daily_backup::due(gmmktime(23, 59, 0, 10, 25, 2026)));
 });
 
-test('the nightly Job matches the admission policy', function () {
-    $job = Manifests::daily_backup_job(
+/** The app Deployment as Manifests::app() writes it, with a persistent path and a config file */
+function app_deployment(): array {
+    return [
+        'spec' => ['template' => ['spec' => [
+            'containers' => [[
+                'name' => 'app',
+                'image' => 'registry.trongate.cloud/apps/p12:abc',
+                'envFrom' => [['secretRef' => ['name' => 'p12-env']]],
+                'env' => [['name' => 'PORT', 'value' => '8080']],
+                'volumeMounts' => [
+                    ['name' => 'tmp', 'mountPath' => '/tmp'],
+                    ['name' => 'config-files', 'mountPath' => '/app/config/database.php', 'subPath' => 'database.php', 'readOnly' => true],
+                    ['name' => 'config', 'mountPath' => '/usr/local/etc/php/conf.d/zz-sessions.ini', 'subPath' => 'sessions.ini'],
+                    ['name' => 'files', 'mountPath' => '/app/public/uploads', 'subPath' => 'public/uploads'],
+                ],
+            ]],
+            'volumes' => [
+                ['name' => 'tmp', 'emptyDir' => ['sizeLimit' => '256Mi']],
+                ['name' => 'config-files', 'secret' => ['secretName' => 'p12-database', 'items' => [['key' => 'database.php', 'path' => 'database.php']]]],
+                ['name' => 'config', 'emptyDir' => ['sizeLimit' => '1Mi']],
+                ['name' => 'sessions', 'secret' => ['secretName' => 'p12-database']],
+                ['name' => 'files', 'persistentVolumeClaim' => ['claimName' => 'p12-files']],
+            ],
+        ]]],
+    ];
+}
+
+function daily_job(): array {
+    return Manifests::daily_backup_job(
         ['id' => 12, 'namespace' => 'project-3'],
         ['host' => 'shared-1.databases.svc', 'port' => 3306],
-        ['database' => 'https://example/db', 'files' => 'https://example/files'],
+        app_deployment(),
+        'registry.trongate.cloud/platform/trongate-cloud-worker:main-1-abc',
+        'https://example/upload',
         'cHVibGlj',
     );
-    $pod = $job['spec']['template']['spec'];
-    $container = $pod['containers'][0];
-    $secret_refs = [];
-    $env = [];
+}
 
-    foreach ($container['env'] as $variable) {
-        if (isset($variable['valueFrom'])) {
-            $secret_refs[] = $variable['valueFrom']['secretKeyRef']['name'];
-        } else {
-            $env[$variable['name']] = $variable['value'];
-        }
-    }
+test('the nightly Job: database, then the app, then upload', function () {
+    $job = daily_job();
+    $pod = $job['spec']['template']['spec'];
+    [$database, $app] = $pod['initContainers'];
+    $upload = $pod['containers'][0];
 
     assert_same('p12-daily-backup', $job['metadata']['name']);
     assert_same('project-3', $job['metadata']['namespace']);
     assert_same(true, Manifests::owned_by_app($job, 'project-3', 12));
     assert_same('p12-daily-backup', $job['spec']['template']['metadata']['labels']['app.kubernetes.io/name']);
-    assert_same(PLATFORM_APP_BASE_IMAGE, $container['image']);
-    assert_same('Always', $container['imagePullPolicy']);
-    assert_same(['php', '/usr/local/bin/trongate-cloud-daily-backup.php'], $container['command']);
-    assert_same(['p12-database'], $secret_refs);
-    assert_same('cHVibGlj', $env['BACKUP_PUBLIC_KEY']);
-    assert_same('tc_p12', $env['DB_NAME']);
-    assert_same([['name' => 'files', 'persistentVolumeClaim' => ['claimName' => 'p12-files']]], $pod['volumes']);
-    assert_same(false, $pod['automountServiceAccountToken']);
     assert_same(Daily_backup::JOB_SECONDS, $job['spec']['activeDeadlineSeconds']);
+    assert_same(false, $pod['automountServiceAccountToken']);
+
+    assert_same(['php', Manifests::DAILY_BACKUP_DUMP_SCRIPT], $database['command']);
+    assert_same(['php', Manifests::DAILY_BACKUP_UPLOAD_SCRIPT], $upload['command']);
+    assert_same('registry.trongate.cloud/platform/trongate-cloud-worker:main-1-abc', $database['image']);
+    assert_same('registry.trongate.cloud/platform/trongate-cloud-worker:main-1-abc', $upload['image']);
+
+    // The app step: its own image and variables, its config file and persistent files
+    assert_same('registry.trongate.cloud/apps/p12:abc', $app['image']);
+    assert_same([['secretRef' => ['name' => 'p12-env']]], $app['envFrom']);
+    assert_same(['/tmp', '/backup', '/app/config/database.php', '/app/public/uploads'], array_column($app['volumeMounts'], 'mountPath'));
+    assert_contains(Manifests::DAILY_BACKUP_MODULE, $app['command'][2]);
+    assert_same(false, isset($app['securityContext']['capabilities']['add']));
 });
 
-test('the policy pins the nightly script Manifests uses', function () {
+test('only the upload step gets the upload link and the key', function () {
+    $pod = daily_job()['spec']['template']['spec'];
+    $names = fn(array $container) => array_column($container['env'] ?? [], 'name');
+
+    assert_same(['STAGING_DIR', 'BACKUP_PUBLIC_KEY', 'UPLOAD_URL'], $names($pod['containers'][0]));
+    assert_same(false, in_array('UPLOAD_URL', $names($pod['initContainers'][0]), true));
+    assert_same([], $names($pod['initContainers'][1]));
+});
+
+test('the app step mounts only its own staging folder, not the dump', function () {
+    $pod = daily_job()['spec']['template']['spec'];
+    $backup = array_values(array_filter($pod['initContainers'][1]['volumeMounts'], fn($m) => $m['mountPath'] === '/backup'));
+
+    assert_same('.trongate-cloud-backup/app', $backup[0]['subPath']);
+    assert_same([['name' => 'files', 'mountPath' => '/files']], $pod['initContainers'][0]['volumeMounts']);
+    assert_same([['name' => 'files', 'mountPath' => '/files']], $pod['containers'][0]['volumeMounts']);
+});
+
+test('the Job mounts only the app files volume, its config Secret and emptyDirs', function () {
+    $volumes = daily_job()['spec']['template']['spec']['volumes'];
+
+    assert_same(['tmp', 'files', 'config-files'], array_column($volumes, 'name'));
+    assert_same('p12-files', $volumes[1]['persistentVolumeClaim']['claimName']);
+    assert_same('p12-database', $volumes[2]['secret']['secretName']);
+});
+
+test('an app without a running Deployment is refused', function () {
+    assert_throws(fn() => Manifests::daily_backup_job(['id' => 12, 'namespace' => 'project-3'], ['host' => 'h'], [], 'w:1', 'u', 'k'), 'no running Deployment');
+});
+
+test('the policy pins the nightly scripts and the worker image Manifests uses', function () {
     $policy = file_get_contents(dirname(__DIR__) . '/deploy/k8s/platform/worker-admission-policy.yaml');
+    $kustomization = file_get_contents(dirname(__DIR__) . '/deploy/k8s/platform/kustomization.yaml');
 
-    assert_contains("['php', '" . Manifests::DAILY_BACKUP_SCRIPT . "']", $policy);
+    assert_contains("['php', '" . Manifests::DAILY_BACKUP_DUMP_SCRIPT . "']", $policy);
+    assert_contains("['php', '" . Manifests::DAILY_BACKUP_UPLOAD_SCRIPT . "']", $policy);
     assert_contains("'^p[0-9]+-daily-backup$'", $policy);
+
+    preg_match("/newName: (\\S+trongate-cloud-worker)/", $kustomization, $m);
+    assert_contains("'{$m[1]}'", $policy);
 });
 
-test('the app base image carries both scripts and their classes', function () {
-    $dockerfile = file_get_contents(dirname(__DIR__) . '/docker/app-base/Dockerfile');
+test('the app step backs up /app, then runs the module and survives its failure', function () {
+    $script = Manifests::daily_backup_app_script();
 
-    assert_contains('/usr/local/bin/trongate-cloud-daily-backup.php', $dockerfile);
-    assert_contains(Manifests::BACKUP_SCRIPT, $dockerfile);
-
-    foreach (['Database_dump', 'Backup_file', 'Object_storage'] as $class) {
-        assert_contains("modules/platform/live/{$class}.php", $dockerfile);
-    }
+    assert_contains('tar -cf /backup/app.tar', $script);
+    assert_contains('if [ -f modules/trongate-cloud/backup/runtime.php ]', $script);
+    assert_contains('BACKUP_DIR=/backup/custom timeout ' . Manifests::DAILY_BACKUP_MODULE_SECONDS . ' php', $script);
+    assert_contains('/backup/custom.failed', $script);
+    assert_same(true, strpos($script, 'tar -cf') < strpos($script, 'runtime.php'));
 });
 
 array_map('unlink', glob("{$dir}/*"));

@@ -56,8 +56,10 @@
 # PLATFORM_APPS_DOMAIN and PLATFORM_REGISTRY (config.yaml), the gateway class
 # and issuer with PLATFORM_GATEWAY_CLASS and PLATFORM_DOMAIN_ISSUER, the ACME
 # Gateway with Manifests::ACME_GATEWAY, the images with
-# Manifests::BUILDKIT_IMAGE and PLATFORM_APP_BASE_IMAGE (backup Jobs), and the
-# backup commands with Manifests::BACKUP_SCRIPT and DAILY_BACKUP_SCRIPT.
+# Manifests::BUILDKIT_IMAGE and PLATFORM_APP_BASE_IMAGE (backup Jobs), the
+# worker image with kustomization.yaml (nightly backup Jobs), and the backup
+# commands with Manifests::BACKUP_SCRIPT, DAILY_BACKUP_DUMP_SCRIPT and
+# DAILY_BACKUP_UPLOAD_SCRIPT.
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
@@ -144,6 +146,10 @@ spec:
       expression: "'acme-http01'"
     - name: app_base_image
       expression: "'registry.trongate.cloud/platform/app-base:php8.4'"
+    # The worker's own image, whatever its tag: nightly backup Jobs run their
+    # own steps from it (Daily_backup_run::worker_image)
+    - name: worker_image
+      expression: "'registry.trongate.cloud/platform/trongate-cloud-worker'"
   validations:
     # Tenant namespaces stay restricted and never get a platform role label
     # (allow-gateway admits ingress from namespaces labelled role=gateway)
@@ -186,25 +192,21 @@ spec:
          (!has(object.spec.volumes) || object.spec.volumes.all(v, has(v.emptyDir))) &&
          has(object.spec.automountServiceAccountToken) && object.spec.automountServiceAccountToken == false)
       message: Build Pods must run the pinned BuildKit image without host access or extra volumes
-    # Backup Jobs. A deleted app's (Manifests::backup_job): p{id}-backup runs
-    # the backup script of the app base image. A running app's nightly one
-    # (Manifests::daily_backup_job): p{id}-daily-backup runs the nightly
-    # script. Either with the app's own files volume and database password
-    # only, no token and no host access.
+    # A deleted app's backup Job (Manifests::backup_job): p{id}-backup runs the
+    # backup script of the app base image, with the app's own files volume and
+    # database password only, no token and no host access
     - expression: >-
         request.kind.kind != 'Job' ||
-        ((object.metadata.name.matches('^p[0-9]+-backup$') || object.metadata.name.matches('^p[0-9]+-daily-backup$')) &&
+        object.metadata.name.matches('^p[0-9]+-daily-backup$') ||
+        (object.metadata.name.matches('^p[0-9]+-backup$') &&
          object.spec.template.spec.containers.size() == 1 &&
          object.spec.template.spec.containers.all(c,
            c.image == variables.app_base_image &&
-           has(c.command) &&
-           c.command == (object.metadata.name.endsWith('-daily-backup')
-             ? ['php', '/usr/local/bin/trongate-cloud-daily-backup.php']
-             : ['php', '/usr/local/bin/trongate-cloud-backup.php']) &&
+           has(c.command) && c.command == ['php', '/usr/local/bin/trongate-cloud-backup.php'] &&
            !has(c.args) && !has(c.envFrom) &&
            (!has(c.env) || c.env.all(e, !has(e.valueFrom) ||
              (has(e.valueFrom.secretKeyRef) &&
-              e.valueFrom.secretKeyRef.name == object.metadata.name.replace('-daily-backup', '-backup').replace('-backup', '-database')))) &&
+              e.valueFrom.secretKeyRef.name == object.metadata.name.replace('-backup', '-database')))) &&
            (!has(c.securityContext) ||
             ((!has(c.securityContext.privileged) || c.securityContext.privileged == false) &&
              (!has(c.securityContext.capabilities) || !has(c.securityContext.capabilities.add))))) &&
@@ -216,13 +218,64 @@ spec:
          has(object.spec.template.spec.volumes) &&
          object.spec.template.spec.volumes.all(v,
            has(v.persistentVolumeClaim) &&
-           v.persistentVolumeClaim.claimName == object.metadata.name.replace('-daily-backup', '-backup').replace('-backup', '-files')) &&
+           v.persistentVolumeClaim.claimName == object.metadata.name.replace('-backup', '-files')) &&
          has(object.spec.template.spec.automountServiceAccountToken) &&
          object.spec.template.spec.automountServiceAccountToken == false)
       message: >-
-        Backup Jobs must be p{id}-backup or p{id}-daily-backup running the app base image's
-        matching backup script, with only the app's own files volume and database Secret,
-        no service account token and no host access
+        Backup Jobs must be p{id}-backup running the app base image's backup script, with only
+        the app's own files volume and database Secret, no service account token and no host access
+    # A running app's nightly backup Job (Manifests::daily_backup_job): the
+    # worker image runs only the dump and upload scripts (it alone gets the
+    # upload link), the app's own image runs the app step with the app's own
+    # variables, and the pod mounts only the app's files volume, its config
+    # Secret and emptyDirs. No token and no host access.
+    - expression: >-
+        request.kind.kind != 'Job' ||
+        !object.metadata.name.matches('^p[0-9]+-daily-backup$') ||
+        (object.spec.template.spec.containers.size() == 1 &&
+         object.spec.template.spec.containers.all(c,
+           c.image.startsWith(variables.worker_image + ':') &&
+           has(c.command) && c.command == ['php', '/app/modules/platform/backup/pack_and_upload.php'] &&
+           !has(c.args) && !has(c.envFrom) &&
+           (!has(c.env) || c.env.all(e, !has(e.valueFrom)))) &&
+         has(object.spec.template.spec.initContainers) &&
+         object.spec.template.spec.initContainers.size() == 2 &&
+         object.spec.template.spec.initContainers[0].image.startsWith(variables.worker_image + ':') &&
+         has(object.spec.template.spec.initContainers[0].command) &&
+         object.spec.template.spec.initContainers[0].command == ['php', '/app/modules/platform/backup/dump_database.php'] &&
+         !object.spec.template.spec.initContainers[1].image.startsWith(variables.worker_image + ':') &&
+         object.spec.template.spec.initContainers.all(c,
+           !has(c.args) &&
+           (!has(c.envFrom) || c.envFrom.all(f,
+             has(f.secretRef) && f.secretRef.name == object.metadata.name.replace('-daily-backup', '-env'))) &&
+           (!has(c.env) || c.env.all(e, !has(e.valueFrom) ||
+             (has(e.valueFrom.secretKeyRef) &&
+              e.valueFrom.secretKeyRef.name == object.metadata.name.replace('-daily-backup', '-database'))))) &&
+         object.spec.template.spec.containers.all(c,
+           !has(c.securityContext) ||
+           ((!has(c.securityContext.privileged) || c.securityContext.privileged == false) &&
+            (!has(c.securityContext.capabilities) || !has(c.securityContext.capabilities.add)))) &&
+         object.spec.template.spec.initContainers.all(c,
+           !has(c.securityContext) ||
+           ((!has(c.securityContext.privileged) || c.securityContext.privileged == false) &&
+            (!has(c.securityContext.capabilities) || !has(c.securityContext.capabilities.add)))) &&
+         !has(object.spec.template.spec.ephemeralContainers) &&
+         (!has(object.spec.template.spec.hostNetwork) || object.spec.template.spec.hostNetwork == false) &&
+         (!has(object.spec.template.spec.hostPID) || object.spec.template.spec.hostPID == false) &&
+         (!has(object.spec.template.spec.hostIPC) || object.spec.template.spec.hostIPC == false) &&
+         has(object.spec.template.spec.volumes) &&
+         object.spec.template.spec.volumes.all(v,
+           has(v.emptyDir) ||
+           (has(v.persistentVolumeClaim) &&
+            v.persistentVolumeClaim.claimName == object.metadata.name.replace('-daily-backup', '-files')) ||
+           (has(v.secret) &&
+            v.secret.secretName == object.metadata.name.replace('-daily-backup', '-database'))) &&
+         has(object.spec.template.spec.automountServiceAccountToken) &&
+         object.spec.template.spec.automountServiceAccountToken == false)
+      message: >-
+        Nightly backup Jobs must be p{id}-daily-backup: the worker image running only its dump
+        and upload scripts, the app step without the worker image, only the app's own files
+        volume and Secrets, no service account token and no host access
     # MariaDB CRs: only a tenant database/user on a server in the databases
     # namespace (the platform database lives in trongate-cloud), no grant option
     - expression: >-

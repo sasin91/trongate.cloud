@@ -20,9 +20,8 @@
  * Keys are base64 in the environment: the 32-byte private key and the
  * 32-byte public key made from it (bin/backup-keys.php).
  *
- * Used by the backup scripts of the app base image (docker/app-base, which
- * copies this file into /usr/local/lib/trongate-cloud) and by the worker.
- * Framework-free.
+ * Used by the worker and by the steps of the nightly backup Job that run
+ * from the worker image (modules/platform/backup). Framework-free.
  */
 final class Backup_file {
 
