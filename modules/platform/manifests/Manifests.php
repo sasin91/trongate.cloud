@@ -6,6 +6,7 @@ require_once __DIR__ . '/Runtime_settings.php';
 require_once __DIR__ . '/App_env.php';
 require_once __DIR__ . '/../mail/Mail_capture.php';
 require_once __DIR__ . '/../live/App_backup.php';
+require_once __DIR__ . '/../live/Daily_backup.php';
 require_once __DIR__ . '/../../../engine/Valkey_sessions.php';
 
 /**
@@ -928,6 +929,9 @@ class Manifests {
     /** The backup script baked into the app base image (docker/app-base/backup.php) */
     const BACKUP_SCRIPT = '/usr/local/bin/trongate-cloud-backup.php';
 
+    /** The nightly backup script baked into the app base image (docker/app-base/daily-backup.php) */
+    const DAILY_BACKUP_SCRIPT = '/usr/local/bin/trongate-cloud-daily-backup.php';
+
     /**
      * The one-off Job that backs up a deleted app (App_backup): it dumps the
      * database and packs the persistent files, uploads both to $upload_links
@@ -943,9 +947,36 @@ class Manifests {
      * @param array{database: string, files: string} $upload_links
      */
     static function backup_job(array $app, array $database, array $upload_links): array {
+        return self::_backup_job($app, $database, $upload_links, App_backup::job_name((int) $app['id']), self::BACKUP_SCRIPT, App_backup::JOB_SECONDS);
+    }
+
+    /**
+     * The nightly backup Job of a running app (Daily_backup): it dumps the
+     * database and packs the files like backup_job, but encrypts both to
+     * $public_key (base64, Backup_file) before uploading them, and removes
+     * nothing. The image is always pulled, so a node's older copy of the app
+     * base image (without the script) is never what runs.
+     *
+     * @param array $app      app row (id, namespace)
+     * @param array $database database server row (host, port)
+     * @param array{database: string, files: string} $upload_links
+     */
+    static function daily_backup_job(array $app, array $database, array $upload_links, string $public_key): array {
+        $job = self::_backup_job($app, $database, $upload_links, Daily_backup::job_name((int) $app['id']), self::DAILY_BACKUP_SCRIPT, Daily_backup::JOB_SECONDS);
+        $container = &$job['spec']['template']['spec']['containers'][0];
+        $container['imagePullPolicy'] = 'Always';
+        $container['env'][] = ['name' => 'BACKUP_PUBLIC_KEY', 'value' => $public_key];
+
+        return $job;
+    }
+
+    /**
+     * A backup Job named $name running $script of the app base image with the
+     * app's database and files volume (backup_job, daily_backup_job)
+     */
+    static function _backup_job(array $app, array $database, array $upload_links, string $name, string $script, int $seconds): array {
         $app_id = (int) $app['id'];
         $namespace = self::namespace_name($app);
-        $name = App_backup::job_name($app_id);
         $pod_labels = self::_labels([
             'app.kubernetes.io/name' => $name,
             self::APP_LABEL => (string) $app_id,
@@ -957,7 +988,7 @@ class Manifests {
             'metadata' => self::_metadata($name, $namespace, self::app_labels($app_id)),
             'spec' => [
                 'backoffLimit' => 0,
-                'activeDeadlineSeconds' => App_backup::JOB_SECONDS,
+                'activeDeadlineSeconds' => $seconds,
                 'template' => [
                     'metadata' => ['labels' => $pod_labels],
                     'spec' => [
@@ -974,7 +1005,7 @@ class Manifests {
                         'containers' => [[
                             'name' => 'backup',
                             'image' => PLATFORM_APP_BASE_IMAGE,
-                            'command' => ['php', self::BACKUP_SCRIPT],
+                            'command' => ['php', $script],
                             'env' => [
                                 ['name' => 'DB_HOST', 'value' => (string) $database['host']],
                                 ['name' => 'DB_PORT', 'value' => (string) ($database['port'] ?? 3306)],

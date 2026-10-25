@@ -16,7 +16,7 @@ Trongate.cloud hosts customer Trongate apps on our own k3s cluster. Customers si
 | Scale-to-zero | Sablier as a Traefik middleware on the HTTPRoute | App pods only; shared namespaces stay up. Only a request through Traefik wakes a sleeping app: a direct in-cluster call from another app of the project does not, so an app that others call needs `always_on` |
 | App resources | No size to pick and no CPU or memory limit yet; every app requests 128Mi / 50m (`Manifests::APP_RESOURCES`) so the scheduler can place it, and grows past that as it needs | We observe what real apps use before enforcing limits or pricing sizes. Memory is the binding constraint (2× 8 GB nodes, ~11 GiB allocatable, ~7.4 GiB already requested by the platform before any tenant), so the small request packs apps densely and overcommits: when many apps burst at once the node evicts the pods furthest over their requests. The tenant quota, shared by every app in the project, bounds only disk, pod count and exposure; ephemeral-storage keeps a 1Gi limit per container so one app cannot fill a node's disk |
 | Custom domains | TXT record proves ownership; routed only once A/AAAA (all of them) point at the load balancer or it is a CNAME into `PLATFORM_APPS_DOMAIN`; then a Gateway per domain in the tenant namespace with one HTTPS listener and an HTTP-01 certificate | See "Custom domains" below |
-| Backups | Per-tenant `mariadb-dump` and per-tenant JuiceFS subdirectory via restic; JuiceFS auto metadata backup to the bucket | Kit's assert-non-empty pattern |
+| Backups | Nightly per app (`Daily_backup`, task `back_up_daily`): a Job in the app's namespace dumps its database in one consistent snapshot and packs its files volume, encrypts both to the platform's public key (`Backup_file`, libsodium) and uploads them through signed links; the worker backs up the platform database the same way. Kept 30 days. JuiceFS keeps its own metadata backup in its bucket | Plain PHP and the deleted-app backup's signed-link path, not restic: the bucket keys never enter a tenant namespace, and only the offline private key can read a backup |
 
 ## Custom domains
 
@@ -157,7 +157,7 @@ Still open:
   - A failed `destroy_app` or `destroy_project` is not retried automatically and nobody is alerted; it shows up in the MCP's `audit_app_resources` and is re-queued by hand (`retry_app_cleanup`, `retry_project_cleanup`).
   - Released files PVs and kept `tc_p{id}` databases of deleted apps pile up until removed by hand; there is no purge step yet.
   - No CI workflow builds or pushes the platform images.
-  - Backups.
+  - Restoring a nightly backup from the panel; today it is `bin/decrypt-backup.php` and an import by hand.
   - Image pull credentials for `PLATFORM_REGISTRY` in tenant namespaces.
 - **Hardening:**
   - Push credentials are one registry-wide token that buildctl forwards into each build daemon. Scope them per `p{id}` repository with a registry token service.

@@ -429,6 +429,26 @@ CREATE TABLE app_backup (
   CONSTRAINT fk_app_backup_app FOREIGN KEY (app_id) REFERENCES app (id) ON DELETE CASCADE
 );
 
+-- The nightly backups (Daily_backup): one row per backup of an app's
+-- database and files, or of the platform database (source 'platform', no
+-- app). No foreign key to app, so the rows outlive a deleted app until its
+-- backups expire. Each file's key sits sealed in the file itself.
+CREATE TABLE daily_backup (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  source ENUM('app', 'platform') NOT NULL,
+  app_id INT NULL,
+  status ENUM('backing_up', 'ready', 'failed', 'expired') NOT NULL DEFAULT 'backing_up',
+  object_prefix VARCHAR(120) NOT NULL COMMENT 'folder of its objects in the backups bucket (Daily_backup::new_app_prefix)',
+  database_bytes BIGINT UNSIGNED NULL,
+  files_bytes BIGINT UNSIGNED NULL,
+  error TEXT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  ready_at DATETIME NULL,
+  expires_at DATETIME NULL COMMENT 'its objects are deleted then',
+  KEY idx_app (app_id, created_at),
+  KEY idx_status (status, expires_at)
+);
+
 -- An app's processes (Manifests::_process_deployment): other entrypoints run
 -- from the app's own image, settings and database, e.g. a queue worker. Each
 -- runs as a p{app id}-{name} Deployment that never sleeps, with this many replicas.
@@ -588,4 +608,5 @@ INSERT INTO schema_migrations (name) VALUES
   ('0016_app_backup'),
   ('0017_app_database_log_credentials'),
   ('0018_app_default_module'),
-  ('0019_task_log_steps');
+  ('0019_task_log_steps'),
+  ('0020_daily_backup');

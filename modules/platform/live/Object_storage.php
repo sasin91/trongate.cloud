@@ -16,6 +16,9 @@ final class Object_storage {
     /** The longest a SigV4 link may be valid */
     const MAX_EXPIRES_SECONDS = 7 * 24 * 3600;
 
+    /** A single upload (S3 PUT) can be at most this big */
+    const MAX_UPLOAD_BYTES = 5 * 1024 * 1024 * 1024;
+
     /**
      * @param string $endpoint e.g. https://fsn1.your-objectstorage.com
      * @param string $region   e.g. fsn1
@@ -98,6 +101,42 @@ final class Object_storage {
         $signature = hash_hmac('sha256', $string_to_sign, $this->signing_key($date));
 
         return "https://{$host}{$path}?{$canonical_query}&X-Amz-Signature={$signature}";
+    }
+
+    /**
+     * PUT the file at $path to a signed upload link; returns its size
+     *
+     * @throws RuntimeException when it is too big or the bucket refuses it
+     */
+    static function upload(string $path, string $link): int {
+        $bytes = (int) filesize($path);
+
+        if ($bytes > self::MAX_UPLOAD_BYTES) {
+            throw new RuntimeException(basename($path) . " is {$bytes} bytes; one upload can be at most 5 GB");
+        }
+
+        $file = fopen($path, 'rb');
+        $curl = curl_init($link);
+
+        curl_setopt_array($curl, [
+            CURLOPT_UPLOAD => true,
+            CURLOPT_INFILE => $file,
+            CURLOPT_INFILESIZE => $bytes,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CONNECTTIMEOUT => 30,
+        ]);
+
+        $response = curl_exec($curl);
+        $status = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
+        $error = curl_error($curl);
+        curl_close($curl);
+        fclose($file);
+
+        if ($status < 200 || $status > 299) {
+            throw new RuntimeException('Uploading ' . basename($path) . " failed (HTTP {$status}) {$error} " . substr((string) $response, 0, 500));
+        }
+
+        return $bytes;
     }
 
     /** {bucket}.{endpoint host} */

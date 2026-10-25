@@ -51,6 +51,7 @@
             "php tests/Build_commands_test.php",
             "php tests/Object_storage_test.php",
             "php tests/App_backup_test.php",
+            "php tests/Daily_backup_test.php",
             "php tests/Impersonation_test.php"
         ],
         "qa": [

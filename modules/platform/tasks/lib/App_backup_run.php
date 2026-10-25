@@ -83,7 +83,16 @@ final class App_backup_run {
      * @return string 'running', 'succeeded', 'failed', or 'missing' when there is no Job
      */
     static function job_state(Kubernetes $kube, string $namespace, int $app_id): string {
-        $job = $kube->get('batch/v1', 'Job', $namespace, App_backup::job_name($app_id));
+        return self::job_state_of($kube, $namespace, App_backup::job_name($app_id));
+    }
+
+    /**
+     * How the Job $job_name is doing (also used for Daily_backup's Jobs)
+     *
+     * @return string 'running', 'succeeded', 'failed', or 'missing' when there is no Job
+     */
+    static function job_state_of(Kubernetes $kube, string $namespace, string $job_name): string {
+        $job = $kube->get('batch/v1', 'Job', $namespace, $job_name);
 
         if ($job === null) {
             return 'missing';
@@ -221,7 +230,12 @@ final class App_backup_run {
 
     /** The last lines the backup pod wrote, or why there are none */
     static function job_log_tail(Kubernetes $kube, string $namespace, int $app_id): string {
-        $pods = $kube->list('v1', 'Pod', $namespace, 'job-name=' . App_backup::job_name($app_id));
+        return self::job_log_tail_of($kube, $namespace, App_backup::job_name($app_id));
+    }
+
+    /** The last lines the pod of Job $job_name wrote, or why there are none */
+    static function job_log_tail_of(Kubernetes $kube, string $namespace, string $job_name): string {
+        $pods = $kube->list('v1', 'Pod', $namespace, 'job-name=' . $job_name);
 
         if ($pods === []) {
             return 'The backup Job is gone or never started a pod (it may have run out of time)';

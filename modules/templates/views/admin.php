@@ -41,6 +41,7 @@ $admin_nav = [
         'app_database_log/manage' => 'Database tab log',
         'app_database_backup/manage' => 'Database backups',
         'app_backups/manage' => 'Deleted app backups',
+        'daily_backups/manage' => 'Nightly backups',
         'app_sql_import/manage' => 'SQL imports',
         'app_sql_import_chunk/manage' => 'SQL import parts',
     ],

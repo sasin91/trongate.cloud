@@ -41,13 +41,19 @@ RUN apt-get update \
 RUN install-php-extensions pdo_mysql redis gd intl zip bcmath exif \
     && rm -rf /tmp/*
 
+# sodium ships enabled in the official image; the nightly backup encrypts with it (Backup_file)
+RUN php -r 'exit(extension_loaded("sodium") ? 0 : 1);'
+
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 RUN cp /usr/local/etc/php/php.ini-production /usr/local/etc/php/php.ini
 COPY docker/app-base/php.ini /usr/local/etc/php/conf.d/trongate-cloud.ini
 COPY docker/app-base/Caddyfile /Caddyfile
-# Run by the backup Job when the app is deleted (Manifests::backup_job)
+# Run by the backup Job when the app is deleted (Manifests::backup_job), and by
+# the nightly backup Job (Manifests::daily_backup_job), with the classes they share
+COPY modules/platform/live/Database_dump.php modules/platform/live/Backup_file.php modules/platform/live/Object_storage.php /usr/local/lib/trongate-cloud/
 COPY docker/app-base/backup.php /usr/local/bin/trongate-cloud-backup.php
+COPY docker/app-base/daily-backup.php /usr/local/bin/trongate-cloud-daily-backup.php
 
 ENV PORT=8080 \
     COMPOSER_ALLOW_SUPERUSER=1 \

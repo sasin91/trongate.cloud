@@ -215,4 +215,5 @@ checkout, which Flux rolls out the same way.
 - MariaDB replication + MaxScale (`databases/mariadb.yaml` TODO).
 - Verify cross-namespace `mariaDbRef` from tenant namespaces with the operator
   version in use.
-- Backups (per-tenant dumps and JuiceFS directories via restic).
+- Restoring nightly backups from the panel (`Daily_backup`); today it is
+  `bin/decrypt-backup.php` and an import by hand.
