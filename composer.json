@@ -54,11 +54,20 @@
             "php tests/Daily_backup_test.php",
             "php tests/Impersonation_test.php"
         ],
+        "backup:keys": "php modules/platform/backup/keys.php",
+        "backup:decrypt": [
+            "Composer\\Config::disableProcessTimeout",
+            "php modules/platform/backup/decrypt.php"
+        ],
         "qa": [
             "@lint",
             "@cs",
             "@analyse",
             "@test"
         ]
+    },
+    "scripts-descriptions": {
+        "backup:keys": "Make the key pair the nightly backups are encrypted to",
+        "backup:decrypt": "Decrypt a nightly backup: APP_BACKUPS_PRIVATE_KEY=... composer backup:decrypt -- {backup.enc} {output}"
     }
 }

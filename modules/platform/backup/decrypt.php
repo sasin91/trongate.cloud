@@ -3,7 +3,7 @@
 /**
  * Reads a nightly backup (Backup_file) downloaded from the backups bucket:
  *
- *   APP_BACKUPS_PRIVATE_KEY=... php bin/decrypt-backup.php backup.tar.gz.enc backup.tar.gz
+ *   APP_BACKUPS_PRIVATE_KEY=... composer backup:decrypt -- backup.tar.gz.enc backup.tar.gz
  *
  * An app's backup.tar.gz holds database/database.sql.gz, app/app.tar (its
  * /app: code, config and persistent files) and app/custom/ (what its own
@@ -12,13 +12,13 @@
  * changed, cut off or encrypted for another key.
  */
 
-require __DIR__ . '/../modules/platform/live/Backup_file.php';
+require __DIR__ . '/../live/Backup_file.php';
 
 [, $in, $out] = $argv + [null, null, null];
 $private_key = getenv('APP_BACKUPS_PRIVATE_KEY');
 
 if ($in === null || $out === null || $private_key === false || $private_key === '') {
-    fwrite(STDERR, "Usage: APP_BACKUPS_PRIVATE_KEY=... php bin/decrypt-backup.php {backup.enc} {output}\n");
+    fwrite(STDERR, "Usage: APP_BACKUPS_PRIVATE_KEY=... composer backup:decrypt -- {backup.enc} {output}\n");
     exit(2);
 }
 

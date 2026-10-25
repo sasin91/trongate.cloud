@@ -18,7 +18,7 @@
  *           the last one carries the FINAL tag, so a cut-off file is refused
  *
  * Keys are base64 in the environment: the 32-byte private key and the
- * 32-byte public key made from it (bin/backup-keys.php).
+ * 32-byte public key made from it (`composer backup:keys`).
  *
  * Used by the worker and by the steps of the nightly backup Job that run
  * from the worker image (modules/platform/backup). Framework-free.
@@ -200,7 +200,7 @@ final class Backup_file {
         $key = base64_decode(trim($base64), true);
 
         if ($key === false || strlen($key) !== SODIUM_CRYPTO_BOX_SECRETKEYBYTES) {
-            throw new RuntimeException("The backups {$kind} key is not a base64 32-byte key (bin/backup-keys.php makes one)");
+            throw new RuntimeException("The backups {$kind} key is not a base64 32-byte key (composer backup:keys makes one)");
         }
 
         return $key;

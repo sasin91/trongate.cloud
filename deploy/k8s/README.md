@@ -216,4 +216,4 @@ checkout, which Flux rolls out the same way.
 - Verify cross-namespace `mariaDbRef` from tenant namespaces with the operator
   version in use.
 - Restoring nightly backups from the panel (`Daily_backup`); today it is
-  `bin/decrypt-backup.php` and an import by hand.
+  `composer backup:decrypt` and an import by hand.

@@ -110,7 +110,7 @@ defined('APP_BACKUPS_S3_BUCKET') || define('APP_BACKUPS_S3_BUCKET', getenv('APP_
 defined('APP_BACKUPS_S3_ACCESS_KEY') || define('APP_BACKUPS_S3_ACCESS_KEY', getenv('APP_BACKUPS_S3_ACCESS_KEY') ?: '');
 defined('APP_BACKUPS_S3_SECRET_KEY') || define('APP_BACKUPS_S3_SECRET_KEY', getenv('APP_BACKUPS_S3_SECRET_KEY') ?: '');
 // The nightly backups (Daily_backup) go to the same bucket, encrypted to this
-// public key (base64, Backup_file; bin/backup-keys.php makes a pair). Only the
+// public key (base64, Backup_file; `composer backup:keys` makes a pair). Only the
 // worker needs it. Reading a backup takes the private key, which is kept
-// offline (bin/decrypt-backup.php). Unset: no nightly backups are taken.
+// offline (`composer backup:decrypt`). Unset: no nightly backups are taken.
 defined('APP_BACKUPS_PUBLIC_KEY') || define('APP_BACKUPS_PUBLIC_KEY', getenv('APP_BACKUPS_PUBLIC_KEY') ?: '');

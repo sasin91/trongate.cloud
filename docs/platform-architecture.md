@@ -157,7 +157,7 @@ Still open:
   - A failed `destroy_app` or `destroy_project` is not retried automatically and nobody is alerted; it shows up in the MCP's `audit_app_resources` and is re-queued by hand (`retry_app_cleanup`, `retry_project_cleanup`).
   - Released files PVs and kept `tc_p{id}` databases of deleted apps pile up until removed by hand; there is no purge step yet.
   - No CI workflow builds or pushes the platform images.
-  - Restoring a nightly backup from the panel; today it is `bin/decrypt-backup.php` and an import by hand.
+  - Restoring a nightly backup from the panel; today it is `composer backup:decrypt` and an import by hand.
   - Image pull credentials for `PLATFORM_REGISTRY` in tenant namespaces.
 - **Hardening:**
   - Push credentials are one registry-wide token that buildctl forwards into each build daemon. Scope them per `p{id}` repository with a registry token service.
