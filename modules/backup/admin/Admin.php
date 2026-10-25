@@ -1,10 +1,10 @@
 <?php
 /**
- * Daily_backups Controller
+ * Admin Controller (backup)
  *
- * Manages nightly backups records (read-only in tg-admin).
+ * Manages backups records (read-only in tg-admin).
  */
-class Daily_backups extends Trongate {
+class Admin extends Trongate {
 
     private int $default_limit = 20;
     private array $per_page_options = [10, 20, 50, 100];
@@ -15,11 +15,11 @@ class Daily_backups extends Trongate {
      * @return void
      */
     public function index(): void {
-        redirect('daily_backups/manage');
+        redirect('backup-admin/manage');
     }
 
     /**
-     * Display paginated list of nightly backups.
+     * Display paginated list of backups.
      *
      * Shows records in a table with pagination controls. Includes
      * dropdown for selecting number of records per page.
@@ -59,7 +59,7 @@ class Daily_backups extends Trongate {
         $data = [
             'rows' => $rows,
             'pagination_data' => $this->get_pagination_data($total_rows, $limit, $search_query, $search_column),
-            'view_module' => 'daily_backups',
+            'view_module' => 'backup/admin',
             'view_file' => 'manage',
             'per_page_options' => $this->per_page_options,
             'selected_per_page' => $this->get_selected_per_page()
@@ -93,7 +93,7 @@ class Daily_backups extends Trongate {
         }
 
         $_SESSION['selected_per_page'] = $selected_index;
-        redirect('daily_backups/manage');
+        redirect('backup-admin/manage');
     }
 
     /**
@@ -114,9 +114,9 @@ class Daily_backups extends Trongate {
         return [
             'total_rows' => $total_rows,
             'limit' => $limit,
-            'pagination_root' => 'daily_backups/manage',
+            'pagination_root' => 'backup-admin/manage',
             'pagination_query' => $pagination_query,
-            'record_name_plural' => 'nightly backups',
+            'record_name_plural' => 'backups',
             'include_showing_statement' => true
         ];
     }
@@ -155,7 +155,7 @@ class Daily_backups extends Trongate {
     }
 
     /**
-     * Handle search form submission for filtering nightly backups.
+     * Handle search form submission for filtering backups.
      *
      * Preprocesses text parameters and triggers custom query filtering.
      *
@@ -180,14 +180,14 @@ class Daily_backups extends Trongate {
         // Validate minimum 2 character length
         if (strlen($search_query) < 2) {
             set_flashdata('Search query must be at least 2 characters');
-            redirect('daily_backups/manage');
+            redirect('backup-admin/manage');
         }
 
-        redirect('daily_backups/manage?search_query=' . urlencode($search_query) . '&search_column=' . urlencode($search_column));
+        redirect('backup-admin/manage?search_query=' . urlencode($search_query) . '&search_column=' . urlencode($search_column));
     }
 
     /**
-     * Display the search modal form for filtering nightly backups.
+     * Display the search modal form for filtering backups.
      *
      * Renders a form with a search input and a dropdown of searchable columns.
      *
@@ -196,7 +196,7 @@ class Daily_backups extends Trongate {
     public function search_modal(): void {
         $this->trongate_security->make_sure_allowed();
 
-        $data['view_module'] = 'daily_backups';
+        $data['view_module'] = 'backup/admin';
         $data['view_file'] = 'search_modal';
         $this->view('search_modal', $data);
     }

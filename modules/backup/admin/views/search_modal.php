@@ -1,6 +1,6 @@
 <?php
 /**
- * Search modal form for filtering deleted app backups.
+ * Search modal form for filtering backups.
  *
  * Loaded via MX into a modal when the Search button is clicked.
  */
@@ -9,7 +9,7 @@ $searchable_columns = [
 ];
 
 $form_attr = ['id' => 'search-form'];
-echo form_open('app_backups/submit_search', $form_attr);
+echo form_open('backup-admin/submit_search', $form_attr);
 ?>
     <div class="form-group">
         <?= form_label('Search Query') ?>

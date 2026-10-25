@@ -106,7 +106,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
             return 'done';
         }
 
-        $backup = Platform_task::row($db, 'SELECT status FROM app_backup WHERE app_id = ?', [$app_id]);
+        $backup = Platform_task::row($db, "SELECT status FROM backup WHERE type = 'app_deleted' AND app_id = ?", [$app_id]);
         $status = $backup['status'] ?? null;
 
         if ($status === 'ready' || $status === 'expired') {

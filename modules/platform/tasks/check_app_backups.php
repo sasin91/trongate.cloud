@@ -30,11 +30,11 @@ return function (Task_log $log) use ($runtime): int {
     $running = Platform_task::rows(
         $db,
         "SELECT b.app_id, b.object_prefix, a.project_id, p.namespace
-         FROM app_backup b
+         FROM backup b
          JOIN app a ON a.id = b.app_id
          JOIN project p ON p.id = a.project_id
-         WHERE b.status = 'backing_up'
-           AND b.updated_at < NOW() - INTERVAL 1 MINUTE",
+         WHERE b.type = 'app_deleted' AND b.status = 'backing_up'
+           AND b.started_at < NOW() - INTERVAL 1 MINUTE",
     );
 
     foreach ($running as $backup) {
@@ -52,8 +52,8 @@ return function (Task_log $log) use ($runtime): int {
 
     $expired = Platform_task::rows(
         $db,
-        "SELECT app_id, object_prefix FROM app_backup
-         WHERE status = 'ready' AND expires_at < NOW()",
+        "SELECT app_id, object_prefix FROM backup
+         WHERE type = 'app_deleted' AND status = 'ready' AND expires_at < NOW()",
     );
 
     $failures = 0;

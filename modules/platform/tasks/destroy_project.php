@@ -79,7 +79,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
     // destroy_app finishes while a backup Job runs; check_app_backups queues it again afterwards
     $backing_up = Platform_task::row(
         $db,
-        "SELECT COUNT(*) AS n FROM app_backup b JOIN app a ON a.id = b.app_id WHERE a.project_id = ? AND b.status = 'backing_up'",
+        "SELECT COUNT(*) AS n FROM backup b JOIN app a ON a.id = b.app_id WHERE a.project_id = ? AND b.type = 'app_deleted' AND b.status = 'backing_up'",
         [$project_id]
     );
 

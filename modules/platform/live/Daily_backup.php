@@ -1,8 +1,8 @@
 <?php
 
 /**
- * The nightly backups, one row each in daily_backup: every running app, and
- * the platform's own database.
+ * The nightly backups, one row each in backup (type 'nightly'): every running
+ * app, and the platform's own database (app_id NULL).
  *
  * Every night from HOUR (UTC) the periodic task back_up_daily starts a Job
  * per app (Manifests::daily_backup_job), a few at a time. The Job dumps the
@@ -58,7 +58,8 @@ final class Daily_backup {
     }
 
     /**
-     * The object key of a backup; $source is daily_backup.source, 'app' or 'platform'
+     * The object key of a backup; $source is 'app', or 'platform' for the
+     * platform database (app_id NULL)
      */
     static function key(string $prefix, string $source): string {
         if (!isset(self::OBJECTS[$source])) {

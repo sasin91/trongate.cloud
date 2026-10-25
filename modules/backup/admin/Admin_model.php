@@ -1,16 +1,13 @@
 <?php
 /**
- * App_backups_model - Handles data operations for deleted app backups records.
+ * Admin_model (backup) - Handles data operations for backup records.
  *
  * Demonstrates proper data conversion patterns and separation
  * of concerns between database operations and presentation logic.
  */
-class App_backups_model extends Model {
+class Admin_model extends Model {
     
-    private string $table_name = 'app_backup';
-
-    // Never object_prefix (where the backup sits in the bucket)
-    private string $columns = '`app_id`, `status`, `database_bytes`, `files_bytes`, `error`, `created_at`, `ready_at`, `expires_at`';
+    private string $table_name = 'backup';
 
     /**
      * Return the list of searchable column names (used by the controller for validation).
@@ -26,28 +23,28 @@ class App_backups_model extends Model {
 
 
     /**
-     * Fetch paginated deleted app backups records.
+     * Fetch paginated backups records.
      *
      * @param int $limit Records per page
      * @param int $offset Records to skip
      * @return array<object>
      */
     public function fetch_records(int $limit, int $offset): array {
-        $sql = 'SELECT '.$this->columns.' FROM '.$this->table_name.' ORDER BY created_at DESC LIMIT '.$limit.' OFFSET '.$offset;
+        $sql = 'SELECT * FROM '.$this->table_name.' ORDER BY started_at DESC LIMIT '.$limit.' OFFSET '.$offset;
         return $this->db->query($sql, 'object');
     }
     
     /**
-     * Count all deleted app backups records in the database table.
+     * Count all backups records in the database table.
      *
-     * @return int Total number of deleted app backups records.
+     * @return int Total number of backups records.
      */
     public function count_all(): int {
         return $this->db->count($this->table_name);
     }
 
     /**
-     * Search deleted app backups records across searchable columns.
+     * Search backups records across searchable columns.
      *
      * @param string $query The search query string.
      * @param string $column Specific column to search, or empty string to search all.
@@ -64,20 +61,20 @@ class App_backups_model extends Model {
         }
 
         if ($column !== '') {
-            $sql = 'SELECT '.$this->columns.' FROM '.$this->table_name.' WHERE '.$column.' LIKE :query ORDER BY created_at DESC LIMIT '.$limit.' OFFSET '.$offset;
+            $sql = 'SELECT * FROM '.$this->table_name.' WHERE '.$column.' LIKE :query ORDER BY started_at DESC LIMIT '.$limit.' OFFSET '.$offset;
         } else {
             $conditions = [];
             foreach ($searchable_columns as $col) {
                 $conditions[] = $col.' LIKE :query';
             }
-            $sql = 'SELECT '.$this->columns.' FROM '.$this->table_name.' WHERE ('.implode(' OR ', $conditions).') ORDER BY created_at DESC LIMIT '.$limit.' OFFSET '.$offset;
+            $sql = 'SELECT * FROM '.$this->table_name.' WHERE ('.implode(' OR ', $conditions).') ORDER BY started_at DESC LIMIT '.$limit.' OFFSET '.$offset;
         }
 
         return $this->db->query_bind($sql, ['query' => '%'.$query.'%'], 'object');
     }
 
     /**
-     * Count search results for deleted app backups records.
+     * Count search results for backups records.
      *
      * @param string $query The search query string.
      * @param string $column Specific column to search, or empty string to search all.
@@ -106,9 +103,9 @@ class App_backups_model extends Model {
     }
 
     /**
-     * Prepare multiple deleted app backups records for display in list views.
+     * Prepare multiple backups records for display in list views.
      *
-     * @param array $rows Array of deleted app backups record objects from database
+     * @param array $rows Array of backups record objects from database
      * @return array Array of objects with formatted display fields
      */
     public function prepare_records_for_display(array $rows): array {
@@ -120,7 +117,7 @@ class App_backups_model extends Model {
     }
 
     /**
-     * Prepare raw deleted app backups database data for display in views.
+     * Prepare raw backups database data for display in views.
      *
      * @param object $record_obj Raw data from database
      * @return object Enhanced data with formatted fields
@@ -128,10 +125,11 @@ class App_backups_model extends Model {
     public function prepare_record_for_display(object $record_obj): object {
         $record_obj->status = trim((string) $record_obj->status);
         $record_obj->error = trim((string) $record_obj->error);
-        $record_obj->database_bytes = trim((string) $record_obj->database_bytes);
-        $record_obj->files_bytes = trim((string) $record_obj->files_bytes);
-        $record_obj->created_at = trim((string) $record_obj->created_at);
-        $record_obj->ready_at = trim((string) $record_obj->ready_at);
+        $record_obj->type = trim((string) $record_obj->type);
+        $record_obj->object_prefix = trim((string) $record_obj->object_prefix);
+        $record_obj->size_bytes = trim((string) $record_obj->size_bytes);
+        $record_obj->started_at = trim((string) $record_obj->started_at);
+        $record_obj->finished_at = trim((string) $record_obj->finished_at);
         $record_obj->expires_at = trim((string) $record_obj->expires_at);
         return $record_obj;
     }

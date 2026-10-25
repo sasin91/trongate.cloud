@@ -411,42 +411,24 @@ CREATE TABLE deployment (
   CONSTRAINT fk_deployment_customer FOREIGN KEY (customer_id) REFERENCES customer (id)
 );
 
--- Deleting an app backs up its database and files first (App_backup): one row
--- per deleted app, while the backup is taken and for as long as its project
--- can download it.
-CREATE TABLE app_backup (
-  app_id INT PRIMARY KEY,
-  status ENUM('backing_up', 'ready', 'failed', 'expired') NOT NULL DEFAULT 'backing_up',
-  object_prefix VARCHAR(120) NOT NULL COMMENT 'folder of its objects in the backups bucket (App_backup::new_prefix)',
-  database_bytes BIGINT UNSIGNED NULL,
-  files_bytes BIGINT UNSIGNED NULL,
-  error TEXT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  ready_at DATETIME NULL,
-  expires_at DATETIME NULL COMMENT 'downloads end and the objects are deleted',
-  KEY idx_status (status, expires_at),
-  CONSTRAINT fk_app_backup_app FOREIGN KEY (app_id) REFERENCES app (id) ON DELETE CASCADE
-);
-
--- The nightly backups (Daily_backup): one row per backup of an app (its
--- database, code and persistent files, and what its own backup module adds)
--- or of the platform database (source 'platform', no app). No foreign key to
--- app, so the rows outlive a deleted app until its backups expire. Each
--- backup's key sits sealed in the backup itself.
-CREATE TABLE daily_backup (
+-- Every backup in the backups bucket. 'app_deleted': deleting an app backs up
+-- its database and files first (App_backup), one row per deleted app, which
+-- its project can download for a while. 'nightly': every app and the
+-- platform database (app_id NULL) each night (Daily_backup).
+CREATE TABLE backup (
   id INT PRIMARY KEY AUTO_INCREMENT,
-  source ENUM('app', 'platform') NOT NULL,
-  app_id INT NULL,
+  type ENUM('app_deleted', 'nightly') NOT NULL,
+  app_id INT NULL COMMENT 'NULL: the platform database',
   status ENUM('backing_up', 'ready', 'failed', 'expired') NOT NULL DEFAULT 'backing_up',
-  object_prefix VARCHAR(120) NOT NULL COMMENT 'folder of its objects in the backups bucket (Daily_backup::new_app_prefix)',
-  bytes BIGINT UNSIGNED NULL COMMENT 'size of the encrypted backup',
+  object_prefix VARCHAR(120) NOT NULL COMMENT 'folder of its objects in the backups bucket',
+  size_bytes BIGINT UNSIGNED NULL COMMENT 'size of what is in the bucket',
   error TEXT NULL COMMENT 'why it failed, or why the app''s own backup module failed',
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  ready_at DATETIME NULL,
+  started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  finished_at DATETIME NULL COMMENT 'when it was ready or failed',
   expires_at DATETIME NULL COMMENT 'it is deleted from the bucket then',
-  KEY idx_app (app_id, created_at),
-  KEY idx_status (status, expires_at)
+  KEY idx_app (app_id, started_at),
+  KEY idx_status (status, expires_at),
+  CONSTRAINT fk_backup_app FOREIGN KEY (app_id) REFERENCES app (id) ON DELETE CASCADE
 );
 
 -- An app's processes (Manifests::_process_deployment): other entrypoints run
@@ -609,4 +591,4 @@ INSERT INTO schema_migrations (name) VALUES
   ('0017_app_database_log_credentials'),
   ('0018_app_default_module'),
   ('0019_task_log_steps'),
-  ('0020_daily_backup');
+  ('0020_backup');

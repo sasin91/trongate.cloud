@@ -50,13 +50,25 @@ final class App_backup_run {
             $upload_links[$part] = $storage->link('PUT', App_backup::key($prefix, $part), App_backup::UPLOAD_LINK_SECONDS);
         }
 
-        Platform_task::execute(
-            $db,
-            "INSERT INTO app_backup (app_id, status, object_prefix) VALUES (?, 'backing_up', ?)
-             ON DUPLICATE KEY UPDATE status = 'backing_up', object_prefix = VALUES(object_prefix),
-                 database_bytes = NULL, files_bytes = NULL, error = NULL, ready_at = NULL, expires_at = NULL",
-            [$app_id, $prefix]
-        );
+        // One app_deleted row per app: a failed backup's row is started again
+        $earlier = Platform_task::row($db, "SELECT id FROM backup WHERE type = 'app_deleted' AND app_id = ?", [$app_id]);
+
+        if ($earlier === null) {
+            Platform_task::execute(
+                $db,
+                "INSERT INTO backup (type, app_id, status, object_prefix) VALUES ('app_deleted', ?, 'backing_up', ?)",
+                [$app_id, $prefix]
+            );
+        } else {
+            Platform_task::execute(
+                $db,
+                "UPDATE backup
+                 SET status = 'backing_up', object_prefix = ?, size_bytes = NULL, error = NULL,
+                     started_at = NOW(), finished_at = NULL, expires_at = NULL
+                 WHERE id = ?",
+                [$prefix, (int) $earlier['id']]
+            );
+        }
 
         $kube->apply(Manifests::backup_job($app, $database, $upload_links));
         $log->info("Started backup Job {$job_name}: it dumps the database and packs the files, uploads both, then removes them");
@@ -117,7 +129,7 @@ final class App_backup_run {
      * The backup Job succeeded: record the sizes, open the download window,
      * remove the Job and queue destroy_app to remove the rest of the app
      *
-     * @param array $backup app_backup row joined with the app's project_id and namespace
+     * @param array $backup backup row joined with the app's project_id and namespace
      */
     static function finish(Runtime $runtime, Task_log $log, Object_storage $storage, array $backup): void {
         $db = $runtime->db();
@@ -126,14 +138,15 @@ final class App_backup_run {
 
         $database_bytes = self::object_bytes($storage, App_backup::key($prefix, 'database'));
         $files_bytes = self::object_bytes($storage, App_backup::key($prefix, 'files'));
+        $size_bytes = $database_bytes === null || $files_bytes === null ? null : $database_bytes + $files_bytes;
 
         Platform_task::execute(
             $db,
-            "UPDATE app_backup
-             SET status = 'ready', database_bytes = ?, files_bytes = ?, ready_at = NOW(),
+            "UPDATE backup
+             SET status = 'ready', size_bytes = ?, finished_at = NOW(),
                  expires_at = NOW() + INTERVAL ? DAY
-             WHERE app_id = ? AND status = 'backing_up'",
-            [$database_bytes, $files_bytes, App_backup::KEEP_DAYS, $app_id]
+             WHERE type = 'app_deleted' AND app_id = ? AND status = 'backing_up'",
+            [$size_bytes, App_backup::KEEP_DAYS, $app_id]
         );
 
         Platform_task::delete_owned($runtime->kube(), 'batch/v1', 'Job', (string) $backup['namespace'], $app_id, App_backup::job_name($app_id));
@@ -147,7 +160,7 @@ final class App_backup_run {
      * the reason. Its database and files were not touched. The Job stays,
      * for a look at it, until destroy_app is run again.
      *
-     * @param array $backup app_backup row joined with the app's namespace
+     * @param array $backup backup row joined with the app's namespace
      */
     static function fail(Runtime $runtime, Task_log $log, array $backup): void {
         $app_id = (int) $backup['app_id'];
@@ -155,7 +168,8 @@ final class App_backup_run {
 
         Platform_task::execute(
             $runtime->db(),
-            "UPDATE app_backup SET status = 'failed', error = ? WHERE app_id = ? AND status = 'backing_up'",
+            "UPDATE backup SET status = 'failed', error = ?, finished_at = NOW()
+             WHERE type = 'app_deleted' AND app_id = ? AND status = 'backing_up'",
             [$reason, $app_id]
         );
 
@@ -165,7 +179,7 @@ final class App_backup_run {
     /**
      * The download window has passed: delete the backup from the bucket
      *
-     * @param array $backup app_backup row
+     * @param array $backup backup row
      * @return bool whether both objects are gone
      */
     static function expire(Runtime $runtime, Task_log $log, Object_storage $storage, array $backup): bool {
@@ -187,7 +201,7 @@ final class App_backup_run {
             return false;
         }
 
-        Platform_task::execute($runtime->db(), "UPDATE app_backup SET status = 'expired' WHERE app_id = ?", [$app_id]);
+        Platform_task::execute($runtime->db(), "UPDATE backup SET status = 'expired' WHERE type = 'app_deleted' AND app_id = ?", [$app_id]);
         $log->info("App #{$app_id}: backup deleted after " . App_backup::KEEP_DAYS . ' days');
 
         return true;
