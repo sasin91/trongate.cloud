@@ -51,23 +51,24 @@ final class App_backup_run {
         }
 
         // One app_deleted row per app: a failed backup's row is started again
-        $earlier = Platform_task::row($db, "SELECT id FROM backup WHERE type = 'app_deleted' AND app_id = ?", [$app_id]);
+        $sql = <<<SQL
+            SELECT id FROM backup WHERE type = 'app_deleted' AND app_id = ?
+        SQL;
+        $earlier = Platform_task::row($db, $sql, [$app_id]);
 
         if ($earlier === null) {
-            Platform_task::execute(
-                $db,
-                "INSERT INTO backup (type, app_id, status, object_prefix) VALUES ('app_deleted', ?, 'backing_up', ?)",
-                [$app_id, $prefix]
-            );
+            $sql = <<<SQL
+                INSERT INTO backup (type, app_id, status, object_prefix) VALUES ('app_deleted', ?, 'backing_up', ?)
+            SQL;
+            Platform_task::execute($db, $sql, [$app_id, $prefix]);
         } else {
-            Platform_task::execute(
-                $db,
-                "UPDATE backup
-                 SET status = 'backing_up', object_prefix = ?, size_bytes = NULL, error = NULL,
-                     started_at = NOW(), finished_at = NULL, expires_at = NULL
-                 WHERE id = ?",
-                [$prefix, (int) $earlier['id']]
-            );
+            $sql = <<<SQL
+                UPDATE backup
+                SET status = 'backing_up', object_prefix = ?, size_bytes = NULL, error = NULL,
+                    started_at = NOW(), finished_at = NULL, expires_at = NULL
+                WHERE id = ?
+            SQL;
+            Platform_task::execute($db, $sql, [$prefix, (int) $earlier['id']]);
         }
 
         $kube->apply(Manifests::backup_job($app, $database, $upload_links));
@@ -140,14 +141,13 @@ final class App_backup_run {
         $files_bytes = self::object_bytes($storage, App_backup::key($prefix, 'files'));
         $size_bytes = $database_bytes === null || $files_bytes === null ? null : $database_bytes + $files_bytes;
 
-        Platform_task::execute(
-            $db,
-            "UPDATE backup
-             SET status = 'ready', size_bytes = ?, finished_at = NOW(),
-                 expires_at = NOW() + INTERVAL ? DAY
-             WHERE type = 'app_deleted' AND app_id = ? AND status = 'backing_up'",
-            [$size_bytes, App_backup::KEEP_DAYS, $app_id]
-        );
+        $sql = <<<SQL
+            UPDATE backup
+            SET status = 'ready', size_bytes = ?, finished_at = NOW(),
+                expires_at = NOW() + INTERVAL ? DAY
+            WHERE type = 'app_deleted' AND app_id = ? AND status = 'backing_up'
+        SQL;
+        Platform_task::execute($db, $sql, [$size_bytes, App_backup::KEEP_DAYS, $app_id]);
 
         Platform_task::delete_owned($runtime->kube(), 'batch/v1', 'Job', (string) $backup['namespace'], $app_id, App_backup::job_name($app_id));
         self::queue_destroy($db, (int) $backup['project_id'], $app_id);
@@ -166,12 +166,11 @@ final class App_backup_run {
         $app_id = (int) $backup['app_id'];
         $reason = self::job_log_tail($runtime->kube(), (string) $backup['namespace'], $app_id);
 
-        Platform_task::execute(
-            $runtime->db(),
-            "UPDATE backup SET status = 'failed', error = ?, finished_at = NOW()
-             WHERE type = 'app_deleted' AND app_id = ? AND status = 'backing_up'",
-            [$reason, $app_id]
-        );
+        $sql = <<<SQL
+            UPDATE backup SET status = 'failed', error = ?, finished_at = NOW()
+            WHERE type = 'app_deleted' AND app_id = ? AND status = 'backing_up'
+        SQL;
+        Platform_task::execute($runtime->db(), $sql, [$reason, $app_id]);
 
         $log->error("App #{$app_id}: backup failed, its database and files are kept: {$reason}");
     }
@@ -201,7 +200,10 @@ final class App_backup_run {
             return false;
         }
 
-        Platform_task::execute($runtime->db(), "UPDATE backup SET status = 'expired' WHERE type = 'app_deleted' AND app_id = ?", [$app_id]);
+        $sql = <<<SQL
+            UPDATE backup SET status = 'expired' WHERE type = 'app_deleted' AND app_id = ?
+        SQL;
+        Platform_task::execute($runtime->db(), $sql, [$app_id]);
         $log->info("App #{$app_id}: backup deleted after " . App_backup::KEEP_DAYS . ' days');
 
         return true;
@@ -262,19 +264,21 @@ final class App_backup_run {
 
     /** Queue destroy_app for a deleted app, unless one is already waiting or running */
     static function queue_destroy(PDO $db, int $project_id, int $app_id): void {
-        $open = Platform_task::row(
-            $db,
-            "SELECT id FROM tasks
-             WHERE script = 'destroy_app' AND app_id = ? AND completed_at IS NULL AND failed_at IS NULL
-             LIMIT 1",
-            [$app_id]
-        );
+        $sql = <<<SQL
+            SELECT id FROM tasks
+            WHERE script = 'destroy_app' AND app_id = ? AND completed_at IS NULL AND failed_at IS NULL
+            LIMIT 1
+        SQL;
+        $open = Platform_task::row($db, $sql, [$app_id]);
 
         if ($open !== null) {
             return;
         }
 
-        Runtime::run($db, 'INSERT INTO tasks (project_id, app_id, script, payload) VALUES (?, ?, ?, ?)', [
+        $sql = <<<SQL
+            INSERT INTO tasks (project_id, app_id, script, payload) VALUES (?, ?, ?, ?)
+        SQL;
+        Runtime::run($db, $sql, [
             $project_id,
             $app_id,
             'destroy_app',

@@ -27,15 +27,15 @@ return function (Task_log $log) use ($runtime): int {
         return 0;
     }
 
-    $running = Platform_task::rows(
-        $db,
-        "SELECT b.app_id, b.object_prefix, a.project_id, p.namespace
-         FROM backup b
-         JOIN app a ON a.id = b.app_id
-         JOIN project p ON p.id = a.project_id
-         WHERE b.type = 'app_deleted' AND b.status = 'backing_up'
-           AND b.started_at < NOW() - INTERVAL 1 MINUTE",
-    );
+    $sql = <<<SQL
+        SELECT b.app_id, b.object_prefix, a.project_id, p.namespace
+        FROM backup b
+        JOIN app a ON a.id = b.app_id
+        JOIN project p ON p.id = a.project_id
+        WHERE b.type = 'app_deleted' AND b.status = 'backing_up'
+          AND b.started_at < NOW() - INTERVAL 1 MINUTE
+    SQL;
+    $running = Platform_task::rows($db, $sql);
 
     foreach ($running as $backup) {
         $backup['namespace'] = Manifests::namespace_name($backup);
@@ -50,11 +50,11 @@ return function (Task_log $log) use ($runtime): int {
         }
     }
 
-    $expired = Platform_task::rows(
-        $db,
-        "SELECT app_id, object_prefix FROM backup
-         WHERE type = 'app_deleted' AND status = 'ready' AND expires_at < NOW()",
-    );
+    $sql = <<<SQL
+        SELECT app_id, object_prefix FROM backup
+        WHERE type = 'app_deleted' AND status = 'ready' AND expires_at < NOW()
+    SQL;
+    $expired = Platform_task::rows($db, $sql);
 
     $failures = 0;
 

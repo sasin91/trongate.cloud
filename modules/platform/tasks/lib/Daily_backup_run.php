@@ -40,28 +40,32 @@ final class Daily_backup_run {
             return [];
         }
 
-        return Platform_task::rows(
-            $db,
-            'SELECT a.id, a.project_id, p.namespace, ds.host, ds.port
-             FROM app a
-             JOIN project p ON p.id = a.project_id
-             JOIN database_server ds ON ds.id = a.database_server_id
-             WHERE a.deleted_at IS NULL
-               AND p.deleted_at IS NULL
-               AND a.current_deployment_id IS NOT NULL
-               AND NOT EXISTS (
-                   SELECT 1 FROM backup b
-                   WHERE b.type = \'nightly\' AND b.app_id = a.id AND b.started_at >= ' . self::TODAY_SQL . '
-               )
-             ORDER BY a.id
-             LIMIT ?',
-            [$limit]
-        );
+        $today = self::TODAY_SQL;
+        $sql = <<<SQL
+            SELECT a.id, a.project_id, p.namespace, ds.host, ds.port
+            FROM app a
+            JOIN project p ON p.id = a.project_id
+            JOIN database_server ds ON ds.id = a.database_server_id
+            WHERE a.deleted_at IS NULL
+              AND p.deleted_at IS NULL
+              AND a.current_deployment_id IS NOT NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM backup b
+                  WHERE b.type = 'nightly' AND b.app_id = a.id AND b.started_at >= {$today}
+              )
+            ORDER BY a.id
+            LIMIT ?
+        SQL;
+
+        return Platform_task::rows($db, $sql, [$limit]);
     }
 
     /** App backups whose Job is running */
     static function running_count(PDO $db): int {
-        $row = Platform_task::row($db, "SELECT COUNT(*) AS n FROM backup WHERE type = 'nightly' AND app_id IS NOT NULL AND status = 'backing_up'");
+        $sql = <<<SQL
+            SELECT COUNT(*) AS n FROM backup WHERE type = 'nightly' AND app_id IS NOT NULL AND status = 'backing_up'
+        SQL;
+        $row = Platform_task::row($db, $sql);
 
         return (int) ($row['n'] ?? 0);
     }
@@ -78,12 +82,11 @@ final class Daily_backup_run {
         $prefix = Daily_backup::new_app_prefix($app_id, $now);
 
         // First, so an app whose Job cannot be started is tried once a night, not on every run
-        Platform_task::execute(
-            $db,
-            "INSERT INTO backup (type, app_id, status, object_prefix, expires_at)
-             VALUES ('nightly', ?, 'backing_up', ?, NOW() + INTERVAL ? DAY)",
-            [$app_id, $prefix, Daily_backup::KEEP_DAYS]
-        );
+        $sql = <<<SQL
+            INSERT INTO backup (type, app_id, status, object_prefix, expires_at)
+            VALUES ('nightly', ?, 'backing_up', ?, NOW() + INTERVAL ? DAY)
+        SQL;
+        Platform_task::execute($db, $sql, [$app_id, $prefix, Daily_backup::KEEP_DAYS]);
 
         $namespace = Manifests::namespace_name($app);
         $job_name = Daily_backup::job_name($app_id);
@@ -142,21 +145,24 @@ final class Daily_backup_run {
         $failed = 0;
 
         // LEFT JOIN: a backup whose app or project is gone fails (no namespace) instead of holding a slot
-        $running = Platform_task::rows(
-            $db,
-            "SELECT b.id, b.app_id, b.object_prefix, p.namespace
-             FROM backup b
-             LEFT JOIN app a ON a.id = b.app_id
-             LEFT JOIN project p ON p.id = a.project_id
-             WHERE b.type = 'nightly' AND b.app_id IS NOT NULL AND b.status = 'backing_up'
-               AND b.started_at < NOW() - INTERVAL 1 MINUTE",
-        );
+        $sql = <<<SQL
+            SELECT b.id, b.app_id, b.object_prefix, p.namespace
+            FROM backup b
+            LEFT JOIN app a ON a.id = b.app_id
+            LEFT JOIN project p ON p.id = a.project_id
+            WHERE b.type = 'nightly' AND b.app_id IS NOT NULL AND b.status = 'backing_up'
+              AND b.started_at < NOW() - INTERVAL 1 MINUTE
+        SQL;
+        $running = Platform_task::rows($db, $sql);
 
         foreach ($running as $backup) {
             try {
                 $failed += self::check_app($runtime, $log, $storage, $backup);
             } catch (Throwable $e) {
-                Platform_task::execute($db, "UPDATE backup SET status = 'failed', error = ?, finished_at = NOW() WHERE id = ?", [$e->getMessage(), (int) $backup['id']]);
+                $sql = <<<SQL
+                    UPDATE backup SET status = 'failed', error = ?, finished_at = NOW() WHERE id = ?
+                SQL;
+                Platform_task::execute($db, $sql, [$e->getMessage(), (int) $backup['id']]);
                 $log->error("App #{$backup['app_id']}: nightly backup failed: " . $e->getMessage());
                 $failed++;
             }
@@ -189,15 +195,17 @@ final class Daily_backup_run {
             $size_bytes = App_backup_run::object_bytes($storage, Daily_backup::key((string) $backup['object_prefix'], 'app'));
             $note = self::module_failure($kube, $namespace, $job_name);
 
-            Platform_task::execute(
-                $db,
-                "UPDATE backup SET status = 'ready', size_bytes = ?, error = ?, finished_at = NOW() WHERE id = ?",
-                [$size_bytes, $note, (int) $backup['id']]
-            );
+            $sql = <<<SQL
+                UPDATE backup SET status = 'ready', size_bytes = ?, error = ?, finished_at = NOW() WHERE id = ?
+            SQL;
+            Platform_task::execute($db, $sql, [$size_bytes, $note, (int) $backup['id']]);
             $log->info("App #{$app_id}: nightly backup ready" . ($note !== null ? ", but its backup module failed: {$note}" : ''));
         } else {
             $reason = self::failure_reason($kube, $namespace, $job_name);
-            Platform_task::execute($db, "UPDATE backup SET status = 'failed', error = ?, finished_at = NOW() WHERE id = ?", [$reason, (int) $backup['id']]);
+            $sql = <<<SQL
+                UPDATE backup SET status = 'failed', error = ?, finished_at = NOW() WHERE id = ?
+            SQL;
+            Platform_task::execute($db, $sql, [$reason, (int) $backup['id']]);
             $log->error("App #{$app_id}: nightly backup failed: {$reason}");
             $failed = 1;
         }
@@ -271,10 +279,14 @@ final class Daily_backup_run {
 
     /** Whether the platform database has been backed up (or tried) today */
     static function platform_done_today(PDO $db): bool {
-        return Platform_task::row(
-            $db,
-            "SELECT id FROM backup WHERE type = 'nightly' AND app_id IS NULL AND started_at >= " . self::TODAY_SQL . ' LIMIT 1'
-        ) !== null;
+        $today = self::TODAY_SQL;
+        $sql = <<<SQL
+            SELECT id FROM backup
+            WHERE type = 'nightly' AND app_id IS NULL AND started_at >= {$today}
+            LIMIT 1
+        SQL;
+
+        return Platform_task::row($db, $sql) !== null;
     }
 
     /**
@@ -287,12 +299,11 @@ final class Daily_backup_run {
         $db = $runtime->db();
         $prefix = Daily_backup::new_platform_prefix($now);
 
-        Platform_task::execute(
-            $db,
-            "INSERT INTO backup (type, app_id, status, object_prefix, expires_at)
-             VALUES ('nightly', NULL, 'backing_up', ?, NOW() + INTERVAL ? DAY)",
-            [$prefix, Daily_backup::KEEP_DAYS]
-        );
+        $sql = <<<SQL
+            INSERT INTO backup (type, app_id, status, object_prefix, expires_at)
+            VALUES ('nightly', NULL, 'backing_up', ?, NOW() + INTERVAL ? DAY)
+        SQL;
+        Platform_task::execute($db, $sql, [$prefix, Daily_backup::KEEP_DAYS]);
         $id = (int) $db->lastInsertId();
 
         $plain = self::WORK_DIR . '/platform.sql.gz';
@@ -320,12 +331,18 @@ final class Daily_backup_run {
             $link = $storage->link('PUT', Daily_backup::key($prefix, 'platform'), Daily_backup::UPLOAD_LINK_SECONDS);
             $bytes = Object_storage::upload($encrypted, $link);
 
-            Platform_task::execute($db, "UPDATE backup SET status = 'ready', size_bytes = ?, finished_at = NOW() WHERE id = ?", [$bytes, $id]);
+            $sql = <<<SQL
+                UPDATE backup SET status = 'ready', size_bytes = ?, finished_at = NOW() WHERE id = ?
+            SQL;
+            Platform_task::execute($db, $sql, [$bytes, $id]);
             $log->info("Platform database backed up ({$bytes} bytes encrypted)");
 
             return true;
         } catch (Throwable $e) {
-            Platform_task::execute($db, "UPDATE backup SET status = 'failed', error = ?, finished_at = NOW() WHERE id = ?", [$e->getMessage(), $id]);
+            $sql = <<<SQL
+                UPDATE backup SET status = 'failed', error = ?, finished_at = NOW() WHERE id = ?
+            SQL;
+            Platform_task::execute($db, $sql, [$e->getMessage(), $id]);
             $log->error('Platform database backup failed: ' . $e->getMessage());
 
             return false;
@@ -348,11 +365,11 @@ final class Daily_backup_run {
         $db = $runtime->db();
         $failures = 0;
 
-        $expired = Platform_task::rows(
-            $db,
-            "SELECT id, app_id, object_prefix FROM backup
-             WHERE type = 'nightly' AND status IN ('ready', 'failed', 'backing_up') AND expires_at < NOW()",
-        );
+        $sql = <<<SQL
+            SELECT id, app_id, object_prefix FROM backup
+            WHERE type = 'nightly' AND status IN ('ready', 'failed', 'backing_up') AND expires_at < NOW()
+        SQL;
+        $expired = Platform_task::rows($db, $sql);
 
         foreach ($expired as $backup) {
             $key = Daily_backup::key((string) $backup['object_prefix'], $backup['app_id'] === null ? 'platform' : 'app');
@@ -370,7 +387,10 @@ final class Daily_backup_run {
                 continue;
             }
 
-            Platform_task::execute($db, "UPDATE backup SET status = 'expired' WHERE id = ?", [(int) $backup['id']]);
+            $sql = <<<SQL
+                UPDATE backup SET status = 'expired' WHERE id = ?
+            SQL;
+            Platform_task::execute($db, $sql, [(int) $backup['id']]);
         }
 
         if ($expired !== []) {
