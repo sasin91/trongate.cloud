@@ -216,7 +216,7 @@ final class Daily_backup_run {
     }
 
     /**
-     * The line pack_and_upload.php logs when the app's own backup module
+     * The line Backup_runtime::note_module_failure logs when the app's own backup module
      * failed, or null when it did not (or the app has none)
      */
     static function module_failure(Kubernetes $kube, string $namespace, string $job_name): ?string {

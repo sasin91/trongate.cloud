@@ -1003,9 +1003,8 @@ class Manifests {
         ];
     }
 
-    /** The worker image's scripts the nightly backup Job runs (modules/platform/backup) */
-    const DAILY_BACKUP_DUMP_SCRIPT = '/app/modules/platform/backup/dump_database.php';
-    const DAILY_BACKUP_UPLOAD_SCRIPT = '/app/modules/platform/backup/pack_and_upload.php';
+    /** The worker image's runtime of the nightly backup Job: `php runtime.php dump|upload` */
+    const DAILY_BACKUP_RUNTIME = '/app/modules/platform/backup/runtime.php';
 
     /** Where the steps of the nightly backup Job leave their parts, on the app's files volume */
     const DAILY_BACKUP_STAGING = '.trongate-cloud-backup';
@@ -1146,7 +1145,7 @@ class Manifests {
                             [
                                 'name' => 'database',
                                 'image' => $worker_image,
-                                'command' => ['php', self::DAILY_BACKUP_DUMP_SCRIPT],
+                                'command' => ['php', self::DAILY_BACKUP_RUNTIME, 'dump'],
                                 'env' => $database_env,
                                 // The whole volume: it creates the staging folders, so they
                                 // belong to the app's user before the app step mounts its own
@@ -1167,7 +1166,7 @@ class Manifests {
                         'containers' => [[
                             'name' => 'upload',
                             'image' => $worker_image,
-                            'command' => ['php', self::DAILY_BACKUP_UPLOAD_SCRIPT],
+                            'command' => ['php', self::DAILY_BACKUP_RUNTIME, 'upload'],
                             'env' => [
                                 ['name' => 'STAGING_DIR', 'value' => '/files/' . self::DAILY_BACKUP_STAGING],
                                 ['name' => 'BACKUP_PUBLIC_KEY', 'value' => $public_key],

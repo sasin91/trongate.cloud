@@ -176,8 +176,8 @@ test('the nightly Job: database, then the app, then upload', function () {
     assert_same(Daily_backup::JOB_SECONDS, $job['spec']['activeDeadlineSeconds']);
     assert_same(false, $pod['automountServiceAccountToken']);
 
-    assert_same(['php', Manifests::DAILY_BACKUP_DUMP_SCRIPT], $database['command']);
-    assert_same(['php', Manifests::DAILY_BACKUP_UPLOAD_SCRIPT], $upload['command']);
+    assert_same(['php', Manifests::DAILY_BACKUP_RUNTIME, 'dump'], $database['command']);
+    assert_same(['php', Manifests::DAILY_BACKUP_RUNTIME, 'upload'], $upload['command']);
     assert_same('registry.trongate.cloud/platform/trongate-cloud-worker:main-1-abc', $database['image']);
     assert_same('registry.trongate.cloud/platform/trongate-cloud-worker:main-1-abc', $upload['image']);
 
