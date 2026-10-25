@@ -1,7 +1,7 @@
 ---
 title: Backups
 summary: Every app is backed up every night, kept for 30 days and encrypted. Add your own backup module to put more in it.
-order: 20
+order: 50
 sample: backup
 ---
 Trongate.cloud backs up every app every night. There is nothing to set up.
