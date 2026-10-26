@@ -1,6 +1,6 @@
 # cli
 
-Version 1.0.0
+Version 1.0.1
 
 Building blocks for command-line scripts, framework-free (no Trongate engine needed). They pair with `modules/log` (pass a `Process` line to `$log->write()`), but don't require it.
 
@@ -21,8 +21,10 @@ require_once APPPATH . 'modules/cli/Process.php';
 
 ## Tests
 
-On Linux or macOS (they run `sh`, `sleep` and `true`):
+`tests/*.phpt`, run with php-src's `run-tests.php`:
 
 ```sh
-php modules/cli/tests/Cli_test.php
+php bin/run-tests.php -q modules/cli
 ```
+
+The ones that run `sh`, `sleep` or `true` skip on Windows.
