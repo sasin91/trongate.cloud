@@ -2,8 +2,9 @@
 
 /**
  * Dumps one MariaDB database to a gzipped .sql file: each table's CREATE
- * TABLE and its rows as INSERTs, then the views without their DEFINER, so
- * the file imports into any database.
+ * TABLE, its rows as INSERTs (generated columns left out: MariaDB computes
+ * them) and its triggers, then the views; triggers and views without their
+ * DEFINER, so the file imports into any database with the mariadb client.
  *
  * The rows are read inside one consistent snapshot, so writes made while
  * the dump runs do not tear it (InnoDB tables; the CREATE statements are
@@ -28,6 +29,8 @@ final class Database_dump {
         return new PDO($dsn, $user, $password, [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::MYSQL_ATTR_USE_BUFFERED_QUERY => false,
+            // Values exactly as MariaDB sends them: a PHP float would round a DOUBLE
+            PDO::ATTR_STRINGIFY_FETCHES => true,
         ]);
     }
 
@@ -91,14 +94,16 @@ final class Database_dump {
         return '`' . str_replace('`', '``', $name) . '`';
     }
 
-    /** One table's CREATE TABLE and INSERTs; returns its row count */
+    /** One table's CREATE TABLE, INSERTs and triggers; returns its row count */
     static function write_table(PDO $pdo, $out, string $table): int {
         $name = self::quote_name($table);
         $create = $pdo->query("SHOW CREATE TABLE {$name}")->fetch(PDO::FETCH_NUM)[1];
+        $columns = implode(', ', array_map(self::quote_name(...), self::stored_columns($pdo, $table)));
+        $triggers = self::triggers($pdo, $table);
 
         gzwrite($out, "\n-- Table {$table}\nDROP TABLE IF EXISTS {$name};\n{$create};\n");
 
-        $rows = $pdo->query("SELECT * FROM {$name}", PDO::FETCH_NUM);
+        $rows = $pdo->query("SELECT {$columns} FROM {$name}", PDO::FETCH_NUM);
         $batch = [];
         $count = 0;
 
@@ -113,18 +118,64 @@ final class Database_dump {
             $count++;
 
             if (count($batch) === self::ROWS_PER_INSERT) {
-                gzwrite($out, "INSERT INTO {$name} VALUES\n" . implode(",\n", $batch) . ";\n");
+                gzwrite($out, "INSERT INTO {$name} ({$columns}) VALUES\n" . implode(",\n", $batch) . ";\n");
                 $batch = [];
             }
         }
 
         if ($batch !== []) {
-            gzwrite($out, "INSERT INTO {$name} VALUES\n" . implode(",\n", $batch) . ";\n");
+            gzwrite($out, "INSERT INTO {$name} ({$columns}) VALUES\n" . implode(",\n", $batch) . ";\n");
         }
 
         $rows->closeCursor();
 
+        // After the rows, so loading them does not fire the triggers
+        foreach ($triggers as $trigger) {
+            gzwrite($out, "DELIMITER ;;\n{$trigger};;\nDELIMITER ;\n");
+        }
+
         return $count;
+    }
+
+    /**
+     * The table's columns that hold their own values, in order: generated
+     * columns are left out, since MariaDB refuses a value for them
+     *
+     * @return list<string>
+     */
+    static function stored_columns(PDO $pdo, string $table): array {
+        $sql = <<<SQL
+            SELECT COLUMN_NAME FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND IS_GENERATED = 'NEVER'
+            ORDER BY ORDINAL_POSITION
+        SQL;
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$table]);
+
+        return $stmt->fetchAll(PDO::FETCH_COLUMN);
+    }
+
+    /**
+     * The table's CREATE TRIGGER statements, in firing order, without their DEFINER
+     *
+     * @return list<string>
+     */
+    static function triggers(PDO $pdo, string $table): array {
+        $sql = <<<SQL
+            SELECT TRIGGER_NAME FROM information_schema.TRIGGERS
+            WHERE TRIGGER_SCHEMA = DATABASE() AND EVENT_OBJECT_TABLE = ?
+            ORDER BY ACTION_TIMING, EVENT_MANIPULATION, ACTION_ORDER
+        SQL;
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$table]);
+        $triggers = [];
+
+        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $trigger) {
+            $create = (string) $pdo->query('SHOW CREATE TRIGGER ' . self::quote_name((string) $trigger))->fetch(PDO::FETCH_ASSOC)['SQL Original Statement'];
+            $triggers[] = (string) preg_replace('/^CREATE\s+DEFINER\s*=\s*(`[^`]*`|\S+?)@(`[^`]*`|\S+)\s+/i', 'CREATE ', $create);
+        }
+
+        return $triggers;
     }
 
     static function write_view(PDO $pdo, $out, string $view): void {
