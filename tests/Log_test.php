@@ -9,13 +9,13 @@
 require_once __DIR__ . '/bootstrap.php';
 require_once __DIR__ . '/../modules/log/Log.php';
 
-/** Keeps every line it is given */
+/** Keeps every message it is given */
 final class Kept_lines implements Log_handler {
     /** @var list<string> */
     public array $lines = [];
 
-    function handle(string $level, string $line): void {
-        $this->lines[] = "{$level} {$line}";
+    function handle(string $level, string $message): void {
+        $this->lines[] = "{$level} {$message}";
     }
 }
 
@@ -27,12 +27,14 @@ function stream_output(callable $write): string {
     return (string) stream_get_contents($stream);
 }
 
-test('a message goes to every handler one line at a time, blank lines left out', function () {
+test('a message goes to every handler whole; a blank one is left out', function () {
     $a = new Kept_lines();
     $b = new Kept_lines();
-    (new Log([$a, $b]))->warn("one\n\ntwo\n");
+    $log = new Log([$a, $b]);
+    $log->warn("one\ntwo\n");
+    $log->info("  \n");
 
-    assert_same(['warn one', 'warn two'], $a->lines);
+    assert_same(["warn one\ntwo"], $a->lines);
     assert_same($a->lines, $b->lines);
 });
 
@@ -45,7 +47,7 @@ test('an unknown level is written as info', function () {
 
 test('a failing handler does not stop the others', function () {
     $broken = new class implements Log_handler {
-        function handle(string $level, string $line): void {
+        function handle(string $level, string $message): void {
             throw new RuntimeException('down');
         }
     };

@@ -6,9 +6,9 @@ require_once __DIR__ . '/Task_log_handler.php';
 /**
  * Task Log
  *
- * The log of one task (modules/log Log): its lines go into task_logs
+ * The log of one task (modules/log Log): its messages go into task_logs
  * (Task_log_handler, streamed to the UI and MCP) and to STDOUT for the
- * worker's container logs. A line that cannot be written to task_logs still
+ * worker's container logs. A message that cannot be written to task_logs still
  * reaches STDOUT, and never breaks the running task.
  */
 class Task_log extends Log {
@@ -23,7 +23,7 @@ class Task_log extends Log {
 
     /**
      * Mark where the task enters one of a deploy's steps (Deploy_steps::KEYS):
-     * the deployment page shows the lines after it under that step
+     * the deployment page shows the messages after it under that step
      */
     function step(string $key): void {
         $this->write('step', $key);

@@ -7,9 +7,8 @@ require_once __DIR__ . '/Error_log_handler.php';
 /**
  * A log, after Monolog, for web requests and command-line scripts alike:
  * each message goes to every handler (Stream_handler, Error_log_handler, or
- * one of your own), one line at a time, so a multi-line message reads like
- * streamed output. A handler that fails never stops the caller; the failure
- * goes to STDERR.
+ * one of your own) as one entry; a blank message is skipped. A handler that
+ * fails never stops the caller; the failure goes to STDERR.
  *
  *   $log = new Log([new Stream_handler('[backup] ')]);
  *   $log->info('Dumped 12 tables');
@@ -49,17 +48,17 @@ class Log {
             $level = 'info';
         }
 
-        foreach (preg_split('/\r\n|\r|\n/', rtrim($message, "\r\n")) ?: [] as $line) {
-            if (trim($line) === '') {
-                continue;
-            }
+        $message = rtrim($message);
 
-            foreach ($this->handlers as $handler) {
-                try {
-                    $handler->handle($level, $line);
-                } catch (Throwable $e) {
-                    fwrite(STDERR, get_class($handler) . ' failed: ' . $e->getMessage() . PHP_EOL);
-                }
+        if ($message === '') {
+            return;
+        }
+
+        foreach ($this->handlers as $handler) {
+            try {
+                $handler->handle($level, $message);
+            } catch (Throwable $e) {
+                fwrite(STDERR, get_class($handler) . ' failed: ' . $e->getMessage() . PHP_EOL);
             }
         }
     }
