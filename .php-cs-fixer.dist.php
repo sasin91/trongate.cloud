@@ -5,6 +5,7 @@
 $finder = PhpCsFixer\Finder::create()
     ->in([
         __DIR__ . '/config',
+        __DIR__ . '/modules/cli',
         __DIR__ . '/modules/customer',
         __DIR__ . '/modules/deployments',
         __DIR__ . '/modules/encryption',
