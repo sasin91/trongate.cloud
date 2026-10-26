@@ -490,10 +490,11 @@ class Projects extends Trongate {
             $expires_at = strtotime((string) $backup->expires_at);
             $row['status'] = 'Ready';
             $row['pill_class'] = 'status-success';
-            $row['detail'] = 'Downloadable until ' . gmdate('j M Y, H:i', $expires_at) . ' UTC. Then it is deleted for good.';
+            $size = $backup->size_bytes === null ? '' : $this->_size_label($backup->size_bytes) . ' in all. ';
+            $row['detail'] = $size . 'Downloadable until ' . gmdate('j M Y, H:i', $expires_at) . ' UTC. Then it is deleted for good.';
             $row['downloads'] = [
-                'Database (' . $this->_size_label($backup->database_bytes) . ')' => 'apps/' . (int) $backup->app_id . '/backup/database',
-                'Files (' . $this->_size_label($backup->files_bytes) . ')' => 'apps/' . (int) $backup->app_id . '/backup/files',
+                'Database' => 'apps/' . (int) $backup->app_id . '/backup/database',
+                'Files' => 'apps/' . (int) $backup->app_id . '/backup/files',
             ];
         }
 

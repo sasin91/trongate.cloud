@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The small Markdown subset news posts are written in, rendered to HTML.
+ * The small Markdown subset news posts and docs pages (modules/docs) are written in, rendered to HTML.
  *
  * Blocks: ## and ### headings, paragraphs, - and 1. lists, > quotes, ``` code fences
  * and images on a line of their own: ![What it shows](/images/news/file.webp), served from public/.

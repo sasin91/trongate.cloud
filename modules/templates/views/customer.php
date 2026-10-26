@@ -32,6 +32,7 @@
         <nav class="header-nav">
             <a href="dashboard" class="nav-link header-projects">Projects</a>
             <a href="integrations/claude" class="nav-link header-projects">Claude</a>
+            <a href="docs" class="nav-link header-projects">Docs</a>
             <?php if ($impersonation === null): ?>
                 <a href="logout" class="nav-link">Sign out</a>
             <?php endif; ?>

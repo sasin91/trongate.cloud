@@ -411,22 +411,24 @@ CREATE TABLE deployment (
   CONSTRAINT fk_deployment_customer FOREIGN KEY (customer_id) REFERENCES customer (id)
 );
 
--- Deleting an app backs up its database and files first (App_backup): one row
--- per deleted app, while the backup is taken and for as long as its project
--- can download it.
-CREATE TABLE app_backup (
-  app_id INT PRIMARY KEY,
+-- Every backup in the backups bucket. 'app_deleted': deleting an app backs up
+-- its database and files first (App_backup), one row per deleted app, which
+-- its project can download for a while. 'nightly': every app and the
+-- platform database (app_id NULL) each night (Daily_backup).
+CREATE TABLE backup (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  type ENUM('app_deleted', 'nightly') NOT NULL,
+  app_id INT NULL COMMENT 'NULL: the platform database',
   status ENUM('backing_up', 'ready', 'failed', 'expired') NOT NULL DEFAULT 'backing_up',
-  object_prefix VARCHAR(120) NOT NULL COMMENT 'folder of its objects in the backups bucket (App_backup::new_prefix)',
-  database_bytes BIGINT UNSIGNED NULL,
-  files_bytes BIGINT UNSIGNED NULL,
-  error TEXT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  ready_at DATETIME NULL,
-  expires_at DATETIME NULL COMMENT 'downloads end and the objects are deleted',
+  object_prefix VARCHAR(120) NOT NULL COMMENT 'folder of its objects in the backups bucket',
+  size_bytes BIGINT UNSIGNED NULL COMMENT 'size of what is in the bucket',
+  error TEXT NULL COMMENT 'why it failed, or why the app''s own backup module failed',
+  started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  finished_at DATETIME NULL COMMENT 'when it was ready or failed',
+  expires_at DATETIME NULL COMMENT 'it is deleted from the bucket then',
+  KEY idx_app (app_id, started_at),
   KEY idx_status (status, expires_at),
-  CONSTRAINT fk_app_backup_app FOREIGN KEY (app_id) REFERENCES app (id) ON DELETE CASCADE
+  CONSTRAINT fk_backup_app FOREIGN KEY (app_id) REFERENCES app (id) ON DELETE CASCADE
 );
 
 -- An app's processes (Manifests::_process_deployment): other entrypoints run
@@ -588,4 +590,5 @@ INSERT INTO schema_migrations (name) VALUES
   ('0016_app_backup'),
   ('0017_app_database_log_credentials'),
   ('0018_app_default_module'),
-  ('0019_task_log_steps');
+  ('0019_task_log_steps'),
+  ('0020_backup');

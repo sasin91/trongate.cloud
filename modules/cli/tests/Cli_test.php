@@ -3,12 +3,12 @@
 /**
  * modules/cli: Env and Process.
  *
- * Run: php tests/Cli_test.php (exits non-zero on a failure)
+ * Run: php modules/cli/tests/Cli_test.php (exits non-zero on a failure)
  */
 
 require_once __DIR__ . '/bootstrap.php';
-require_once __DIR__ . '/../modules/cli/Env.php';
-require_once __DIR__ . '/../modules/cli/Process.php';
+require_once __DIR__ . '/../Env.php';
+require_once __DIR__ . '/../Process.php';
 
 test('Env::required returns the value, and refuses a missing one', function () {
     putenv('CLI_TEST_SETTING=yes');

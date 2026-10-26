@@ -79,6 +79,7 @@ class Runtime {
         'redeploy_outdated_apps' => APP_CONFIG_REDEPLOY_INTERVAL,
         'check_sql_imports' => SQL_IMPORT_CHECK_INTERVAL,
         'check_app_backups' => APP_BACKUP_CHECK_INTERVAL,
+        'back_up_daily' => DAILY_BACKUP_INTERVAL,
     ];
 
     /** How often the poll loop looks for due periodic tasks */

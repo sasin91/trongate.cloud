@@ -33,6 +33,7 @@
             "php tests/App_wizard_draft_test.php",
             "php tests/Trongate_upgrade_test.php",
             "php tests/News_test.php",
+            "php tests/Docs_test.php",
             "php tests/App_traffic_test.php",
             "php tests/Mail_capture_test.php",
             "php tests/App_state_test.php",
@@ -51,9 +52,15 @@
             "php tests/Build_commands_test.php",
             "php tests/Object_storage_test.php",
             "php tests/App_backup_test.php",
+            "php tests/Daily_backup_test.php",
             "php tests/Impersonation_test.php",
-            "php tests/Log_test.php",
-            "php tests/Cli_test.php"
+            "php modules/log/tests/Log_test.php",
+            "php modules/cli/tests/Cli_test.php"
+        ],
+        "backup:keys": "php modules/platform/backup/keys.php",
+        "backup:decrypt": [
+            "Composer\\Config::disableProcessTimeout",
+            "php modules/platform/backup/decrypt.php"
         ],
         "qa": [
             "@lint",
@@ -61,5 +68,9 @@
             "@analyse",
             "@test"
         ]
+    },
+    "scripts-descriptions": {
+        "backup:keys": "Make the key pair the nightly backups are encrypted to",
+        "backup:decrypt": "Decrypt a nightly backup: APP_BACKUPS_PRIVATE_KEY=... composer backup:decrypt -- {backup.enc} {output}"
     }
 }

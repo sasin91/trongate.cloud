@@ -21,6 +21,10 @@ $routes = [
     'news/writing' => 'news/index/writing',
     'news/(:any)' => 'news/show/$1',
 
+    // Docs for customers, with sample modules to download (modules/docs/pages, modules/docs/samples)
+    'docs/samples/(:any)' => 'docs/sample/$1',
+    'docs/(:any)' => 'docs/show/$1',
+
     // Dashboard: the customer's projects
     'dashboard' => 'customer',
 

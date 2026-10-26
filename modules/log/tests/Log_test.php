@@ -3,11 +3,11 @@
 /**
  * modules/log: Log and its writers.
  *
- * Run: php tests/Log_test.php (exits non-zero on a failure)
+ * Run: php modules/log/tests/Log_test.php (exits non-zero on a failure)
  */
 
 require_once __DIR__ . '/bootstrap.php';
-require_once __DIR__ . '/../modules/log/Log.php';
+require_once __DIR__ . '/../Log.php';
 
 /** Keeps every message it is given */
 final class Kept_lines implements Log_writer {

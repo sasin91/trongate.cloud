@@ -56,7 +56,8 @@ spec:
                 name: trongate-cloud-mail
                 optional: true
             # The bucket of deleted apps' backups (App_backup); without it a deleted
-            # app's database and files are kept instead
+            # app's database and files are kept instead. With APP_BACKUPS_PUBLIC_KEY
+            # also the nightly backups (Daily_backup)
             - secretRef:
                 name: trongate-cloud-backups
                 optional: true
