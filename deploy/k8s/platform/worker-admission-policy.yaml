@@ -10,7 +10,7 @@
 #    (platform image) Pods in the buildkit namespace.
 # 2. What: the content checks in trongate-worker-objects, so a compromised worker
 #    cannot loosen a tenant namespace, expose a Service, mount a token, claim a
-#    platform hostname, run anything but the backup script in a Job, or point MariaDB CRs at anything but a tenant's own
+#    platform hostname, run anything but the backup script in a deleted app's backup Job, or point MariaDB CRs at anything but a tenant's own
 #    tc_p{id} database on the shared servers.
 # 3. Deletes: trongate-worker-owned-deletes, so the worker only deletes objects
 #    it labelled itself (destroy_app, destroy_service, build daemon Pods), and a tenant Namespace
@@ -191,6 +191,7 @@ spec:
     # database password only, no token and no host access
     - expression: >-
         request.kind.kind != 'Job' ||
+        object.metadata.name.matches('^p[0-9]+-daily-backup$') ||
         (object.metadata.name.matches('^p[0-9]+-backup$') &&
          object.spec.template.spec.containers.size() == 1 &&
          object.spec.template.spec.containers.all(c,
@@ -217,6 +218,16 @@ spec:
       message: >-
         Backup Jobs must be p{id}-backup running the app base image's backup script, with only
         the app's own files volume and database Secret, no service account token and no host access
+    # A running app's nightly backup Job (Manifests::daily_backup_job): the
+    # same as an app's Deployment, which may already run any image with the
+    # app's Secrets, so only no token. Host access and privileges are left to
+    # the tenant namespaces' restricted Pod Security (above).
+    - expression: >-
+        request.kind.kind != 'Job' ||
+        !object.metadata.name.matches('^p[0-9]+-daily-backup$') ||
+        (has(object.spec.template.spec.automountServiceAccountToken) &&
+         object.spec.template.spec.automountServiceAccountToken == false)
+      message: Nightly backup Jobs must set automountServiceAccountToken=false
     # MariaDB CRs: only a tenant database/user on a server in the databases
     # namespace (the platform database lives in trongate-cloud), no grant option
     - expression: >-

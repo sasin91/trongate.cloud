@@ -62,6 +62,10 @@ defined('SQL_IMPORT_CHECK_INTERVAL') || define('SQL_IMPORT_CHECK_INTERVAL', gete
 // once its backup Job is done, and deletes backups past their download window
 // (App_backup). 0 turns it off.
 defined('APP_BACKUP_CHECK_INTERVAL') || define('APP_BACKUP_CHECK_INTERVAL', getenv('APP_BACKUP_CHECK_INTERVAL') !== false ? (int) getenv('APP_BACKUP_CHECK_INTERVAL') : 60);
+// Seconds between back_up_daily runs: from Daily_backup::HOUR (UTC) the worker
+// takes the night's backups of every running app and of the platform database,
+// a few at a time, and deletes backups older than Daily_backup::KEEP_DAYS. 0 turns it off.
+defined('DAILY_BACKUP_INTERVAL') || define('DAILY_BACKUP_INTERVAL', getenv('DAILY_BACKUP_INTERVAL') !== false ? (int) getenv('DAILY_BACKUP_INTERVAL') : 300);
 
 // The trongate.cloud GitHub App (docs/github-app.md). One App does both jobs:
 // its OAuth client signs customers in and lists the repositories they may
@@ -105,3 +109,8 @@ defined('APP_BACKUPS_S3_REGION') || define('APP_BACKUPS_S3_REGION', getenv('APP_
 defined('APP_BACKUPS_S3_BUCKET') || define('APP_BACKUPS_S3_BUCKET', getenv('APP_BACKUPS_S3_BUCKET') ?: '');
 defined('APP_BACKUPS_S3_ACCESS_KEY') || define('APP_BACKUPS_S3_ACCESS_KEY', getenv('APP_BACKUPS_S3_ACCESS_KEY') ?: '');
 defined('APP_BACKUPS_S3_SECRET_KEY') || define('APP_BACKUPS_S3_SECRET_KEY', getenv('APP_BACKUPS_S3_SECRET_KEY') ?: '');
+// The nightly backups (Daily_backup) go to the same bucket, encrypted to this
+// public key (base64, Backup_file; `composer backup:keys` makes a pair). Only the
+// worker needs it. Reading a backup takes the private key, which is kept
+// offline (`composer backup:decrypt`). Unset: no nightly backups are taken.
+defined('APP_BACKUPS_PUBLIC_KEY') || define('APP_BACKUPS_PUBLIC_KEY', getenv('APP_BACKUPS_PUBLIC_KEY') ?: '');
