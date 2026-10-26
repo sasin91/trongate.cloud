@@ -4,10 +4,12 @@ parameters:
     # App modules only — the rest of modules/ is stock Trongate, maintained upstream
     paths:
         - config
+        - modules/cli
         - modules/customer
         - modules/deployments
         - modules/encryption
         - modules/github_auth
+        - modules/log
         - modules/impersonation
         - modules/mcp
         - modules/metrics

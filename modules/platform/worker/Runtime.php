@@ -15,6 +15,7 @@ require_once APPPATH . 'modules/platform/manifests/Domain_dns.php';
 require_once __DIR__ . '/Module_reference.php';
 require_once __DIR__ . '/retry.php';
 require_once __DIR__ . '/Task_log.php';
+require_once APPPATH . 'modules/cli/Process.php';
 
 /**
  * Task Worker Runtime
@@ -111,6 +112,9 @@ class Runtime {
 
     private ?Kubernetes $kube = null;
     private ?Valkey $valkey = null;
+
+    /** The worker's own lines, outside any task */
+    private ?Log $runtime_log = null;
 
     private int $next_schedule_check = 0;
 
@@ -224,12 +228,6 @@ class Runtime {
      * @return int The process exit code (124 or 137 on timeout)
      */
     function shell(string $script, Task_log $log, int $timeout = self::SHELL_TIMEOUT_SECONDS): int {
-        $descriptors = [
-            0 => ['pipe', 'r'],
-            1 => ['pipe', 'w'],
-            2 => ['pipe', 'w'],
-        ];
-
         $command = ['sh', '-c', $script];
         $env = null; // Windows dev: sh needs the full environment, there is no GNU timeout
 
@@ -238,59 +236,15 @@ class Runtime {
             $env = $this->_shell_env();
         }
 
-        $process = proc_open($command, $descriptors, $pipes, null, $env);
+        // GNU timeout stops the whole process tree, so the Process itself needs none
+        $process = new Process($command, env: $env, timeout: null);
 
-        if (!is_resource($process)) {
+        try {
+            $exit_code = $process->run(fn(string $type, string $line) => $log->write($type === Process::ERR ? 'warn' : 'info', $line));
+        } catch (RuntimeException) {
             $log->error('Failed to spawn process');
             return 1;
         }
-
-        fclose($pipes[0]);
-        stream_set_blocking($pipes[1], false);
-        stream_set_blocking($pipes[2], false);
-
-        $open = [1 => $pipes[1], 2 => $pipes[2]];
-        $buffers = [1 => '', 2 => ''];
-        $levels = [1 => 'info', 2 => 'warn'];
-
-        while (!empty($open)) {
-            $read = array_values($open);
-            $write = null;
-            $except = null;
-
-            if (@stream_select($read, $write, $except, 1) === false) {
-                break;
-            }
-
-            foreach ($open as $fd => $pipe) {
-                $chunk = fread($pipe, 8192);
-
-                if ($chunk !== false && $chunk !== '') {
-                    $buffers[$fd] .= $chunk;
-
-                    // Log complete lines, keep the partial tail for the next read
-                    while (($pos = strpos($buffers[$fd], "\n")) !== false) {
-                        $log->write($levels[$fd], substr($buffers[$fd], 0, $pos));
-                        $buffers[$fd] = substr($buffers[$fd], $pos + 1);
-                    }
-                }
-
-                if (feof($pipe)) {
-                    if ($buffers[$fd] !== '') {
-                        $log->write($levels[$fd], $buffers[$fd]);
-                        $buffers[$fd] = '';
-                    }
-                    fclose($pipe);
-                    unset($open[$fd]);
-                }
-            }
-        }
-
-        foreach ($open as $pipe) {
-            fclose($pipe);
-        }
-
-        $exit_code = proc_close($process);
 
         if (PHP_OS_FAMILY !== 'Windows' && ($exit_code === 124 || $exit_code === 137)) {
             $log->error("Step timed out after {$timeout} seconds");
@@ -427,7 +381,8 @@ class Runtime {
     }
 
     private function log(string $message): void {
-        fwrite(STDOUT, '[Runtime] ' . $message . PHP_EOL);
+        $this->runtime_log ??= new Log([new Stream_writer('[Runtime] ', false)]);
+        $this->runtime_log->info($message);
     }
 
     /**
