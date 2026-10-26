@@ -10,6 +10,7 @@ $finder = PhpCsFixer\Finder::create()
         __DIR__ . '/modules/deployments',
         __DIR__ . '/modules/encryption',
         __DIR__ . '/modules/github_auth',
+        __DIR__ . '/modules/log',
         __DIR__ . '/modules/mcp',
         __DIR__ . '/modules/metrics',
         __DIR__ . '/modules/news',

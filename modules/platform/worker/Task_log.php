@@ -1,12 +1,12 @@
 <?php
 
-require_once APPPATH . 'modules/cli/Log.php';
+require_once APPPATH . 'modules/log/Log.php';
 require_once __DIR__ . '/Task_log_handler.php';
 
 /**
  * Task Log
  *
- * The log of one task (modules/cli Log): its lines go into task_logs
+ * The log of one task (modules/log Log): its lines go into task_logs
  * (Task_log_handler, streamed to the UI and MCP) and to STDOUT for the
  * worker's container logs. A line that cannot be written to task_logs still
  * reaches STDOUT, and never breaks the running task.

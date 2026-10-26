@@ -1,6 +1,6 @@
 <?php
 
-require_once APPPATH . 'modules/cli/Log_handler.php';
+require_once APPPATH . 'modules/log/Log_handler.php';
 
 /**
  * Writes a task's log lines into task_logs, where the panel and the MCP

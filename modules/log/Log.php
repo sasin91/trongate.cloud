@@ -2,15 +2,20 @@
 
 require_once __DIR__ . '/Log_handler.php';
 require_once __DIR__ . '/Stream_handler.php';
+require_once __DIR__ . '/Error_log_handler.php';
 
 /**
- * A log for command-line scripts, after Monolog: each message goes to every
- * handler (Stream_handler, or one of your own), one line at a time, so a
- * multi-line message reads like streamed output. A handler that fails never
- * stops the script; the failure goes to STDERR.
+ * A log, after Monolog, for web requests and command-line scripts alike:
+ * each message goes to every handler (Stream_handler, Error_log_handler, or
+ * one of your own), one line at a time, so a multi-line message reads like
+ * streamed output. A handler that fails never stops the caller; the failure
+ * goes to STDERR.
  *
  *   $log = new Log([new Stream_handler('[backup] ')]);
  *   $log->info('Dumped 12 tables');
+ *
+ *   $log = new Log([new Error_log_handler('[webhooks] ')]);
+ *   $log->warn('Unknown event: push');
  *
  * Framework-free.
  */
