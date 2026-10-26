@@ -26,17 +26,11 @@ if ($backup_dir === false || $backup_dir === '') {
     exit(1);
 }
 
-// Your database settings: Trongate v2 sets $databases, Trongate v1 constants
-require 'config/database.php';
-
-$db = isset($databases)
-    ? $databases['default']
-    : ['host' => HOST, 'port' => defined('PORT') ? PORT : 3306, 'user' => USER, 'password' => PASSWORD, 'database' => DATABASE];
-
+// Trongate.cloud sets your app's database settings for this script
 $pdo = new PDO(
-    "mysql:host={$db['host']};port={$db['port']};dbname={$db['database']};charset=utf8mb4",
-    $db['user'],
-    $db['password'],
+    'mysql:host=' . getenv('DB_HOST') . ';port=' . getenv('DB_PORT') . ';dbname=' . getenv('DB_NAME') . ';charset=utf8mb4',
+    getenv('DB_NAME'),
+    getenv('DB_PASSWORD'),
     [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::MYSQL_ATTR_USE_BUFFERED_QUERY => false]
 );
 

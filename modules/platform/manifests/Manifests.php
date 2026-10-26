@@ -1085,12 +1085,12 @@ class Manifests {
             'seccompProfile' => ['type' => 'RuntimeDefault'],
         ];
         $staging = self::DAILY_BACKUP_STAGING;
+        // The app's database; DB_NAME is also its user. The app's own backup module gets them too (docs/backups.md)
         $database_env = [
             ['name' => 'DB_HOST', 'value' => (string) $database['host']],
             ['name' => 'DB_PORT', 'value' => (string) ($database['port'] ?? 3306)],
             ['name' => 'DB_NAME', 'value' => self::database_name($app_id)],
             ['name' => 'DB_PASSWORD', 'valueFrom' => ['secretKeyRef' => ['name' => "p{$app_id}-database", 'key' => 'password']]],
-            ['name' => 'STAGING_DIR', 'value' => '/files/' . self::DAILY_BACKUP_STAGING],
         ];
 
         // The app's config files and persistent files, as its Deployment mounts them
@@ -1146,7 +1146,7 @@ class Manifests {
                                 'name' => 'database',
                                 'image' => $worker_image,
                                 'command' => ['php', self::DAILY_BACKUP_RUNTIME, 'dump'],
-                                'env' => $database_env,
+                                'env' => [...$database_env, ['name' => 'STAGING_DIR', 'value' => '/files/' . self::DAILY_BACKUP_STAGING]],
                                 // The whole volume: it creates the staging folders, so they
                                 // belong to the app's user before the app step mounts its own
                                 'volumeMounts' => [['name' => 'files', 'mountPath' => '/files']],
@@ -1158,6 +1158,7 @@ class Manifests {
                                 'image' => (string) $app_container['image'],
                                 'command' => ['sh', '-c', self::daily_backup_app_script()],
                                 'envFrom' => $app_container['envFrom'] ?? [],
+                                'env' => $database_env,
                                 'volumeMounts' => $app_mounts,
                                 'securityContext' => $security,
                                 'resources' => self::BACKUP_RESOURCES,

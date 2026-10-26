@@ -195,7 +195,7 @@ test('only the upload step gets the upload link and the key', function () {
 
     assert_same(['STAGING_DIR', 'BACKUP_PUBLIC_KEY', 'UPLOAD_URL'], $names($pod['containers'][0]));
     assert_same(false, in_array('UPLOAD_URL', $names($pod['initContainers'][0]), true));
-    assert_same([], $names($pod['initContainers'][1]));
+    assert_same(['DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_PASSWORD'], $names($pod['initContainers'][1]));
 });
 
 test('the app step mounts only its own staging folder, not the dump', function () {

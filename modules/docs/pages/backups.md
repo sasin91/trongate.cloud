@@ -24,8 +24,9 @@ Add `modules/trongate-cloud/backup/runtime.php` to your app to put more into the
 
 It runs:
 
-- with your app's own image, config files and environment variables, from your app's folder, so `require 'config/database.php';` works as it does in your app
+- with your app's own image, config files and environment variables, from your app's folder
 - with `BACKUP_DIR` set to an empty folder: everything you write there is added to the backup
+- with your database's settings in `DB_HOST`, `DB_PORT`, `DB_NAME` (also the user name) and `DB_PASSWORD`
 - for up to 30 minutes
 
 When it fails (a non-zero exit, an error, or the 30 minutes run out), the backup still goes ahead with everything else, and the failure is noted with the backup. Its output is kept in the backup as `custom.log`.
@@ -37,10 +38,10 @@ Download the sample below and unzip it into your app's root folder. It saves you
 
 $backup_dir = getenv('BACKUP_DIR');
 
-// Your app's own config: the same database your app uses
-require 'config/database.php';
+$pdo = new PDO('mysql:host=' . getenv('DB_HOST') . ';port=' . getenv('DB_PORT') . ';dbname=' . getenv('DB_NAME'), getenv('DB_NAME'), getenv('DB_PASSWORD'));
+$users = $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
 
-file_put_contents("{$backup_dir}/report.txt", 'Anything written here is in the backup');
+file_put_contents("{$backup_dir}/report.txt", "{$users} users at backup time");
 ```
 
 ## Limits
