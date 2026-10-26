@@ -36,6 +36,18 @@ test('a callback gets each line as it comes, from both streams', function () {
     assert_same(['err b', 'out a', 'out c'], $lines);
 });
 
+test('output without line breaks reaches the callback in bounded pieces', function () {
+    $largest = 0;
+    $total = 0;
+    (new Process(['head', '-c', '3000000', '/dev/zero']))->run(function (string $type, string $piece) use (&$largest, &$total) {
+        $largest = max($largest, strlen($piece));
+        $total += strlen($piece);
+    });
+
+    assert_same(3000000, $total);
+    assert_same(true, $largest <= Process::MAX_LINE_BYTES + Process::READ_BYTES);
+});
+
 test('must_run passes on success and throws with the error output otherwise', function () {
     assert_same(0, (new Process(['true']))->must_run()->exit_code());
     assert_throws(fn() => (new Process(['sh', '-c', 'echo nope >&2; exit 3']))->must_run(), "sh -c 'echo nope >&2; exit 3' exited with 3: nope");
