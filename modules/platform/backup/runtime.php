@@ -2,7 +2,7 @@
 
 /**
  * The runtime of an app's nightly backup Job (Manifests::daily_backup_job).
- * A backup is a pipeline of actions, run in order:
+ * A backup is a list of steps, run in order:
  *
  *   php runtime.php dump      worker image: make the staging folder, dump the database
  *   (the app step)            the app's own image: pack /app, then run the app's own
@@ -31,7 +31,6 @@
 require __DIR__ . '/../../log/Log.php';
 require __DIR__ . '/../../cli/Env.php';
 require __DIR__ . '/../../cli/Process.php';
-require __DIR__ . '/../../pipeline/Pipeline.php';
 require __DIR__ . '/../live/Database_dump.php';
 require __DIR__ . '/../live/Backup_file.php';
 require __DIR__ . '/../live/Object_storage.php';
@@ -45,13 +44,13 @@ try {
     exit(1);
 }
 
-// Each step is a pipe (modules/pipeline) that gets the staging folder and passes it on.
+// Each step gets the staging folder and throws when it fails; they run in order.
 // Programs get no timeout of their own: the Job's deadline (Daily_backup::JOB_SECONDS) covers them.
 
 // Removes everything inside the staging folder, keeping the folder
 $empty = fn(string $staging) => (new Process(['find', $staging, '-mindepth', '1', '-delete'], timeout: null))->must_run();
 
-$make_staging = function (string $staging, Closure $next) use ($empty): mixed {
+$make_staging = function (string $staging) use ($empty): void {
     if (is_dir($staging)) {
         $empty($staging);
     }
@@ -62,56 +61,42 @@ $make_staging = function (string $staging, Closure $next) use ($empty): mixed {
             throw new RuntimeException("cannot create {$dir}");
         }
     }
-
-    return $next($staging);
 };
 
-$dump_database = function (string $staging, Closure $next) use ($log): mixed {
+$dump_database = function (string $staging) use ($log): void {
     $name = Env::required('DB_NAME');
     $pdo = Database_dump::connect(Env::required('DB_HOST'), (int) Env::required('DB_PORT'), $name, $name, Env::required('DB_PASSWORD'));
     Database_dump::write($pdo, $name, "{$staging}/database/database.sql.gz", [$log, 'info']);
-
-    return $next($staging);
 };
 
-$check_parts = function (string $staging, Closure $next): mixed {
+$check_parts = function (string $staging): void {
     foreach (['database/database.sql.gz', 'app/app.tar'] as $part) {
         if (!is_file("{$staging}/{$part}")) {
             throw new RuntimeException("{$part} is missing; an earlier step did not finish");
         }
     }
-
-    return $next($staging);
 };
 
 // The worker reads this line from the log (Daily_backup_run::module_failure)
-$note_module_failure = function (string $staging, Closure $next) use ($log): mixed {
+$note_module_failure = function (string $staging) use ($log): void {
     if (is_file("{$staging}/app/custom.failed")) {
         $why = str_replace("\n", ' / ', trim((string) file_get_contents("{$staging}/app/custom.failed")));
         $log->info("runtime.php failed; the backup has everything else: {$why}");
     }
-
-    return $next($staging);
 };
 
-$pack = function (string $staging, Closure $next): mixed {
+$pack = function (string $staging): void {
     (new Process(['tar', '-czf', "{$staging}/backup.tar.gz", '-C', $staging, 'database', 'app'], timeout: null))->must_run();
-
-    return $next($staging);
 };
 
-$encrypt = function (string $staging, Closure $next): mixed {
+$encrypt = function (string $staging): void {
     Backup_file::encrypt("{$staging}/backup.tar.gz", "{$staging}/backup.tar.gz.enc", Env::required('BACKUP_PUBLIC_KEY'));
     unlink("{$staging}/backup.tar.gz");
-
-    return $next($staging);
 };
 
-$upload = function (string $staging, Closure $next) use ($log): mixed {
+$upload = function (string $staging) use ($log): void {
     $bytes = Object_storage::upload("{$staging}/backup.tar.gz.enc", Env::required('UPLOAD_URL'));
     $log->info("Uploaded the backup ({$bytes} bytes encrypted)");
-
-    return $next($staging);
 };
 
 $steps = [
@@ -126,7 +111,13 @@ if (!isset($steps[$part])) {
 }
 
 try {
-    (new Pipeline())->send($staging)->through($steps[$part])->then(fn(string $staging) => $part === 'upload' ? $empty($staging) : null);
+    foreach ($steps[$part] as $step) {
+        $step($staging);
+    }
+
+    if ($part === 'upload') {
+        $empty($staging);
+    }
 } catch (Throwable $e) {
     $log->error("{$part} failed: " . $e->getMessage());
 
