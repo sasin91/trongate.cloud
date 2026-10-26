@@ -1,12 +1,12 @@
 <?php
 
-require_once __DIR__ . '/Log_handler.php';
+require_once __DIR__ . '/Log_writer.php';
 
 /**
  * Writes each line to a stream (STDOUT by default), such as a container's log:
  * "{prefix}{level}: {line}", or "{prefix}{line}" without level names.
  */
-final class Stream_handler implements Log_handler {
+final class Stream_writer implements Log_writer {
 
     /** @var resource */
     private $stream;
@@ -16,7 +16,7 @@ final class Stream_handler implements Log_handler {
         $this->stream = $stream ?? STDOUT;
     }
 
-    function handle(string $level, string $message): void {
+    function write(string $level, string $message): void {
         $label = $this->level_names ? "{$level}: " : '';
         fwrite($this->stream, $this->prefix . $label . $message . PHP_EOL);
     }
