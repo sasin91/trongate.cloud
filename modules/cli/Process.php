@@ -52,8 +52,12 @@ final class Process {
     const SIGTERM = 15;
     const SIGKILL = 9;
 
-    private string $output = '';
-    private string $error_output = '';
+    /** @var array<string, string> everything kept, per stream, when there is no callback */
+    private array $kept = [self::OUT => '', self::ERR => ''];
+
+    /** @var array<string, string> the partial line, per stream, waiting for its line break */
+    private array $partial_lines = [self::OUT => '', self::ERR => ''];
+
     private ?int $exit_code = null;
     private bool $timed_out = false;
 
@@ -89,9 +93,9 @@ final class Process {
         stream_set_blocking($pipes[2], false);
 
         $open = [self::OUT => $pipes[1], self::ERR => $pipes[2]];
-        $buffers = [self::OUT => '', self::ERR => ''];
         $started = microtime(true);
-        $terminated_at = null;
+        $this->kept = $this->partial_lines = [self::OUT => '', self::ERR => ''];
+        $this->timed_out = false;
 
         // Both pipes are open at the start, so the loop runs at least once
         do {
@@ -104,41 +108,16 @@ final class Process {
             }
 
             foreach ($open as $type => $pipe) {
-                $chunk = fread($pipe, self::READ_BYTES);
-
-                if ($chunk !== false && $chunk !== '' && $callback === null) {
-                    $this->keep($type, $chunk);
-                } elseif ($chunk !== false && $chunk !== '') {
-                    $buffers[$type] .= $chunk;
-
-                    // Complete lines go out now; a partial tail waits for the rest
-                    while (($pos = strpos($buffers[$type], "\n")) !== false) {
-                        $callback($type, substr($buffers[$type], 0, $pos));
-                        $buffers[$type] = substr($buffers[$type], $pos + 1);
-                    }
-
-                    // Output without line breaks must not grow without end
-                    if (strlen($buffers[$type]) >= self::MAX_LINE_BYTES) {
-                        $callback($type, $buffers[$type]);
-                        $buffers[$type] = '';
-                    }
-                }
+                $this->take($type, (string) fread($pipe, self::READ_BYTES), $callback);
 
                 if (feof($pipe)) {
-                    if ($buffers[$type] !== '') {
-                        $callback($type, $buffers[$type]);
-                    }
-
+                    $this->flush($type, $callback);
                     fclose($pipe);
                     unset($open[$type]);
                 }
             }
 
-            if ($this->timeout !== null && microtime(true) - $started > $this->timeout) {
-                $this->timed_out = true;
-                $terminated_at ??= microtime(true);
-                proc_terminate($process, microtime(true) - $terminated_at > self::KILL_AFTER_SECONDS ? self::SIGKILL : self::SIGTERM);
-            }
+            $this->stop_if_overdue($process, $started);
         } while ($open !== []);
 
         foreach ($open as $pipe) {
@@ -162,7 +141,7 @@ final class Process {
         }
 
         if ($exit_code !== 0) {
-            $error = trim($this->error_output);
+            $error = trim($this->kept[self::ERR]);
             throw new RuntimeException($this->command_line() . " exited with {$exit_code}" . ($error !== '' ? ": {$error}" : ''));
         }
 
@@ -170,11 +149,11 @@ final class Process {
     }
 
     function output(): string {
-        return $this->output;
+        return $this->kept[self::OUT];
     }
 
     function error_output(): string {
-        return $this->error_output;
+        return $this->kept[self::ERR];
     }
 
     /** null until it has run */
@@ -202,12 +181,48 @@ final class Process {
         return $is_plain ? $part : escapeshellarg($part);
     }
 
-    /** Output kept as it came, byte for byte */
-    private function keep(string $type, string $chunk): void {
-        if ($type === self::OUT) {
-            $this->output .= $chunk;
-        } else {
-            $this->error_output .= $chunk;
+    /** Keeps a chunk as it came, or hands its complete lines to the callback */
+    private function take(string $type, string $chunk, ?callable $callback): void {
+        if ($chunk === '') {
+            return;
         }
+
+        if ($callback === null) {
+            $this->kept[$type] .= $chunk;
+            return;
+        }
+
+        $lines = explode("\n", $this->partial_lines[$type] . $chunk);
+        $this->partial_lines[$type] = array_pop($lines);
+
+        foreach ($lines as $line) {
+            $callback($type, $line);
+        }
+
+        // Output without line breaks must not grow without end
+        if (strlen($this->partial_lines[$type]) >= self::MAX_LINE_BYTES) {
+            $this->flush($type, $callback);
+        }
+    }
+
+    /** Hands the partial line that is left to the callback */
+    private function flush(string $type, ?callable $callback): void {
+        if ($callback !== null && $this->partial_lines[$type] !== '') {
+            $callback($type, $this->partial_lines[$type]);
+        }
+
+        $this->partial_lines[$type] = '';
+    }
+
+    /** Past the timeout: SIGTERM, then SIGKILL once KILL_AFTER_SECONDS more have passed */
+    private function stop_if_overdue(mixed $process, float $started): void {
+        $overdue_for = $this->timeout === null ? 0 : microtime(true) - $started - $this->timeout;
+
+        if ($overdue_for <= 0) {
+            return;
+        }
+
+        $this->timed_out = true;
+        proc_terminate($process, $overdue_for > self::KILL_AFTER_SECONDS ? self::SIGKILL : self::SIGTERM);
     }
 }
