@@ -31,7 +31,7 @@ It runs:
 
 When it fails (a non-zero exit, an error, or the 30 minutes run out), the backup still goes ahead with everything else, and the failure is noted with the backup. Its output is kept in the backup as `custom.log`.
 
-Download the sample below and unzip it into your app's root folder. It saves your tables as CSV files, which open straight in a spreadsheet. Change it to whatever your app needs.
+Download the sample at the top of this page and unzip it into your app's root folder. It saves your tables as CSV files, which open straight in a spreadsheet. Change it to whatever your app needs.
 
 ```php
 <?php
