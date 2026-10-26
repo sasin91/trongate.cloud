@@ -35,7 +35,7 @@ require __DIR__ . '/../live/Database_dump.php';
 require __DIR__ . '/../live/Backup_file.php';
 require __DIR__ . '/../live/Object_storage.php';
 
-$log = new Log([new Stream_handler('', false)]);
+$log = new Log([new Stream_writer('', false)]);
 
 try {
     $staging = Env::required('STAGING_DIR');
