@@ -1,7 +1,8 @@
 <?php
 
 /**
- * The backup taken of a deleted app, one row per app in app_backup.
+ * The backup taken of a deleted app, one row per app in backup (type
+ * 'app_deleted').
  *
  * Deleting an app (tasks/destroy_app.php) takes it offline, then runs a
  * one-off Job in its namespace (Manifests::backup_job) that dumps its
