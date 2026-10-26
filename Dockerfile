@@ -20,7 +20,8 @@ RUN ldconfig \
 ENV GODEBUG=cgocheck=0
 
 # redis: PHP sessions in the shared Valkey (engine/Valkey_sessions.php)
-RUN install-php-extensions pdo_mysql intl sodium redis
+# zip: sample modules downloaded from the docs (modules/docs)
+RUN install-php-extensions pdo_mysql intl sodium redis zip
 
 ENV PORT=8080 \
     SERVER_NAME=:8080 \

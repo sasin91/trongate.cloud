@@ -1,5 +1,5 @@
 <?php
-// The public site's <head> contents (landing page and news). Expects $page_title and $page_description.
+// The public site's <head> contents (landing page, docs and news). Expects $page_title and $page_description.
 ?>
 <base href="<?= BASE_URL ?>">
     <meta charset="UTF-8">
