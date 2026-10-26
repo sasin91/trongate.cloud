@@ -3,11 +3,11 @@
 A log after Monolog, for web requests and command-line scripts, framework-free:
 
 ```php
-$log = new Log([new Stream_handler('[backup] ')]);      // STDOUT, e.g. a container's log
-$log = new Log([new Error_log_handler('[webhooks] ')]); // PHP's error_log()
+$log = new Log([new Stream_writer('[backup] ')]);      // STDOUT, e.g. a container's log
+$log = new Log([new Error_log_writer('[webhooks] ')]); // PHP's error_log()
 $log->info('Dumped 12 tables');
 $log->warn('...');
 $log->error('...');
 ```
 
-Each message goes to every handler as one entry (a multi-line message stays one entry, like Monolog's records); a blank one is skipped, and a handler that fails never stops the caller. Write a `Log_handler` to send messages elsewhere (the worker's `Task_log_handler` writes them to `task_logs`).
+Each message goes to every writer as one entry (a multi-line message stays one entry, like Monolog's records); a blank one is skipped, and a writer that fails never stops the caller. Write a `Log_writer` to send messages elsewhere (the worker's `Task_log_writer` writes them to `task_logs`).

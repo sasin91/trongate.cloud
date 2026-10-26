@@ -1,13 +1,13 @@
 <?php
 
 require_once APPPATH . 'modules/log/Log.php';
-require_once __DIR__ . '/Task_log_handler.php';
+require_once __DIR__ . '/Task_log_writer.php';
 
 /**
  * Task Log
  *
  * The log of one task (modules/log Log): its messages go into task_logs
- * (Task_log_handler, streamed to the UI and MCP) and to STDOUT for the
+ * (Task_log_writer, streamed to the UI and MCP) and to STDOUT for the
  * worker's container logs. A message that cannot be written to task_logs still
  * reaches STDOUT, and never breaks the running task.
  */
@@ -16,8 +16,8 @@ class Task_log extends Log {
 
     function __construct(PDO $db, private int $task_id) {
         parent::__construct([
-            new Stream_handler("[task #{$task_id}] "),
-            new Task_log_handler($db, $task_id),
+            new Stream_writer("[task #{$task_id}] "),
+            new Task_log_writer($db, $task_id),
         ]);
     }
 

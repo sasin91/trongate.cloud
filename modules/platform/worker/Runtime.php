@@ -381,7 +381,7 @@ class Runtime {
     }
 
     private function log(string $message): void {
-        $this->runtime_log ??= new Log([new Stream_handler('[Runtime] ', false)]);
+        $this->runtime_log ??= new Log([new Stream_writer('[Runtime] ', false)]);
         $this->runtime_log->info($message);
     }
 

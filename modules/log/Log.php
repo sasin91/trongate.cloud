@@ -1,19 +1,19 @@
 <?php
 
-require_once __DIR__ . '/Log_handler.php';
-require_once __DIR__ . '/Stream_handler.php';
-require_once __DIR__ . '/Error_log_handler.php';
+require_once __DIR__ . '/Log_writer.php';
+require_once __DIR__ . '/Stream_writer.php';
+require_once __DIR__ . '/Error_log_writer.php';
 
 /**
  * A log, after Monolog, for web requests and command-line scripts alike:
- * each message goes to every handler (Stream_handler, Error_log_handler, or
- * one of your own) as one entry; a blank message is skipped. A handler that
+ * each message goes to every writer (Stream_writer, Error_log_writer, or
+ * one of your own) as one entry; a blank message is skipped. A writer that
  * fails never stops the caller; the failure goes to STDERR.
  *
- *   $log = new Log([new Stream_handler('[backup] ')]);
+ *   $log = new Log([new Stream_writer('[backup] ')]);
  *   $log->info('Dumped 12 tables');
  *
- *   $log = new Log([new Error_log_handler('[webhooks] ')]);
+ *   $log = new Log([new Error_log_writer('[webhooks] ')]);
  *   $log->warn('Unknown event: push');
  *
  * Framework-free.
@@ -22,12 +22,12 @@ class Log {
 
     const LEVELS = ['info', 'warn', 'error'];
 
-    /** @param list<Log_handler> $handlers */
-    function __construct(private array $handlers = []) {
+    /** @param list<Log_writer> $writers */
+    function __construct(private array $writers = []) {
     }
 
-    function push_handler(Log_handler $handler): void {
-        $this->handlers[] = $handler;
+    function add_writer(Log_writer $writer): void {
+        $this->writers[] = $writer;
     }
 
     function info(string $message): void {
@@ -54,11 +54,11 @@ class Log {
             return;
         }
 
-        foreach ($this->handlers as $handler) {
+        foreach ($this->writers as $writer) {
             try {
-                $handler->handle($level, $message);
+                $writer->write($level, $message);
             } catch (Throwable $e) {
-                fwrite(STDERR, get_class($handler) . ' failed: ' . $e->getMessage() . PHP_EOL);
+                fwrite(STDERR, get_class($writer) . ' failed: ' . $e->getMessage() . PHP_EOL);
             }
         }
     }
