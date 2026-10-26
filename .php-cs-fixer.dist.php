@@ -15,6 +15,7 @@ $finder = PhpCsFixer\Finder::create()
         __DIR__ . '/modules/metrics',
         __DIR__ . '/modules/news',
         __DIR__ . '/modules/overview',
+        __DIR__ . '/modules/pipeline',
         __DIR__ . '/modules/platform',
         __DIR__ . '/modules/projects',
         __DIR__ . '/modules/related_records',

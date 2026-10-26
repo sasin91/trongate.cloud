@@ -15,6 +15,7 @@ parameters:
         - modules/metrics
         - modules/news
         - modules/overview
+        - modules/pipeline
         - modules/platform
         - modules/projects
         - modules/related_records

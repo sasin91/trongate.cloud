@@ -48,6 +48,7 @@ COPY engine/Trongate.php engine/Trongate.php
 COPY engine/Valkey_sessions.php engine/Valkey_sessions.php
 COPY modules/cli modules/cli
 COPY modules/log modules/log
+COPY modules/pipeline modules/pipeline
 COPY modules/db modules/db
 COPY modules/encryption modules/encryption
 COPY modules/services/clients modules/services/clients

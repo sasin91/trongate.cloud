@@ -53,7 +53,8 @@
             "php tests/App_backup_test.php",
             "php tests/Impersonation_test.php",
             "php tests/Log_test.php",
-            "php tests/Cli_test.php"
+            "php tests/Cli_test.php",
+            "php tests/Pipeline_test.php"
         ],
         "qa": [
             "@lint",
