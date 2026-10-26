@@ -28,10 +28,10 @@
  * user) and DB_PASSWORD; for upload BACKUP_PUBLIC_KEY and UPLOAD_URL.
  */
 
-require __DIR__ . '/../../cli/Log.php';
+require __DIR__ . '/../../log/Log.php';
 require __DIR__ . '/../../cli/Env.php';
-require __DIR__ . '/../../cli/Command.php';
-require __DIR__ . '/../../cli/Pipeline.php';
+require __DIR__ . '/../../cli/Process.php';
+require __DIR__ . '/../../pipeline/Pipeline.php';
 require __DIR__ . '/../live/Database_dump.php';
 require __DIR__ . '/../live/Backup_file.php';
 require __DIR__ . '/../live/Object_storage.php';
@@ -45,14 +45,15 @@ try {
     exit(1);
 }
 
-$archive = "{$staging}/backup.tar.gz";
+// Each step is a pipe (modules/pipeline) that gets the staging folder and passes it on.
+// Programs get no timeout of their own: the Job's deadline (Daily_backup::JOB_SECONDS) covers them.
 
 // Removes everything inside the staging folder, keeping the folder
-$empty_staging = fn() => Command::run(['find', $staging, '-mindepth', '1', '-delete']);
+$empty = fn(string $staging) => (new Process(['find', $staging, '-mindepth', '1', '-delete'], timeout: null))->must_run();
 
-$make_staging = function () use ($staging, $empty_staging): void {
+$make_staging = function (string $staging, Closure $next) use ($empty): mixed {
     if (is_dir($staging)) {
-        $empty_staging();
+        $empty($staging);
     }
 
     // The app step mounts app/ as its /backup: made here, so it is the app user's
@@ -61,49 +62,83 @@ $make_staging = function () use ($staging, $empty_staging): void {
             throw new RuntimeException("cannot create {$dir}");
         }
     }
+
+    return $next($staging);
 };
 
-$dump_database = function () use ($staging, $log): void {
+$dump_database = function (string $staging, Closure $next) use ($log): mixed {
     $name = Env::required('DB_NAME');
     $pdo = Database_dump::connect(Env::required('DB_HOST'), (int) Env::required('DB_PORT'), $name, $name, Env::required('DB_PASSWORD'));
     Database_dump::write($pdo, $name, "{$staging}/database/database.sql.gz", [$log, 'info']);
+
+    return $next($staging);
 };
 
-$check_parts = function () use ($staging): void {
+$check_parts = function (string $staging, Closure $next): mixed {
     foreach (['database/database.sql.gz', 'app/app.tar'] as $part) {
         if (!is_file("{$staging}/{$part}")) {
             throw new RuntimeException("{$part} is missing; an earlier step did not finish");
         }
     }
+
+    return $next($staging);
 };
 
 // The worker reads this line from the log (Daily_backup_run::module_failure)
-$note_module_failure = function () use ($staging, $log): void {
+$note_module_failure = function (string $staging, Closure $next) use ($log): mixed {
     if (is_file("{$staging}/app/custom.failed")) {
         $why = str_replace("\n", ' / ', trim((string) file_get_contents("{$staging}/app/custom.failed")));
         $log->info("runtime.php failed; the backup has everything else: {$why}");
     }
+
+    return $next($staging);
 };
 
-$pack = fn() => Command::run(['tar', '-czf', $archive, '-C', $staging, 'database', 'app']);
+$pack = function (string $staging, Closure $next): mixed {
+    (new Process(['tar', '-czf', "{$staging}/backup.tar.gz", '-C', $staging, 'database', 'app'], timeout: null))->must_run();
 
-$encrypt = function () use ($archive): void {
-    Backup_file::encrypt($archive, "{$archive}.enc", Env::required('BACKUP_PUBLIC_KEY'));
-    unlink($archive);
+    return $next($staging);
 };
 
-$upload = function () use ($archive, $log): void {
-    $bytes = Object_storage::upload("{$archive}.enc", Env::required('UPLOAD_URL'));
+$encrypt = function (string $staging, Closure $next): mixed {
+    Backup_file::encrypt("{$staging}/backup.tar.gz", "{$staging}/backup.tar.gz.enc", Env::required('BACKUP_PUBLIC_KEY'));
+    unlink("{$staging}/backup.tar.gz");
+
+    return $next($staging);
+};
+
+$upload = function (string $staging, Closure $next) use ($log): mixed {
+    $bytes = Object_storage::upload("{$staging}/backup.tar.gz.enc", Env::required('UPLOAD_URL'));
     $log->info("Uploaded the backup ({$bytes} bytes encrypted)");
+
+    return $next($staging);
 };
 
-$pipeline = new Pipeline($log, [
+$steps = [
     'dump' => [$make_staging, $dump_database],
-    'upload' => [$check_parts, $note_module_failure, $pack, $encrypt, $upload, $empty_staging],
-], function (string $name) use ($empty_staging): void {
-    if ($name === 'upload') {
-        $empty_staging();
-    }
-});
+    'upload' => [$check_parts, $note_module_failure, $pack, $encrypt, $upload],
+];
+$part = $argv[1] ?? '';
 
-exit($pipeline->run($argv[1] ?? ''));
+if (!isset($steps[$part])) {
+    $log->error('Usage: php runtime.php ' . implode('|', array_keys($steps)));
+    exit(1);
+}
+
+try {
+    (new Pipeline())->send($staging)->through($steps[$part])->then(fn(string $staging) => $part === 'upload' ? $empty($staging) : null);
+} catch (Throwable $e) {
+    $log->error("{$part} failed: " . $e->getMessage());
+
+    // An upload that fails still leaves no copy of the data behind
+    if ($part === 'upload') {
+        try {
+            $empty($staging);
+        } catch (Throwable) {
+        }
+    }
+
+    exit(1);
+}
+
+$log->info("{$part} done");
