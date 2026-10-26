@@ -438,22 +438,25 @@ trait App_rules {
     }
 
     /**
-     * NAME=value lines to add as secrets to the app being edited ($editing_app_id)
+     * NAME=value lines to add as secrets to the app being edited ($editing_app_id).
+     * Reads the raw POST secret_env: Validation hands callbacks post($key, true),
+     * which collapses the newlines the lines are split on.
      */
-    function _validate_secret_lines(string $value): bool|string {
+    function _validate_secret_lines(): bool|string {
         $kept = $this->_app_env((object) ['id' => $this->editing_app_id]);
 
-        return $this->_env_lines_error($value, $kept) ?? true;
+        return $this->_env_lines_error((string) post('secret_env'), $kept) ?? true;
     }
 
     /**
      * NAME=value lines that become the visible variables of the app being edited
-     * ($editing_app_id); may be empty, which removes them all
+     * ($editing_app_id); may be empty, which removes them all. Reads the raw
+     * POST plain_env, like _validate_secret_lines().
      */
-    function _validate_plain_lines(string $value): bool|string {
+    function _validate_plain_lines(): bool|string {
         $kept = $this->_app_secret_env((object) ['id' => $this->editing_app_id]);
 
-        return $this->_env_lines_error($value, $kept) ?? true;
+        return $this->_env_lines_error((string) post('plain_env'), $kept) ?? true;
     }
 
     /**
