@@ -1,6 +1,6 @@
 # log
 
-Version 1.0.0
+Version 1.0.1
 
 A log after Monolog, for web requests and command-line scripts, framework-free:
 
@@ -27,6 +27,8 @@ require_once APPPATH . 'modules/log/Log.php';
 
 ## Tests
 
+`tests/*.phpt`, run with php-src's `run-tests.php`:
+
 ```sh
-php modules/log/tests/Log_test.php
+php bin/run-tests.php -q modules/log
 ```
