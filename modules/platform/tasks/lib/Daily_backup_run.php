@@ -116,12 +116,6 @@ final class Daily_backup_run {
      * always the release that is running
      */
     static function worker_image(Kubernetes $kube): string {
-        static $image = null;
-
-        if ($image !== null) {
-            return $image;
-        }
-
         $pod = $kube->get('v1', 'Pod', self::WORKER_NAMESPACE, (string) gethostname());
         $found = $pod['spec']['containers'][0]['image'] ?? '';
 
@@ -129,7 +123,7 @@ final class Daily_backup_run {
             throw new RuntimeException('Cannot read the worker\'s own image from its Pod ' . gethostname());
         }
 
-        return $image = $found;
+        return $found;
     }
 
     /**
