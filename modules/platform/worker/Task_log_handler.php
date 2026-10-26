@@ -11,10 +11,10 @@ final class Task_log_handler implements Log_handler {
     function __construct(private PDO $db, private int $task_id) {
     }
 
-    function handle(string $level, string $line): void {
+    function handle(string $level, string $message): void {
         $sql = <<<SQL
             INSERT INTO task_logs (task_id, level, message) VALUES (?, ?, ?)
         SQL;
-        Runtime::run($this->db, $sql, [$this->task_id, $level, $line]);
+        Runtime::run($this->db, $sql, [$this->task_id, $level, $message]);
     }
 }

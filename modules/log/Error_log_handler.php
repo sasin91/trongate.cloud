@@ -12,7 +12,7 @@ final class Error_log_handler implements Log_handler {
     function __construct(private string $prefix = '') {
     }
 
-    function handle(string $level, string $line): void {
-        error_log("{$this->prefix}{$level}: {$line}");
+    function handle(string $level, string $message): void {
+        error_log("{$this->prefix}{$level}: {$message}");
     }
 }

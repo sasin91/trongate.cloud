@@ -10,4 +10,4 @@ $log->warn('...');
 $log->error('...');
 ```
 
-Each message goes to every handler one line at a time; a handler that fails never stops the caller. Write a `Log_handler` to send lines elsewhere (the worker's `Task_log_handler` writes them to `task_logs`).
+Each message goes to every handler as one entry (a multi-line message stays one entry, like Monolog's records); a blank one is skipped, and a handler that fails never stops the caller. Write a `Log_handler` to send messages elsewhere (the worker's `Task_log_handler` writes them to `task_logs`).

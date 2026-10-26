@@ -16,8 +16,8 @@ final class Stream_handler implements Log_handler {
         $this->stream = $stream ?? STDOUT;
     }
 
-    function handle(string $level, string $line): void {
+    function handle(string $level, string $message): void {
         $label = $this->level_names ? "{$level}: " : '';
-        fwrite($this->stream, $this->prefix . $label . $line . PHP_EOL);
+        fwrite($this->stream, $this->prefix . $label . $message . PHP_EOL);
     }
 }

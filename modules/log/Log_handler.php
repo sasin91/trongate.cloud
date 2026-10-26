@@ -5,6 +5,6 @@
  */
 interface Log_handler {
 
-    /** One line, never empty, at one of the log's levels */
-    function handle(string $level, string $line): void;
+    /** One message, never empty, at one of the log's levels */
+    function handle(string $level, string $message): void;
 }
