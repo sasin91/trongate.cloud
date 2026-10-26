@@ -7,7 +7,7 @@ Two things today: your apps are backed up every night, and there is now a place 
 
 ## Nightly backups
 
-Until now, a running app's data had no copy outside the server it runs on. From tonight, every deployed app gets one backup a night, from 02:00 UTC. There is nothing to set up.
+Until now, a running app's data had no copy outside the server it runs on. Now every deployed app gets one backup a night, from 02:00 UTC. There is nothing to set up.
 
 Each backup holds:
 
