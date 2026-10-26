@@ -93,7 +93,8 @@ final class Process {
         $started = microtime(true);
         $terminated_at = null;
 
-        while ($open !== []) {
+        // Both pipes are open at the start, so the loop runs at least once
+        do {
             $read = array_values($open);
             $write = null;
             $except = null;
@@ -138,7 +139,7 @@ final class Process {
                 $terminated_at ??= microtime(true);
                 proc_terminate($process, microtime(true) - $terminated_at > self::KILL_AFTER_SECONDS ? self::SIGKILL : self::SIGTERM);
             }
-        }
+        } while ($open !== []);
 
         foreach ($open as $pipe) {
             fclose($pipe);
