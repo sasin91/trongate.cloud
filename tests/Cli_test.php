@@ -69,6 +69,20 @@ test('a process that runs past its timeout is stopped', function () {
     assert_same(true, microtime(true) - $started < 10);
 });
 
+test('a process runs once; running it again is refused', function () {
+    $process = new Process(['true']);
+    $process->run();
+
+    try {
+        $process->run();
+        $refused = false;
+    } catch (LogicException $e) {
+        $refused = $e->getMessage() === 'true has already run; make a new Process';
+    }
+
+    assert_same(true, $refused);
+});
+
 test('a program that does not exist cannot start', function () {
     assert_throws(fn() => (new Process(['/no/such/program']))->run(), 'Cannot start /no/such/program');
 });

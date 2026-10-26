@@ -80,8 +80,14 @@ final class Process {
      * @param (callable(string $type, string $line): void)|null $callback
      * @return int its exit code
      * @throws RuntimeException when it cannot be started
+     * @throws LogicException when this Process has already run
      */
     function run(?callable $callback = null): int {
+        // One run per instance, so no output or state carries over: make a new Process to run again
+        if ($this->exit_code !== null) {
+            throw new LogicException($this->command_line() . ' has already run; make a new Process');
+        }
+
         $process = @proc_open($this->command, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $this->cwd, $this->env);
 
         if (!is_resource($process)) {
@@ -94,8 +100,6 @@ final class Process {
 
         $open = [self::OUT => $pipes[1], self::ERR => $pipes[2]];
         $started = microtime(true);
-        $this->kept = $this->partial_lines = [self::OUT => '', self::ERR => ''];
-        $this->timed_out = false;
 
         // Both pipes are open at the start, so the loop runs at least once
         do {
