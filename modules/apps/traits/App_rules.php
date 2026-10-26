@@ -30,16 +30,114 @@ trait App_rules {
     private int $editing_app_id = 0;
 
     /**
-     * The app's environment variables, decrypted (App_env)
+     * All of the app's environment variables, secrets and visible ones, decrypted (App_env)
      *
      * @return array<string, string>
      */
     function _app_env(object $app): array {
+        return $this->_app_env_of_kind((int) $app->id, App_env::SERVICE)
+            + $this->_app_env_of_kind((int) $app->id, App_env::PLAIN_SERVICE);
+    }
+
+    /**
+     * The app's write-only variables (App_env::SERVICE)
+     *
+     * @return array<string, string>
+     */
+    function _app_secret_env(object $app): array {
+        return $this->_app_env_of_kind((int) $app->id, App_env::SERVICE);
+    }
+
+    /**
+     * The app's visible variables (App_env::PLAIN_SERVICE)
+     *
+     * @return array<string, string>
+     */
+    function _app_plain_env(object $app): array {
+        return $this->_app_env_of_kind((int) $app->id, App_env::PLAIN_SERVICE);
+    }
+
+    /**
+     * Add or replace secrets; a visible variable with the same name becomes a secret.
+     *
+     * @param array<string, string> $env
+     */
+    function _save_app_secrets(int $app_id, array $env): void {
+        $secrets = array_merge($this->_app_env_of_kind($app_id, App_env::SERVICE), $env);
+        $plain = array_diff_key($this->_app_env_of_kind($app_id, App_env::PLAIN_SERVICE), $env);
+
+        $this->_store_app_env($app_id, App_env::SERVICE, $secrets);
+        $this->_store_app_env($app_id, App_env::PLAIN_SERVICE, $plain);
+    }
+
+    /**
+     * Add or replace visible variables; a secret with the same name becomes visible.
+     *
+     * @param array<string, string> $env
+     */
+    function _save_app_plain_env(int $app_id, array $env): void {
+        $plain = array_merge($this->_app_env_of_kind($app_id, App_env::PLAIN_SERVICE), $env);
+        $this->_replace_app_plain_env($app_id, $plain);
+    }
+
+    /**
+     * The app's visible variables become exactly $env; secrets with one of its names become visible.
+     *
+     * @param array<string, string> $env
+     */
+    function _replace_app_plain_env(int $app_id, array $env): void {
+        $secrets = array_diff_key($this->_app_env_of_kind($app_id, App_env::SERVICE), $env);
+
+        $this->_store_app_env($app_id, App_env::PLAIN_SERVICE, $env);
+        $this->_store_app_env($app_id, App_env::SERVICE, $secrets);
+    }
+
+    /**
+     * Remove one variable, whichever kind it is
+     *
+     * @return bool whether the app had it
+     */
+    function _delete_app_env(int $app_id, string $name): bool {
+        $had_it = false;
+
+        foreach ([App_env::SERVICE, App_env::PLAIN_SERVICE] as $service) {
+            $env = $this->_app_env_of_kind($app_id, $service);
+
+            if (array_key_exists($name, $env)) {
+                unset($env[$name]);
+                $this->_store_app_env($app_id, $service, $env);
+                $had_it = true;
+            }
+        }
+
+        return $had_it;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    function _app_env_of_kind(int $app_id, string $service): array {
         $this->module('secrets');
 
-        return $this->secrets->exists(App_env::MODULE, (int) $app->id, App_env::SERVICE)
-            ? $this->secrets->get(App_env::MODULE, (int) $app->id, App_env::SERVICE)
+        return $this->secrets->exists(App_env::MODULE, $app_id, $service)
+            ? $this->secrets->get(App_env::MODULE, $app_id, $service)
             : [];
+    }
+
+    /**
+     * Save one kind of the app's variables; none left removes the row.
+     *
+     * @param array<string, string> $env
+     */
+    function _store_app_env(int $app_id, string $service, array $env): void {
+        $this->module('secrets');
+
+        if ($env === []) {
+            $this->secrets->delete(App_env::MODULE, $app_id, $service);
+            return;
+        }
+
+        $this->secrets->save(App_env::MODULE, $app_id, $service, $env);
     }
 
     /**
@@ -337,5 +435,43 @@ trait App_rules {
         }
 
         return true;
+    }
+
+    /**
+     * NAME=value lines to add as secrets to the app being edited ($editing_app_id)
+     */
+    function _validate_secret_lines(string $value): bool|string {
+        $kept = $this->_app_env((object) ['id' => $this->editing_app_id]);
+
+        return $this->_env_lines_error($value, $kept) ?? true;
+    }
+
+    /**
+     * NAME=value lines that become the visible variables of the app being edited
+     * ($editing_app_id); may be empty, which removes them all
+     */
+    function _validate_plain_lines(string $value): bool|string {
+        $kept = $this->_app_secret_env((object) ['id' => $this->editing_app_id]);
+
+        return $this->_env_lines_error($value, $kept) ?? true;
+    }
+
+    /**
+     * Why NAME=value lines cannot be saved next to the $kept variables, or null when they can
+     *
+     * @param array<string, string> $kept
+     */
+    function _env_lines_error(string $value, array $kept): ?string {
+        try {
+            $env = App_env::parse_lines($value);
+        } catch (InvalidArgumentException $e) {
+            return $e->getMessage();
+        }
+
+        if (count($kept + $env) > App_env::MAX_VARIABLES) {
+            return 'An app can have at most ' . App_env::MAX_VARIABLES . ' environment variables.';
+        }
+
+        return null;
     }
 }

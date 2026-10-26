@@ -116,7 +116,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
             "INSERT INTO secrets (module, module_id, service, variables)
              SELECT module, ?, service, variables
              FROM secrets
-             WHERE module = 'app' AND module_id = ? AND service = 'env'",
+             WHERE module = 'app' AND module_id = ? AND service IN ('env', 'env_plain')",
             [$staging_id, $app_id],
         );
 

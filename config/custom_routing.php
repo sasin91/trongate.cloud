@@ -73,6 +73,7 @@ $routes = [
     'apps/(:num)/settings' => 'apps/settings/$1',
     'apps/(:num)/settings/submit' => 'apps/submit_settings/$1',
     'apps/(:num)/env/submit' => 'apps/submit_env/$1',
+    'apps/(:num)/env/variables' => 'apps/submit_plain_env/$1',
     'apps/(:num)/env/delete' => 'apps/delete_env/$1',
     'apps/(:num)/live-state' => 'apps/live_state/$1',
     'apps/(:num)/processes' => 'apps/processes_partial/$1',

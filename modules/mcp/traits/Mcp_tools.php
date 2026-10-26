@@ -291,7 +291,7 @@ trait Mcp_tools {
             [
                 'name' => 'list_env_vars',
                 'title' => 'List environment variables',
-                'description' => "Names of the app's environment variables. Values are write-only and never shown.",
+                'description' => "The app's environment variables: visible ones with their values, and the names of secrets, whose values are write-only and never shown.",
                 'inputSchema' => $this->_schema(['app_id' => $app_id], ['app_id']),
                 'annotations' => $this->_hints(true),
                 'scopes' => ['customer'],
@@ -304,6 +304,7 @@ trait Mcp_tools {
                     'app_id' => $app_id,
                     'name' => ['type' => 'string', 'pattern' => '^[A-Za-z_][A-Za-z0-9_]*$', 'maxLength' => App_env::MAX_NAME_LENGTH],
                     'value' => ['type' => 'string', 'minLength' => 1],
+                    'secret' => ['type' => 'boolean', 'default' => true, 'description' => 'Write-only, never shown again (API keys, passwords); false for settings that may be shown'],
                 ], ['app_id', 'name', 'value']),
                 'annotations' => $this->_hints(false, true, true),
                 'scopes' => ['customer'],
@@ -831,7 +832,12 @@ trait Mcp_tools {
     function _tool_list_env_vars(array $args): array {
         [, $app] = $this->_app_or_fail($this->_int_arg($args, 'app_id'));
 
-        return ['names' => array_keys($this->_app_env($app)), 'reserved' => App_env::RESERVED];
+        return [
+            'names' => array_keys($this->_app_env($app)),
+            'variables' => (object) $this->_app_plain_env($app),
+            'secrets' => array_keys($this->_app_secret_env($app)),
+            'reserved' => App_env::RESERVED,
+        ];
     }
 
     function _tool_set_env_var(array $args): array {
@@ -846,7 +852,15 @@ trait Mcp_tools {
         }
 
         $this->_check($this->_validate_env_name($name));
-        $this->secrets->update(App_env::MODULE, (int) $app->id, App_env::SERVICE, [$name => $value]);
+
+        if ($this->_bool_arg($args, 'secret', true)) {
+            $this->_save_app_secrets((int) $app->id, [$name => $value]);
+        } elseif (preg_match('/[\r\n]/', $value)) {
+            // Visible variables are edited as NAME=value lines in the panel
+            throw new InvalidArgumentException('A visible variable cannot span lines; save it as a secret');
+        } else {
+            $this->_save_app_plain_env((int) $app->id, [$name => $value]);
+        }
 
         return ['saved' => $name, 'next' => 'It takes effect on the next deploy: deploy_app {"app_id": ' . $app->id . '}'];
     }
@@ -854,17 +868,10 @@ trait Mcp_tools {
     function _tool_delete_env_var(array $args): array {
         [, $app] = $this->_app_or_fail($this->_int_arg($args, 'app_id'));
         $name = $this->_string_arg($args, 'name');
-        $env = $this->_app_env($app);
 
-        if (!array_key_exists($name, $env)) {
+        if (!$this->_delete_app_env((int) $app->id, $name)) {
             throw new RuntimeException("{$name} is not set on this app");
         }
-
-        unset($env[$name]);
-
-        $env === []
-            ? $this->secrets->delete(App_env::MODULE, (int) $app->id, App_env::SERVICE)
-            : $this->secrets->save(App_env::MODULE, (int) $app->id, App_env::SERVICE, $env);
 
         return ['removed' => $name, 'next' => 'It is gone from the app after the next deploy: deploy_app {"app_id": ' . $app->id . '}'];
     }
