@@ -52,7 +52,8 @@
             "php tests/Object_storage_test.php",
             "php tests/App_backup_test.php",
             "php tests/Daily_backup_test.php",
-            "php tests/Impersonation_test.php"
+            "php tests/Impersonation_test.php",
+            "php tests/Cli_test.php"
         ],
         "backup:keys": "php modules/platform/backup/keys.php",
         "backup:decrypt": [

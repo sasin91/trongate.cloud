@@ -113,6 +113,9 @@ class Runtime {
     private ?Kubernetes $kube = null;
     private ?Valkey $valkey = null;
 
+    /** The worker's own lines, outside any task */
+    private ?Log $runtime_log = null;
+
     private int $next_schedule_check = 0;
 
     function __construct(PDO $db) {
@@ -428,7 +431,8 @@ class Runtime {
     }
 
     private function log(string $message): void {
-        fwrite(STDOUT, '[Runtime] ' . $message . PHP_EOL);
+        $this->runtime_log ??= new Log([new Stream_handler('[Runtime] ', false)]);
+        $this->runtime_log->info($message);
     }
 
     /**
