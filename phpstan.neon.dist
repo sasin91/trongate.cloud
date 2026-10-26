@@ -9,6 +9,7 @@ parameters:
         - modules/deployments
         - modules/encryption
         - modules/github_auth
+        - modules/log
         - modules/impersonation
         - modules/mcp
         - modules/metrics

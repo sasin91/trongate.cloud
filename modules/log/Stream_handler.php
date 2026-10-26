@@ -3,7 +3,7 @@
 require_once __DIR__ . '/Log_handler.php';
 
 /**
- * Writes each line to a stream (STDOUT by default), for a container's log:
+ * Writes each line to a stream (STDOUT by default), such as a container's log:
  * "{prefix}{level}: {line}", or "{prefix}{line}" without level names.
  */
 final class Stream_handler implements Log_handler {

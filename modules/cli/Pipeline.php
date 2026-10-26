@@ -1,6 +1,6 @@
 <?php
 
-require_once __DIR__ . '/Log.php';
+require_once __DIR__ . '/../log/Log.php';
 
 /**
  * A command-line script as named pipelines of actions, run in order:

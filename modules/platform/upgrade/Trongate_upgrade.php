@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../manifests/Config_editor.php';
 require_once __DIR__ . '/Upgrade_plan.php';
+require_once __DIR__ . '/../../cli/Process.php';
 
 /**
  * Plans a Trongate upgrade of an app's repository: the files the framework
@@ -282,27 +283,14 @@ final class Trongate_upgrade {
                 file_put_contents("{$dir}/{$name}", $text);
             }
 
-            $process = proc_open(
-                ['diff3', '--merge', '--label', 'yours', '--label', 'before', '--label', 'newer Trongate', "{$dir}/yours", "{$dir}/base", "{$dir}/theirs"],
-                [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
-                $pipes,
-            );
-
-            if (!is_resource($process)) {
-                throw new RuntimeException('Could not run diff3');
-            }
-
-            $content = (string) stream_get_contents($pipes[1]);
-            $error = trim((string) stream_get_contents($pipes[2]));
-            fclose($pipes[1]);
-            fclose($pipes[2]);
-            $status = proc_close($process);
+            $process = new Process(['diff3', '--merge', '--label', 'yours', '--label', 'before', '--label', 'newer Trongate', "{$dir}/yours", "{$dir}/base", "{$dir}/theirs"]);
+            $status = $process->run();
 
             if ($status > 1) {
-                throw new RuntimeException("diff3 failed: {$error}");
+                throw new RuntimeException('diff3 failed: ' . trim($process->error_output()));
             }
 
-            return ['content' => $content, 'conflicts' => $status === 1];
+            return ['content' => $process->output(), 'conflicts' => $status === 1];
         } finally {
             foreach (['base', 'yours', 'theirs'] as $name) {
                 @unlink("{$dir}/{$name}");
