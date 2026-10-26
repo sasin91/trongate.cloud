@@ -40,19 +40,8 @@ getting Trongate's URL setup form from `templates/error_404`.
 
 ## Sharing between apps
 
-The same folder sits unchanged in each Trongate app that uses it (the
-recruiter and Trongate.cloud), the way Trongate's own modules do. Don't edit
-it for one app: app differences go through config, not edits inside the
-folder. Change it in one place, bump the version above, and copy the folder
-to the others.
-
-Once it has its own repository (e.g. `sasin91/trongate-error-pages`), each
-app vendors it with
-`git subtree add --prefix=modules/error_pages <repo> main --squash` and
-sends fixes back with `git subtree push`. The folder can be split out as it
-is with `git subtree split --prefix=modules/error_pages`. Composer isn't
-used, since Trongate loads modules from `modules/` and Composer can't put
-them there without a plugin.
+This folder lives in [sasin91/trongate-modules](https://github.com/sasin91/trongate-modules);
+see its README for how an app pulls it in and sends changes back.
 
 ## Tests
 
