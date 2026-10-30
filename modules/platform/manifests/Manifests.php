@@ -264,8 +264,10 @@ class Manifests {
     /**
      * The www host that redirects to the app's custom domain: "www.{domain}"
      * whenever the domain is routed (custom_domains()). Null for a domain that
-     * starts with "www." itself: its bare parent was never proven by the TXT
-     * record.
+     * starts with "www." itself (its bare parent was never proven by the TXT
+     * record), and when another app verified "www.{domain}" as its own domain
+     * (app.www_claimed, Platform_task::app): an explicit claim wins, and
+     * release_domains() would otherwise delete that app's Gateway.
      *
      * Not DNS-gated: a www host that does not point here only leaves its own
      * certificate pending, confined to its own Gateway (domain_gateway()),
@@ -275,7 +277,7 @@ class Manifests {
     static function www_alias(array $app): ?string {
         $domain = self::custom_domains($app)[0] ?? null;
 
-        if ($domain === null || str_starts_with($domain, 'www.')) {
+        if ($domain === null || str_starts_with($domain, 'www.') || !empty($app['www_claimed'])) {
             return null;
         }
 

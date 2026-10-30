@@ -73,7 +73,9 @@ class Platform_task {
     static function app(PDO $db, int $project_id, int $app_id): array {
         $sql = <<<SQL
             SELECT a.*, r.php_extensions, r.build_commands, r.persistent_paths, r.always_on, r.trongate_env, r.default_module, r.captures_mail, r.health_check_path,
-                p.namespace, p.owner_id AS project_owner_id
+                p.namespace, p.owner_id AS project_owner_id,
+                -- Manifests::www_alias: another app verified www.{domain} itself
+                EXISTS (SELECT 1 FROM app w WHERE w.verified_domain = CONCAT('www.', a.verified_domain) AND w.id <> a.id) AS www_claimed
             FROM app a
             JOIN project p ON p.id = a.project_id
             LEFT JOIN app_runtime r ON r.app_id = a.id
@@ -245,7 +247,9 @@ class Platform_task {
 
         $gate = self::row(
             $runtime->db(),
-            'SELECT verified_domain, domain_pointed_at, domain_secured_at FROM app WHERE id = ?',
+            "SELECT verified_domain, domain_pointed_at, domain_secured_at,
+                EXISTS (SELECT 1 FROM app w WHERE w.verified_domain = CONCAT('www.', a.verified_domain) AND w.id <> a.id) AS www_claimed
+            FROM app a WHERE a.id = ?",
             [(int) $app['id']],
         );
         $app = ($gate ?? []) + $app;

@@ -46,6 +46,11 @@ test('a www domain gets no alias: its bare parent was never verified', function 
     assert_same(null, Manifests::www_alias(['verified_domain' => 'www.shop.example'] + $live));
 });
 
+test('another app that verified www.{domain} keeps it', function () use ($live) {
+    assert_same(null, Manifests::www_alias(['www_claimed' => 1] + $live));
+    assert_same(['shop.example'], Manifests::gateway_hosts(['www_claimed' => 1] + $live));
+});
+
 test('gateway_hosts lists the domain, then its www alias', function () use ($live) {
     assert_same(['www.shop.example'], Manifests::gateway_hosts(['verified_domain' => 'www.shop.example'] + $live));
     assert_same(['shop.example', 'www.shop.example'], Manifests::gateway_hosts($live));
