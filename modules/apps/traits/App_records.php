@@ -169,6 +169,7 @@ trait App_records {
                 domain_dns_failures = IF(verified_domain <=> :same_domain_2, domain_dns_failures, 0),
                 domain_checked_at = IF(verified_domain <=> :same_domain_3, domain_checked_at, NULL),
                 domain_secured_at = IF(verified_domain <=> :same_domain_4, domain_secured_at, NULL),
+                www_pointed_at = IF(verified_domain <=> :same_domain_5, www_pointed_at, NULL),
                 verified_domain = IF(verified_domain <=> :same_domain, verified_domain, NULL)
             WHERE id = :app_id AND project_id = :project_id
         SQL;
@@ -179,6 +180,7 @@ trait App_records {
             'same_domain_2' => $domain,
             'same_domain_3' => $domain,
             'same_domain_4' => $domain,
+            'same_domain_5' => $domain,
             'app_id' => $app_id,
             'project_id' => $project_id,
         ]);

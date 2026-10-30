@@ -245,7 +245,7 @@ class Platform_task {
 
         $gate = self::row(
             $runtime->db(),
-            'SELECT verified_domain, domain_pointed_at, domain_secured_at FROM app WHERE id = ?',
+            'SELECT verified_domain, domain_pointed_at, domain_secured_at, www_pointed_at FROM app WHERE id = ?',
             [(int) $app['id']],
         );
         $app = ($gate ?? []) + $app;
@@ -401,7 +401,8 @@ class Platform_task {
 
     /**
      * Delete the app's custom-domain Gateways for domains it no longer routes
-     * (changed, removed, or demoted by recheck_domains). Also run on its own by
+     * (changed, removed, or demoted by recheck_domains), and its www redirect
+     * route once the www alias goes with them. Also run on its own by
      * the prune_domains task, queued when a verified domain is changed or
      * removed, so an app that does not deploy again still lets go of it.
      * Never throws: logs instead.
@@ -411,10 +412,14 @@ class Platform_task {
         $namespace = Manifests::namespace_name($app);
         $keep = array_map(
             fn(string $domain) => Manifests::domain_gateway_name($app_id, $domain),
-            Manifests::custom_domains($app)
+            Manifests::gateway_hosts($app)
         );
 
         try {
+            if (Manifests::www_alias($app) === null && self::delete_owned($runtime->kube(), 'gateway.networking.k8s.io/v1', 'HTTPRoute', $namespace, $app_id, Manifests::www_route_name($app_id))) {
+                $log->info('Deleted the www redirect (www no longer routed)');
+            }
+
             $gateways = $runtime->kube()->list('gateway.networking.k8s.io/v1', 'Gateway', $namespace, Manifests::domain_gateway_selector($app_id));
 
             foreach ($gateways as $gateway) {
@@ -442,7 +447,7 @@ class Platform_task {
      * throws: logs instead.
      */
     static function release_domains(Runtime $runtime, Task_log $log, array $app): void {
-        foreach (Manifests::custom_domains($app) as $domain) {
+        foreach (Manifests::gateway_hosts($app) as $domain) {
             try {
                 $gateways = $runtime->kube()->list('gateway.networking.k8s.io/v1', 'Gateway', null, Manifests::domain_hostname_selector($domain));
 

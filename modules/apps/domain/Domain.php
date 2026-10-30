@@ -171,11 +171,26 @@ class Domain extends Trongate {
             $summary = 'It points here. HTTPS switches on once the certificate is issued, usually within minutes. If that takes longer, check that no CAA record for the domain excludes Let\'s Encrypt.' . $checked;
             $verify_label = 'Check again';
         } else {
-            $summary = 'Live with HTTPS. It is your app\'s base URL.';
+            $summary = 'Live with HTTPS. It is your app\'s base URL.' . $this->_www_hint($app, $domain);
             $verify_label = '';
         }
 
         return ['domain' => $domain, 'steps' => $steps, 'summary' => $summary, 'verify_label' => $verify_label];
+    }
+
+    /**
+     * What happens to "www.{domain}" (Manifests::www_alias), for a live domain
+     */
+    function _www_hint(object $app, string $domain): string {
+        if (str_starts_with($domain, 'www.')) {
+            return '';
+        }
+
+        if (Manifests::www_alias((array) $app) !== null) {
+            return " www.{$domain} redirects here.";
+        }
+
+        return " To have www.{$domain} redirect here, give it the same A and AAAA records.";
     }
 
     /**
