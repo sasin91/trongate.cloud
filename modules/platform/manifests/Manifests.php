@@ -262,6 +262,53 @@ class Manifests {
     }
 
     /**
+     * The www host that redirects to the app's custom domain: "www.{domain}"
+     * whenever the domain is routed (custom_domains()). Null for a domain that
+     * starts with "www." itself (its bare parent was never proven by the TXT
+     * record), and when another app verified "www.{domain}" as its own domain
+     * (app.www_claimed, Platform_task::app): an explicit claim wins, and
+     * release_domains() would otherwise delete that app's Gateway.
+     *
+     * Not DNS-gated: a www host that does not point here only leaves its own
+     * certificate pending, confined to its own Gateway (domain_gateway()),
+     * and never reaches the cluster anyway. Its route only redirects
+     * (www_redirect_route()), and it never becomes BASE_URL.
+     */
+    static function www_alias(array $app): ?string {
+        $domain = self::custom_domains($app)[0] ?? null;
+
+        if ($domain === null || str_starts_with($domain, 'www.') || !empty($app['www_claimed'])) {
+            return null;
+        }
+
+        return 'www.' . $domain;
+    }
+
+    /**
+     * Every host with a custom-domain Gateway: the routed custom domains plus
+     * their www alias (www_alias())
+     *
+     * @return list<string>
+     */
+    static function gateway_hosts(array $app): array {
+        $hosts = self::custom_domains($app);
+        $www = self::www_alias($app);
+
+        if ($www !== null) {
+            $hosts[] = $www;
+        }
+
+        return $hosts;
+    }
+
+    /**
+     * Name of the HTTPRoute that redirects an app's www alias: "p{id}-www"
+     */
+    static function www_route_name(int $app_id): string {
+        return "p{$app_id}-www";
+    }
+
+    /**
      * Whether the app answers on {slug}.PLATFORM_APPS_DOMAIN: every app but a
      * production app whose staging app took it (app.serves_slug_host,
      * tasks/split_staging.php)
@@ -600,6 +647,36 @@ class Manifests {
     }
 
     /**
+     * The HTTPRoute that sends "www.{domain}" to "https://{domain}" with a 301,
+     * path and query kept. It attaches to the www host's own Gateway only and
+     * has no backend, so a sleeping app is not woken to answer it.
+     */
+    static function www_redirect_route(array $app, string $www, string $domain): array {
+        $app_id = (int) $app['id'];
+
+        return [
+            'apiVersion' => 'gateway.networking.k8s.io/v1',
+            'kind' => 'HTTPRoute',
+            'metadata' => self::_metadata(self::www_route_name($app_id), self::namespace_name($app), self::app_labels($app_id)),
+            'spec' => [
+                'parentRefs' => [[
+                    'group' => 'gateway.networking.k8s.io',
+                    'kind' => 'Gateway',
+                    'name' => self::domain_gateway_name($app_id, $www),
+                    'sectionName' => 'https',
+                ]],
+                'hostnames' => [$www],
+                'rules' => [[
+                    'filters' => [[
+                        'type' => 'RequestRedirect',
+                        'requestRedirect' => ['scheme' => 'https', 'hostname' => $domain, 'statusCode' => 301],
+                    ]],
+                ]],
+            ],
+        ];
+    }
+
+    /**
      * Everything one app needs inside its tenant namespace, in apply order
      *
      * @param array $app        app row (id, namespace, slug, label, type, verified_domain, domain_pointed_at, domain_secured_at, persistent_paths, always_on, trongate_env)
@@ -834,6 +911,13 @@ class Manifests {
             ],
         ];
 
+        $www = self::www_alias($app);
+
+        if ($www !== null) {
+            $manifests[] = self::domain_gateway($app, $www);
+            $manifests[] = self::www_redirect_route($app, $www, self::custom_domains($app)[0]);
+        }
+
         return $manifests;
     }
 
@@ -901,6 +985,7 @@ class Manifests {
 
         return [
             ['gateway.networking.k8s.io/v1', 'HTTPRoute', $name],
+            ['gateway.networking.k8s.io/v1', 'HTTPRoute', self::www_route_name($app_id)],
             ['traefik.io/v1alpha1', 'Middleware', $name],
             ['v1', 'Service', $name],
             ['apps/v1', 'Deployment', $name],

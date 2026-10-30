@@ -32,6 +32,10 @@
  * so a domain goes live soon after its DNS change propagates and a domain that
  * moved away is noticed.
  *
+ * The www alias (Manifests::www_alias): an app whose domain is routed but
+ * has no www redirect route yet (routed before the alias existed) is
+ * re-applied to get one.
+ *
  * A production app's domain going live (domain_secured_at set) queues
  * split_staging, which moves its {slug} host to a new staging app.
  *
@@ -284,7 +288,18 @@ return function (Task_log $log) use ($payload, $runtime): int {
             $deployment = $runtime->kube()->get('apps/v1', 'Deployment', $namespace, $app_name);
             $live_base_url = (string) ($deployment['spec']['template']['metadata']['annotations'][Manifests::LABEL_PREFIX . '/base-url'] ?? '');
 
-            if ($deployment !== null && $live_base_url !== Trongate_config::base_url($app) && !$promote((int) $id, $domain)) {
+            if ($deployment !== null && $live_base_url !== Trongate_config::base_url($app)) {
+                if (!$promote((int) $id, $domain)) {
+                    $failed++;
+                }
+
+                continue;
+            }
+
+            // The www alias: routed by the same re-apply
+            $www_route = $runtime->kube()->get('gateway.networking.k8s.io/v1', 'HTTPRoute', $namespace, Manifests::www_route_name((int) $id));
+
+            if (Manifests::www_alias($app) !== null && $www_route === null && !$promote((int) $id, "www.{$domain}")) {
                 $failed++;
             }
         } catch (Throwable $e) {

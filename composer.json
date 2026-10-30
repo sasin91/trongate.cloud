@@ -46,6 +46,7 @@
             "php tests/App_env_suggestions_test.php",
             "php tests/App_env_test.php",
             "php tests/Domain_dns_test.php",
+            "php tests/Www_alias_test.php",
             "php tests/Setup_sql_plan_test.php",
             "php tests/Sql_import_test.php",
             "php tests/Sql_checker_test.php",
