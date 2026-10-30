@@ -263,19 +263,19 @@ class Manifests {
 
     /**
      * The www host that redirects to the app's custom domain: "www.{domain}"
-     * while the domain is routed (custom_domains()) and www was seen pointing
-     * at the cluster too (app.www_pointed_at, kept by the recheck_domains
-     * task). Null for a domain that starts with "www." itself: its bare
-     * parent was never proven by the TXT record.
+     * whenever the domain is routed (custom_domains()). Null for a domain that
+     * starts with "www." itself: its bare parent was never proven by the TXT
+     * record.
      *
-     * The www host is not a custom domain of its own: it gets its own
-     * Gateway and certificate (domain_gateway()) and a route that only
-     * redirects (www_redirect_route()), and never becomes BASE_URL.
+     * Not DNS-gated: a www host that does not point here only leaves its own
+     * certificate pending, confined to its own Gateway (domain_gateway()),
+     * and never reaches the cluster anyway. Its route only redirects
+     * (www_redirect_route()), and it never becomes BASE_URL.
      */
     static function www_alias(array $app): ?string {
         $domain = self::custom_domains($app)[0] ?? null;
 
-        if ($domain === null || str_starts_with($domain, 'www.') || empty($app['www_pointed_at'])) {
+        if ($domain === null || str_starts_with($domain, 'www.')) {
             return null;
         }
 
@@ -677,7 +677,7 @@ class Manifests {
     /**
      * Everything one app needs inside its tenant namespace, in apply order
      *
-     * @param array $app        app row (id, namespace, slug, label, type, verified_domain, domain_pointed_at, domain_secured_at, www_pointed_at, persistent_paths, always_on, trongate_env)
+     * @param array $app        app row (id, namespace, slug, label, type, verified_domain, domain_pointed_at, domain_secured_at, persistent_paths, always_on, trongate_env)
      * @param array $deployment deployment row (id, image)
      * @param array $database   database_server row (host, port, operator_name, operator_namespace); optional 'password'
      */

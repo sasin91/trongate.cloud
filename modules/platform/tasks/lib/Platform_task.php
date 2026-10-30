@@ -245,7 +245,7 @@ class Platform_task {
 
         $gate = self::row(
             $runtime->db(),
-            'SELECT verified_domain, domain_pointed_at, domain_secured_at, www_pointed_at FROM app WHERE id = ?',
+            'SELECT verified_domain, domain_pointed_at, domain_secured_at FROM app WHERE id = ?',
             [(int) $app['id']],
         );
         $app = ($gate ?? []) + $app;

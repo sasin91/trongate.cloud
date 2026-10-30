@@ -32,11 +32,9 @@
  * so a domain goes live soon after its DNS change propagates and a domain that
  * moved away is noticed.
  *
- * The www alias (Manifests::www_alias): once the domain points here, each
- * run also checks "www.{domain}" and records it in app.www_pointed_at. A www
- * host that starts pointing here is routed (a redirect to the domain) by
- * re-applying the app; one that stops is left routed until the next deploy,
- * like a demoted domain.
+ * The www alias (Manifests::www_alias): an app whose domain is routed but
+ * has no www redirect route yet (routed before the alias existed) is
+ * re-applied to get one.
  *
  * A production app's domain going live (domain_secured_at set) queues
  * split_staging, which moves its {slug} host to a new staging app.
@@ -196,34 +194,6 @@ return function (Task_log $log) use ($payload, $runtime): int {
         }
     };
 
-    /**
-     * Check "www.{domain}" for an app whose domain points here, record it in
-     * app.www_pointed_at and return whether it points here. A domain that is
-     * a www host itself has no alias (Manifests::www_alias).
-     */
-    $check_www = function (array $app) use ($runtime, $log): bool {
-        $domain = strtolower((string) $app['verified_domain']);
-
-        if (str_starts_with($domain, 'www.')) {
-            return false;
-        }
-
-        $www = "www.{$domain}";
-        $check = Domain_dns::check($www);
-        $sql = <<<SQL
-            UPDATE app
-            SET www_pointed_at = IF(?, COALESCE(www_pointed_at, NOW()), NULL)
-            WHERE id = ? AND verified_domain = ?
-            SQL;
-        Platform_task::execute($runtime->db(), $sql, [$check['points'] ? 1 : 0, (int) $app['id'], (string) $app['verified_domain']]);
-
-        if ($check['points'] && empty($app['www_pointed_at'])) {
-            $log->info("{$www}: {$check['detail']}. It redirects to {$domain}.");
-        }
-
-        return $check['points'];
-    };
-
     $failed = 0;
 
     foreach ($app_ids as $id) {
@@ -268,7 +238,6 @@ return function (Task_log $log) use ($payload, $runtime): int {
             Platform_task::execute($db, $sql, [(int) $id, $domain]);
             $log->info("{$domain}: {$check['detail']}");
 
-            $www_points = $check_www($app);
             $namespace = Manifests::namespace_name($app);
             $app_name = Manifests::app_name((int) $id);
 
@@ -330,7 +299,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
             // The www alias: routed by the same re-apply
             $www_route = $runtime->kube()->get('gateway.networking.k8s.io/v1', 'HTTPRoute', $namespace, Manifests::www_route_name((int) $id));
 
-            if ($www_points && $www_route === null && !$promote((int) $id, "www.{$domain}")) {
+            if (Manifests::www_alias($app) !== null && $www_route === null && !$promote((int) $id, "www.{$domain}")) {
                 $failed++;
             }
         } catch (Throwable $e) {

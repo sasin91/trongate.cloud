@@ -263,8 +263,6 @@ CREATE TABLE app (
   domain_secured_at TIMESTAMP NULL DEFAULT NULL,
   domain_dns_failures TINYINT UNSIGNED NOT NULL DEFAULT 0,
   domain_checked_at TIMESTAMP NULL DEFAULT NULL,
-  -- www.{verified_domain} seen pointing here too: it redirects to the domain
-  www_pointed_at TIMESTAMP NULL DEFAULT NULL,
 
   -- Source: a repository the GitHub App is installed on. Builds read it with an
   -- installation token; the App's webhook delivers its pushes.

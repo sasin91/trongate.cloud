@@ -489,7 +489,6 @@ trait Platform_actions {
                 'domain_dns_failures' => 0,
                 'domain_checked_at' => null,
                 'domain_secured_at' => null,
-                'www_pointed_at' => null,
             ], 'app');
         } catch (PDOException $e) {
             // unique_verified_domain: another app already serves it

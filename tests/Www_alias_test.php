@@ -36,25 +36,23 @@ $named = function (array $manifests, string $kind, string $name): ?array {
     return null;
 };
 
-test('www is routed only once it points here, and only for a routed domain', function () use ($live) {
-    assert_same(null, Manifests::www_alias($live));
-    assert_same('www.shop.example', Manifests::www_alias($live + ['www_pointed_at' => '2026-10-30 12:02:00']));
-    assert_same(null, Manifests::www_alias(['domain_pointed_at' => null, 'www_pointed_at' => '2026-10-30 12:02:00'] + $live));
-    assert_same(null, Manifests::www_alias(['verified_domain' => null, 'www_pointed_at' => '2026-10-30 12:02:00'] + $live));
+test('www is routed with every routed domain, and only then', function () use ($live) {
+    assert_same('www.shop.example', Manifests::www_alias($live));
+    assert_same(null, Manifests::www_alias(['domain_pointed_at' => null] + $live));
+    assert_same(null, Manifests::www_alias(['verified_domain' => null] + $live));
 });
 
 test('a www domain gets no alias: its bare parent was never verified', function () use ($live) {
-    assert_same(null, Manifests::www_alias(['verified_domain' => 'www.shop.example', 'www_pointed_at' => '2026-10-30 12:02:00'] + $live));
+    assert_same(null, Manifests::www_alias(['verified_domain' => 'www.shop.example'] + $live));
 });
 
 test('gateway_hosts lists the domain, then its www alias', function () use ($live) {
-    assert_same(['shop.example'], Manifests::gateway_hosts($live));
-    assert_same(['shop.example', 'www.shop.example'], Manifests::gateway_hosts($live + ['www_pointed_at' => '2026-10-30 12:02:00']));
+    assert_same(['www.shop.example'], Manifests::gateway_hosts(['verified_domain' => 'www.shop.example'] + $live));
+    assert_same(['shop.example', 'www.shop.example'], Manifests::gateway_hosts($live));
 });
 
 test('Manifests::app emits the www Gateway and a redirect route, and leaves the app route alone', function () use ($live, $manifests, $named) {
-    $www = $live + ['www_pointed_at' => '2026-10-30 12:02:00'];
-    $out = $manifests($www);
+    $out = $manifests($live);
     $gateway_name = Manifests::domain_gateway_name(7, 'www.shop.example');
 
     $gateway = $named($out, 'Gateway', $gateway_name);
@@ -73,12 +71,11 @@ test('Manifests::app emits the www Gateway and a redirect route, and leaves the 
     assert_same(Manifests::app_labels(7), $redirect['metadata']['labels']);
 
     $route = $named($out, 'HTTPRoute', 'p7-app');
-    assert_same(false, in_array('www.shop.example', $route['spec']['hostnames'], true));
-    assert_same($named($manifests($live), 'HTTPRoute', 'p7-app'), $route);
+    assert_same(['shop.trongate.dev', 'shop.example'], $route['spec']['hostnames']);
 });
 
-test('without www pointing here there is no www Gateway or route', function () use ($live, $manifests, $named) {
-    $out = $manifests($live);
+test('an unrouted domain gets no www Gateway or route', function () use ($live, $manifests, $named) {
+    $out = $manifests(['domain_pointed_at' => null] + $live);
 
     assert_same(null, $named($out, 'HTTPRoute', 'p7-www'));
     assert_same(null, $named($out, 'Gateway', Manifests::domain_gateway_name(7, 'www.shop.example')));
