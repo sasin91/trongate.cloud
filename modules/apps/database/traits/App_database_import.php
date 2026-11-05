@@ -1,6 +1,7 @@
 <?php
 
 require_once APPPATH . 'modules/platform/live/Sql_import.php';
+require_once APPPATH . 'modules/log/Log.php';
 
 /**
  * The Database tab's Import view (?view=import, views/_import.php): upload a
@@ -73,7 +74,7 @@ trait App_database_import {
         $refusal = $this->_chunk_refusal($import, $seq, $bytes);
 
         if ($refusal !== null) {
-            error_log("SQL import #{$import->id} of app #{$app->id}: part {$seq} refused: {$refusal}");
+            Log::warn("SQL import #{$import->id} of app #{$app->id}: part {$seq} refused: {$refusal}");
             $this->_import_refused($refusal);
             return;
         }
@@ -141,7 +142,7 @@ trait App_database_import {
         $received = $this->model->received((int) $import->id);
 
         if ($received['bytes'] !== (int) $import->bytes || $received['chunks'] !== Sql_import::chunk_count((int) $import->bytes)) {
-            error_log("SQL import #{$import->id} of app #{$app->id}: finished with {$received['bytes']} of {$import->bytes} bytes");
+            Log::info("SQL import #{$import->id} of app #{$app->id}: finished with {$received['bytes']} of {$import->bytes} bytes");
             $this->_import_refused('Only ' . $this->_size_label($received['bytes']) . ' of ' . $this->_size_label((int) $import->bytes) . ' arrived. Start the upload again.');
             return;
         }

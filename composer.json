@@ -56,6 +56,7 @@
             "php tests/App_backup_test.php",
             "php tests/Daily_backup_test.php",
             "php tests/Impersonation_test.php",
+            "php tests/Git_repo_test.php",
             "php bin/run-tests.php -q --show-diff modules/log modules/cli modules/error_pages"
         ],
         "backup:keys": "php modules/platform/backup/keys.php",

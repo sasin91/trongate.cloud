@@ -5,7 +5,7 @@ a message goes to every writer whole; a blank one is left out
 require __DIR__ . '/setup.inc';
 $a = new Kept_lines();
 $b = new Kept_lines();
-$log = new Log([$a, $b]);
+$log = new Logger([$a, $b]);
 $log->warn("one\ntwo\n");
 $log->info("  \n");
 var_dump($a->lines, $a->lines === $b->lines);

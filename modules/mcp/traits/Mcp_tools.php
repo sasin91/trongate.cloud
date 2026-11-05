@@ -9,6 +9,7 @@ require_once APPPATH . 'modules/services/traits/Provider_clients.php';
 require_once APPPATH . 'modules/apps/traits/App_rules.php';
 require_once APPPATH . 'modules/services/clients/Client.php';
 require_once APPPATH . 'modules/services/clients/Github.php';
+require_once APPPATH . 'modules/log/Log.php';
 
 /**
  * MCP tools for controllers: the registry (tools/list, tools/call) and the
@@ -469,7 +470,7 @@ trait Mcp_tools {
                 throw new RuntimeException('There is no public repository at github.com/' . $repository . '.');
             }
 
-            error_log("MCP create_app: could not check the public link to {$repository}: {$e->getMessage()}");
+            Log::warn("MCP create_app: could not check the public link to {$repository}: {$e->getMessage()}");
             throw new RuntimeException('Could not reach GitHub to check the repository. Try again.');
         }
 

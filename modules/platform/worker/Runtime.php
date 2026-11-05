@@ -115,7 +115,7 @@ class Runtime {
     private ?Valkey $valkey = null;
 
     /** The worker's own lines, outside any task */
-    private ?Log $runtime_log = null;
+    private ?Logger $runtime_log = null;
 
     private int $next_schedule_check = 0;
 
@@ -382,7 +382,7 @@ class Runtime {
     }
 
     private function log(string $message): void {
-        $this->runtime_log ??= new Log([new Stream_writer('[Runtime] ', false)]);
+        $this->runtime_log ??= new Logger([new Stream_writer('[Runtime] ', false)]);
         $this->runtime_log->info($message);
     }
 

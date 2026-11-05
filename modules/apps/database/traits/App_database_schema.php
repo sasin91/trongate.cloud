@@ -6,6 +6,7 @@ require_once APPPATH . 'modules/platform/live/Setup_sql_plan.php';
 require_once APPPATH . 'modules/platform/tasks/lib/Platform_task.php';
 require_once APPPATH . 'modules/services/clients/Github_app.php';
 require_once APPPATH . 'modules/services/clients/Github.php';
+require_once APPPATH . 'modules/platform/git/Git_repo.php';
 
 /**
  * The Database tab's Schema view (?view=schema): the schema.sql in the app's
@@ -79,7 +80,9 @@ trait App_database_schema {
         try {
             $repo = Platform_task::github_repo((array) $app);
         } catch (RuntimeException $e) {
-            return 'This app has no GitHub repository, so there is no schema.sql to compare.';
+            return $app->source_provider === Git_repo::PROVIDER
+                ? 'Schema comparison reads schema.sql from GitHub, so it is not available for apps on trongate.cloud git yet.'
+                : 'This app has no GitHub repository, so there is no schema.sql to compare.';
         }
 
         $branch = (string) ($app->source_branch ?: 'main');

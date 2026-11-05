@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/Impersonation_rules.php';
+require_once APPPATH . 'modules/log/Log.php';
 
 /**
  * Sign in to the panel as a customer from tg-admin, without their password.
@@ -70,7 +71,7 @@ class Impersonation extends Trongate {
             'expires_at' => $expiry_date,
         ];
 
-        error_log(Impersonation_rules::started_line($admin, $customer_label, (string) ($_SERVER['REMOTE_ADDR'] ?? 'unknown')));
+        Log::info(Impersonation_rules::started_line($admin, $customer_label, (string) ($_SERVER['REMOTE_ADDR'] ?? 'unknown')));
         redirect('dashboard');
     }
 
@@ -87,7 +88,7 @@ class Impersonation extends Trongate {
         }
 
         $this->_end_impersonation($state);
-        error_log(Impersonation_rules::stopped_line($state['admin'], $state['customer_label'], (int) $state['started_at'], time()));
+        Log::info(Impersonation_rules::stopped_line($state['admin'], $state['customer_label'], (int) $state['started_at'], time()));
 
         set_flashdata('You are no longer signed in as ' . $state['customer_label'] . '.');
         redirect('customer-admin/show/' . $state['customer_id']);
@@ -107,7 +108,7 @@ class Impersonation extends Trongate {
         }
 
         $this->_end_impersonation($state);
-        error_log(Impersonation_rules::stopped_line($state['admin'], $state['customer_label'], (int) $state['started_at'], time()));
+        Log::info(Impersonation_rules::stopped_line($state['admin'], $state['customer_label'], (int) $state['started_at'], time()));
 
         set_flashdata('Your sign-in as ' . $state['customer_label'] . ' has ended.');
         redirect('customer-admin/show/' . $state['customer_id']);
@@ -151,7 +152,7 @@ class Impersonation extends Trongate {
         }
 
         $this->model->delete_token($state['token']);
-        error_log(Impersonation_rules::stopped_line($state['admin'], $state['customer_label'], (int) $state['started_at'], time()));
+        Log::info(Impersonation_rules::stopped_line($state['admin'], $state['customer_label'], (int) $state['started_at'], time()));
         unset($_SESSION['impersonation']);
 
         return $state['previous_token'];

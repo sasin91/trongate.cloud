@@ -9,7 +9,7 @@ $broken = new class implements Log_writer {
     }
 };
 $kept = new Kept_lines();
-(new Log([$broken, $kept]))->error('still here');
+(new Logger([$broken, $kept]))->error('still here');
 echo implode("\n", $kept->lines), "\n";
 ?>
 --EXPECTF--

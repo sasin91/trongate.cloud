@@ -6,6 +6,7 @@ resources:
   - config.yaml
   - mariadb.yaml
   - database.yaml
+  - git.yaml
   - app-rbac.yaml
   - app.yaml
   - worker-rbac.yaml

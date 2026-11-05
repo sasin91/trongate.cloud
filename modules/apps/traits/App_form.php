@@ -8,6 +8,7 @@ require_once __DIR__ . '/App_wizard_draft.php';
 require_once APPPATH . 'modules/apps/setup_sql/traits/Setup_sql_step.php';
 require_once APPPATH . 'modules/services/clients/Client.php';
 require_once APPPATH . 'modules/services/clients/Github.php';
+require_once APPPATH . 'modules/log/Log.php';
 
 /**
  * New-app form shared by onboarding and the apps module:
@@ -400,7 +401,7 @@ trait App_form {
         try {
             $branches = $source['client']->list_branches($repository, 100);
         } catch (Client_Error $e) {
-            error_log("New app: could not list the branches of {$repository}: {$e->getMessage()}");
+            Log::warn("New app: could not list the branches of {$repository}: {$e->getMessage()}");
             http_response_code(422);
             die();
         }
@@ -461,7 +462,7 @@ trait App_form {
             $suggestion = $this->_build_suggestion($source['client'], $repository, $branch);
             $build = $this->_build_fields($suggestion['commands'], implode(', ', $suggestion['php_extensions']), $this->_build_found_note($suggestion));
         } catch (Client_Error | RuntimeException $e) {
-            error_log("New app: could not read the root of {$repository}@{$branch} for build commands: {$e->getMessage()}");
+            Log::warn("New app: could not read the root of {$repository}@{$branch} for build commands: {$e->getMessage()}");
             $build = $this->_build_fields('', '', 'We could not read the repository. Type the commands yourself, or add them later in Settings.');
         }
 
@@ -692,7 +693,7 @@ trait App_form {
             return 'We could not find a public repository at github.com/' . $repository . '. For a private repository, connect GitHub and install the trongate.cloud app on it.';
         }
 
-        error_log("New app: could not check the public link to {$repository}: {$e->getMessage()}");
+        Log::warn("New app: could not check the public link to {$repository}: {$e->getMessage()}");
 
         if ($code === 403 || $code === 429) {
             return 'GitHub is limiting how often we may read public repositories right now. Please try again in a few minutes, or connect GitHub and pick the repository.';

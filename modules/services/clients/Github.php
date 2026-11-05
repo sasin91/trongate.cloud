@@ -57,6 +57,16 @@ class Github extends Client {
     }
 
     /**
+     * The repository's size on GitHub in KiB (its "size", roughly the packed
+     * git objects)
+     */
+    function repository_size_kib(string $repo): int {
+        $repository = $this->request('GET', "/repos/{$repo}");
+
+        return (int) ($repository['size'] ?? 0);
+    }
+
+    /**
      * The signed-in GitHub user: id, login, ...
      */
     function user(): array {
@@ -354,6 +364,18 @@ class Github extends Client {
         $repo = preg_replace('#^https?://[^/]+/#', '', rtrim($url, '/'));
 
         return "https://api.github.com/repos/{$repo}/tarball/{$branch}";
+    }
+
+    /**
+     * The header git sends to read the repository over HTTPS (git fetch), or
+     * null without a token (a public repository)
+     */
+    function git_http_header(): ?string {
+        if ($this->token === '') {
+            return null;
+        }
+
+        return 'Authorization: Basic ' . base64_encode('x-access-token:' . $this->token);
     }
 
     function headers(): array {

@@ -3,11 +3,12 @@
 /**
  * Deploy Task
  *
- * Builds an app's GitHub repository on PLATFORM_APP_BASE_IMAGE (FrankenPHP) with
+ * Builds an app's repository on PLATFORM_APP_BASE_IMAGE (FrankenPHP) with
  * a BuildKit daemon started for this build only, pushes it to PLATFORM_REGISTRY
  * and rolls it out to its project's namespace. GitHub is read with an
  * installation token of the trongate.cloud GitHub App, or without a token
- * when the App is not installed on a public repository (a pasted link).
+ * when the App is not installed on a public repository (a pasted link);
+ * trongate.cloud git straight from its bare repository (Deploy_sources).
  *
  * Payload: {deployment_id, app_id, project_id, commit_sha?}
  *
@@ -16,6 +17,7 @@
  */
 
 require_once __DIR__ . '/lib/Platform_task.php';
+require_once __DIR__ . '/lib/source/Deploy_sources.php';
 require_once __DIR__ . '/../manifests/Config_editor.php';
 require_once __DIR__ . '/../manifests/Build_commands.php';
 
@@ -34,50 +36,10 @@ return function (Task_log $log) use ($payload, $runtime): int {
 
     $log->step('source');
 
-    $provider = (string) ($app['source_provider'] ?? '');
-    $source_url = rtrim((string) ($app['source_url'] ?? ''), '/');
     $branch = (string) ($app['source_branch'] ?: 'main');
-
-    if ($provider !== 'github') {
-        throw new RuntimeException("Unsupported source provider: {$provider}");
-    }
-
-    $repo = Platform_task::github_repo($app);
-
-    try {
-        $github = Platform_task::source_client($repo);
-    } catch (Client_Error $e) {
-        if ($e->getCode() === 404) {
-            throw new RuntimeException("Cannot read {$repo}: install the trongate.cloud GitHub app on it, or make it public");
-        }
-
-        throw $e;
-    }
-    $commit_sha = strtolower((string) ($payload['commit_sha'] ?? ''));
-
-    // Webhook pushes always build the branch head: a replayed (validly signed) old
-    // push must not roll the app back to an older commit. Reconcile deploys stand
-    // in for a missed push, so they follow the branch the same way.
-    if (in_array($deployment['trigger_type'] ?? '', ['webhook', 'reconcile'], true) && $commit_sha !== '') {
-        $head = $github->request('GET', "/repos/{$repo}/commits/" . rawurlencode($branch));
-        $head_sha = strtolower((string) ($head['sha'] ?? ''));
-
-        if ($head_sha !== '' && $head_sha !== $commit_sha) {
-            $log->warn('Pushed commit ' . substr($commit_sha, 0, 7) . " is no longer the head of {$branch}; building the head instead");
-            $commit_sha = $head_sha;
-        }
-    }
-
-    // No commit: the branch head. A short SHA (queue_deploy accepts 7-40 chars): its full SHA.
-    if (!preg_match('/^[0-9a-f]{40}$/', $commit_sha)) {
-        $ref = $commit_sha !== '' ? $commit_sha : $branch;
-        $commit = $github->request('GET', "/repos/{$repo}/commits/" . rawurlencode($ref));
-        $commit_sha = strtolower((string) ($commit['sha'] ?? ''));
-    }
-
-    if (!preg_match('/^[0-9a-f]{40}$/', $commit_sha)) {
-        throw new RuntimeException('Could not resolve the commit to deploy');
-    }
+    $source = Deploy_sources::for_app($app);
+    $repo = $source->name();
+    $commit_sha = $source->commit($branch, $deployment, (string) ($payload['commit_sha'] ?? ''), $log);
 
     $short_sha = substr($commit_sha, 0, 7);
     $runtime->set_deployment_status($deployment_id, 'building', ['commit_sha' => $commit_sha]);
@@ -98,36 +60,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
             throw new RuntimeException('Could not create the build directory');
         }
 
-        // Download in PHP so the token never appears in a command line or log
-        $tarball = "{$work}/source.tar.gz";
-        $handle = fopen($tarball, 'wb');
-        $curl = curl_init($github->download_url($source_url, $commit_sha));
-        curl_setopt_array($curl, [
-            CURLOPT_FILE => $handle,
-            CURLOPT_HTTPHEADER => $github->headers(),
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_MAXREDIRS => 5,
-            CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
-            CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
-            CURLOPT_FAILONERROR => true,
-            CURLOPT_CONNECTTIMEOUT => 15,
-            CURLOPT_TIMEOUT => 300,
-            CURLOPT_MAXFILESIZE_LARGE => 500 * 1024 * 1024,
-        ]);
-        $downloaded = curl_exec($curl);
-        $download_error = curl_error($curl);
-        curl_close($curl);
-        fclose($handle);
-
-        if ($downloaded !== true) {
-            throw new RuntimeException("Downloading the repository failed: {$download_error}");
-        }
-
-        $log->info('Downloaded source (' . round(filesize($tarball) / 1024) . ' KiB)');
-
-        if ($runtime->shell('tar -xzf ' . $q($tarball) . ' --strip-components=1 -C ' . $q($src) . ' && rm -f ' . $q($tarball), $log) !== 0) {
-            throw new RuntimeException('Extracting the repository failed');
-        }
+        $source->extract($runtime, $log, $commit_sha, $work, $src);
 
         // The tree is untrusted: PHP file calls below (and the build context) would
         // follow its symlinks, so refuse any that point outside the source dir.

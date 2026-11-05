@@ -1,0 +1,16 @@
+# trongate.cloud git (Git_repo): one bare repository per app on trongate.cloud
+# git, p{app id}.git. Only the worker mounts it: import_git (and later project
+# generation) writes the repositories, deploys read them with git archive.
+# On the tenant-files JuiceFS class (RWX, kept in object storage); the
+# directory survives a deleted claim.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: platform-git
+  namespace: trongate-cloud
+spec:
+  accessModes: ["ReadWriteMany"]
+  storageClassName: tenant-files
+  resources:
+    requests:
+      storage: 10Gi

@@ -3,6 +3,7 @@
 require_once __DIR__ . '/traits/Mcp_tools.php';
 require_once __DIR__ . '/traits/Mcp_database_tools.php';
 require_once __DIR__ . '/traits/Mcp_admin_tools.php';
+require_once APPPATH . 'modules/log/Log.php';
 
 /**
  * MCP server over Streamable HTTP (JSON responses, no SSE). URL: POST /mcp
@@ -175,7 +176,7 @@ class Mcp extends Trongate {
                 default => $this->_error($id, self::METHOD_NOT_FOUND, "Method not found: {$method}"),
             };
         } catch (Throwable $e) {
-            error_log('MCP ' . $method . ' failed: ' . $e->getMessage());
+            Log::error('MCP ' . $method . ' failed: ' . $e->getMessage());
             return $this->_error($id, self::INTERNAL_ERROR, 'Internal error');
         }
     }

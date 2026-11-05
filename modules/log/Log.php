@@ -1,65 +1,42 @@
 <?php
 
-require_once __DIR__ . '/Log_writer.php';
-require_once __DIR__ . '/Stream_writer.php';
-require_once __DIR__ . '/Error_log_writer.php';
+require_once __DIR__ . '/Logger.php';
 
 /**
- * A log, after Monolog, for web requests and command-line scripts alike:
- * each message goes to every writer (Stream_writer, Error_log_writer, or
- * one of your own) as one entry; a blank message is skipped. A writer that
- * fails never stops the caller; the failure goes to STDERR.
+ * One line to the shared logger, without building one each time:
  *
- *   $log = new Log([new Stream_writer('[backup] ')]);
- *   $log->info('Dumped 12 tables');
+ *   Log::info('Impersonation started');
+ *   Log::warn("[git] Move of app #12 refused: {$reason}");
+ *   Log::error("[mcp] create_app failed: {$e->getMessage()}");
  *
- *   $log = new Log([new Error_log_writer('[webhooks] ')]);
- *   $log->warn('Unknown event: push');
- *
- * Framework-free.
+ * The shared logger writes with PHP's error_log() (Error_log_writer), so a
+ * line lands where the server keeps its errors. A script that wants its
+ * lines elsewhere sets its own once: Log::use(new Logger([...])).
  */
-class Log {
+final class Log {
 
-    const LEVELS = ['info', 'warn', 'error'];
+    private static ?Logger $logger = null;
 
-    /** @param list<Log_writer> $writers */
-    function __construct(private array $writers = []) {
+    static function info(string $message): void {
+        self::logger()->info($message);
     }
 
-    function add_writer(Log_writer $writer): void {
-        $this->writers[] = $writer;
+    static function warn(string $message): void {
+        self::logger()->warn($message);
     }
 
-    function info(string $message): void {
-        $this->write('info', $message);
+    static function error(string $message): void {
+        self::logger()->error($message);
     }
 
-    function warn(string $message): void {
-        $this->write('warn', $message);
+    /**
+     * Send the facade's lines to $logger from now on
+     */
+    static function use(Logger $logger): void {
+        self::$logger = $logger;
     }
 
-    function error(string $message): void {
-        $this->write('error', $message);
-    }
-
-    /** $message at $level; an unknown level is written as info */
-    function write(string $level, string $message): void {
-        if (!in_array($level, static::LEVELS, true)) {
-            $level = 'info';
-        }
-
-        $message = rtrim($message);
-
-        if ($message === '') {
-            return;
-        }
-
-        foreach ($this->writers as $writer) {
-            try {
-                $writer->write($level, $message);
-            } catch (Throwable $e) {
-                fwrite(STDERR, get_class($writer) . ' failed: ' . $e->getMessage() . PHP_EOL);
-            }
-        }
+    static function logger(): Logger {
+        return self::$logger ??= new Logger([new Error_log_writer()]);
     }
 }

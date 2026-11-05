@@ -1,6 +1,7 @@
 <?php
 
 require_once APPPATH . 'modules/customer/traits/Customer_guard.php';
+require_once APPPATH . 'modules/log/Log.php';
 
 /**
  * Child module of apps: a production app's staging app (tasks/split_staging.php).
@@ -25,7 +26,7 @@ class Staging extends Trongate {
         try {
             $this->model->queue_staging_split((int) $app->project_id, (int) $app->id);
         } catch (RuntimeException $e) {
-            error_log("Add staging for app #{$app->id} refused: {$e->getMessage()}");
+            Log::warn("Add staging for app #{$app->id} refused: {$e->getMessage()}");
             set_flashdata(htmlspecialchars($e->getMessage()));
             redirect('apps/' . $app->id);
         }

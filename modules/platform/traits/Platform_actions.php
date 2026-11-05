@@ -538,6 +538,31 @@ trait Platform_actions {
     }
 
     /**
+     * Queue import_git: the app's GitHub repository, every branch with its
+     * history, is copied to trongate.cloud git, and the app and its staging
+     * app build from there. A move already waiting is not queued again. The
+     * task itself refuses an app it cannot move (not production, not GitHub).
+     */
+    function queue_git_import(int $project_id, int $app_id, ?int $customer_id): void {
+        $sql = <<<SQL
+            SELECT COUNT(*)
+            FROM tasks
+            WHERE app_id = :app_id
+              AND script = 'import_git'
+              AND completed_at IS NULL
+              AND failed_at IS NULL
+        SQL;
+
+        if ((int) $this->db->query_bind($sql, ['app_id' => $app_id], 'column') === 0) {
+            $this->_queue_task($project_id, $app_id, null, 'import_git', [
+                'project_id' => $project_id,
+                'app_id' => $app_id,
+                'customer_id' => $customer_id,
+            ]);
+        }
+    }
+
+    /**
      * A production app's staging app (id, slug, source_branch), if it has one
      */
     function find_staging_app(int $production_app_id): object|false {

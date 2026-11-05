@@ -16,7 +16,7 @@ trait App_upgrades {
      * running, its id is returned instead of queueing another.
      *
      * @return int The app_upgrade id
-     * @throws RuntimeException when the app is not the project's or not a Trongate v2 app with a repository
+     * @throws RuntimeException when the app is not the project's or not a Trongate v2 app on GitHub
      */
     function queue_upgrade(int $project_id, int $app_id, ?int $customer_id): int {
         $app = $this->_app_or_fail($project_id, $app_id);
@@ -27,6 +27,11 @@ trait App_upgrades {
 
         if (empty($app->source_url)) {
             throw new RuntimeException('App has no source repository');
+        }
+
+        // Upgrades open a GitHub pull request; trongate.cloud git has none yet
+        if ($app->source_provider !== 'github') {
+            throw new RuntimeException('Upgrades open a pull request on GitHub, so they are not available for apps on trongate.cloud git yet.');
         }
 
         return $this->db->transaction(function () use ($project_id, $app_id, $customer_id) {

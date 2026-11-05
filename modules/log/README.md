@@ -1,16 +1,22 @@
 # log
 
-Version 1.0.1
+Version 1.1.0
 
 A log after Monolog, for web requests and command-line scripts, framework-free:
 
 ```php
-$log = new Log([new Stream_writer('[backup] ')]);      // STDOUT, e.g. a container's log
-$log = new Log([new Error_log_writer('[webhooks] ')]); // PHP's error_log()
+Log::info('Impersonation started');                    // one line, PHP's error_log()
+Log::warn("[git] Move of app #12 refused: {$reason}");
+Log::error("[mcp] create_app failed: {$e->getMessage()}");
+
+$log = new Logger([new Stream_writer('[backup] ')]);      // STDOUT, e.g. a container's log
+$log = new Logger([new Error_log_writer('[webhooks] ')]); // PHP's error_log()
 $log->info('Dumped 12 tables');
 $log->warn('...');
 $log->error('...');
 ```
+
+The `Log` facade writes to one shared `Logger`, which writes with `error_log()` until a script sets its own: `Log::use(new Logger([...]))`. Build a `Logger` yourself when a piece of code keeps its own log (a task, a backup run).
 
 Each message goes to every writer as one entry (a multi-line message stays one entry, like Monolog's records); a blank one is skipped, and a writer that fails never stops the caller. Write a `Log_writer` to send messages elsewhere (the worker's `Task_log_writer` writes them to `task_logs`).
 
@@ -23,7 +29,7 @@ requires the one file it uses (a script outside Trongate passes its own path):
 require_once APPPATH . 'modules/log/Log.php';
 ```
 
-`Log.php` requires the writers that ship with it.
+`Log.php` requires `Logger.php` and the writers that ship with it.
 
 ## Tests
 
