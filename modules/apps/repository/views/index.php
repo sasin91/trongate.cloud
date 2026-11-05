@@ -33,7 +33,7 @@ $e = fn($value) => htmlspecialchars((string) $value);
     <?php elseif ($can_move): ?>
     <div class="card settings-card">
         <h2>Move to trongate.cloud git</h2>
-        <p>Every branch is copied with its history, and this app and its staging app then build from the copy. The repository on GitHub stays as it is, but pushes to it no longer deploy.</p>
+        <p>Every branch is copied with its history, and this app and its staging app then build from the copy. The repository on GitHub stays as it is, but pushes to it no longer deploy. Trongate upgrade pull requests and the Database tab's schema comparison need GitHub, so they stop until Export to GitHub arrives.</p>
         <?= form_open('apps/' . (int) $app->id . '/git/move') ?>
             <label class="checkbox-label">
                 <input type="checkbox" name="confirm" value="1">
