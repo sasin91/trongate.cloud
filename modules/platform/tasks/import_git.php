@@ -10,7 +10,9 @@
  * to show the new source works.
  *
  * Read with the GitHub App's installation token, or without one for a public
- * repository, like a deploy. Nothing on GitHub changes; its pushes no longer
+ * repository, like a deploy. A repository GitHub reports as over 1 GiB is
+ * refused before anything is fetched (an invisible safety net: git bombs,
+ * huge histories). Nothing on GitHub changes; its pushes no longer
  * reach the app (the webhook finds no app with that source_url).
  *
  * Payload: {project_id, app_id, customer_id?} (the production app).
@@ -23,6 +25,8 @@ require_once __DIR__ . '/lib/Deploy_source.php';
 require_once __DIR__ . '/../worker/Worker_actions.php';
 
 return function (Task_log $log) use ($payload, $runtime): int {
+    $max_size_kib = 1024 * 1024;
+
     $db = $runtime->db();
     $project_id = (int) ($payload['project_id'] ?? 0);
     $app_id = (int) ($payload['app_id'] ?? 0);
@@ -45,6 +49,12 @@ return function (Task_log $log) use ($payload, $runtime): int {
 
     $github_repo = Platform_task::github_repo($app);
     $github = Deploy_source::github_client($github_repo);
+    $size_kib = $github->repository_size_kib($github_repo);
+
+    if ($size_kib > $max_size_kib) {
+        throw new RuntimeException("{$github_repo} is " . round($size_kib / 1024) . ' MiB on GitHub, too big to move to trongate.cloud git');
+    }
+
     $repo = Git_repo::for_app($app_id);
     $branch = (string) ($app['source_branch'] ?: 'main');
 
