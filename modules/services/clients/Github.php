@@ -356,6 +356,18 @@ class Github extends Client {
         return "https://api.github.com/repos/{$repo}/tarball/{$branch}";
     }
 
+    /**
+     * The header git sends to read the repository over HTTPS (git fetch), or
+     * null without a token (a public repository)
+     */
+    function git_http_header(): ?string {
+        if ($this->token === '') {
+            return null;
+        }
+
+        return 'Authorization: Basic ' . base64_encode('x-access-token:' . $this->token);
+    }
+
     function headers(): array {
         $headers = [
             'Accept: application/vnd.github+json',

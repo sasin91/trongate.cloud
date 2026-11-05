@@ -6,27 +6,27 @@ require_once __DIR__ . '/../../cli/Process.php';
  * One internal git repository: a bare repository under PLATFORM_GIT_ROOT for an
  * app built from trongate.cloud git (app.source_provider 'internal').
  *
- * The repository is named after the app that created it, p{app_id}.git, and
- * the app's source_url is its clone address, {BASE_URL}git/p{app_id}.git. A
- * staging app copies that source_url (split_staging), so it builds from the
- * same repository, another branch.
+ * Only the platform writes these repositories, from the worker: the
+ * import_git task (Move to trongate.cloud git) and, later, project
+ * generation. Customers do not clone or push yet; they get an export to
+ * GitHub instead.
  *
- * The panel creates repositories and serves clone and push (modules/git); the
- * worker reads commits for deploys (deploy task). Every git command runs
- * without a shell, with its arguments as a list.
+ * The repository is named after the app that created it, p{app_id}.git, and
+ * the app's source_url names it, trongate-git:p{app_id}. A staging app
+ * copies that source_url (split_staging), so it builds from the same
+ * repository, another branch.
+ *
+ * Every git command runs without a shell, with its arguments as a list.
  */
 final class Git_repo {
 
-    /** Long enough for git archive of a big app */
+    /** Long enough for git archive or a fetch of a big app */
     const TIMEOUT_SECONDS = 300;
 
     const PROVIDER = 'internal';
 
-    /** Repository names: p{app_id} */
-    const NAME_PATTERN = '/^p[1-9][0-9]{0,9}$/';
-
-    /** A source_url that names an internal repository, e.g. https://trongate.cloud/git/p12.git */
-    const URL_PATTERN = '#/git/(p[1-9][0-9]{0,9})\.git$#';
+    /** A source_url that names an internal repository, e.g. trongate-git:p12 */
+    const URL_PATTERN = '/^trongate-git:(p[1-9][0-9]{0,9})$/';
 
     private function __construct(public readonly string $name, private readonly string $root) {
     }
@@ -40,10 +40,10 @@ final class Git_repo {
     }
 
     /**
-     * The repository a clone address names, or null for any other address
+     * The repository a source_url names, or null for any other source
      */
     static function from_url(string $source_url, string $root = PLATFORM_GIT_ROOT): ?self {
-        if (!preg_match(self::URL_PATTERN, rtrim($source_url, '/'), $match)) {
+        if (!preg_match(self::URL_PATTERN, trim($source_url), $match)) {
             return null;
         }
 
@@ -51,27 +51,10 @@ final class Git_repo {
     }
 
     /**
-     * The repository a request path names (p12.git), or null
+     * What the app's source_url becomes
      */
-    static function from_path_name(string $path_name, string $root = PLATFORM_GIT_ROOT): ?self {
-        if (!str_ends_with($path_name, '.git')) {
-            return null;
-        }
-
-        $name = substr($path_name, 0, -4);
-
-        if (!preg_match(self::NAME_PATTERN, $name)) {
-            return null;
-        }
-
-        return new self($name, $root);
-    }
-
-    /**
-     * The clone address that becomes the app's source_url
-     */
-    static function clone_url(string $base_url, int $app_id): string {
-        return rtrim($base_url, '/') . '/git/p' . $app_id . '.git';
+    function source_url(): string {
+        return 'trongate-git:' . $this->name;
     }
 
     /**
@@ -94,10 +77,7 @@ final class Git_repo {
     }
 
     /**
-     * Create the bare repository, with main as its default branch. Pushes are
-     * checked object by object (receive.fsckObjects), and nothing can push a
-     * ref outside refs/heads or refs/tags (receive.hideRefs keeps the rest out
-     * of sight).
+     * Create the bare repository, with main as its default branch
      */
     function create(): void {
         if ($this->exists()) {
@@ -114,16 +94,30 @@ final class Git_repo {
             throw new RuntimeException('git init failed: ' . trim($init['err']));
         }
 
-        $settings = [
-            'receive.fsckObjects' => 'true',
-            'receive.denyDeletes' => 'false',
-            'http.receivepack' => 'true',
-            'http.uploadpack' => 'true',
-            'gc.auto' => '256',
+        $this->run_or_fail(['config', 'gc.auto', '256']);
+    }
+
+    /**
+     * Copy every branch of another repository, with its history, over this
+     * repository's branches of the same name. Objects are checked as they
+     * arrive (fetch.fsckObjects). An HTTP header for the fetch (a token) goes
+     * in through the environment, so it never appears in a command line.
+     */
+    function fetch_branches(string $url, ?string $http_header = null): void {
+        if (!preg_match('#^https://[A-Za-z0-9.-]+/[A-Za-z0-9_./-]+$#', $url)) {
+            throw new InvalidArgumentException('Invalid repository address');
+        }
+
+        $env = $http_header === null ? [] : [
+            'GIT_CONFIG_COUNT' => '1',
+            'GIT_CONFIG_KEY_0' => 'http.extraHeader',
+            'GIT_CONFIG_VALUE_0' => $http_header,
         ];
 
-        foreach ($settings as $key => $value) {
-            $this->run_or_fail(['config', $key, $value]);
+        $result = self::git(['--git-dir=' . $this->path(), '-c', 'fetch.fsckObjects=true', 'fetch', '--quiet', '--no-tags', '--prune', '--', $url, '+refs/heads/*:refs/heads/*'], $env);
+
+        if ($result['code'] !== 0) {
+            throw new RuntimeException('git fetch failed: ' . trim($result['err']));
         }
     }
 
@@ -216,8 +210,8 @@ final class Git_repo {
     }
 
     /**
-     * Run git on this repository. The panel's and the worker's users differ,
-     * so git is told the repository is safe to read whoever owns it.
+     * Run git on this repository. git is told the repository is safe to read
+     * whoever owns the volume's files.
      *
      * @param list<string> $args
      * @return array{code: int, out: string, err: string}
@@ -230,10 +224,11 @@ final class Git_repo {
      * Run git with these arguments, without a shell
      *
      * @param list<string> $args
+     * @param array<string, string> $extra_env
      * @return array{code: int, out: string, err: string}
      */
-    static function git(array $args): array {
-        $process = new Process(['git', '-c', 'safe.directory=*', ...$args], env: self::environment(), timeout: self::TIMEOUT_SECONDS);
+    static function git(array $args, array $extra_env = []): array {
+        $process = new Process(['git', '-c', 'safe.directory=*', ...$args], env: $extra_env + self::environment(), timeout: self::TIMEOUT_SECONDS);
 
         try {
             $code = $process->run();

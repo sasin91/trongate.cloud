@@ -5,9 +5,8 @@ FROM dunglas/frankenphp:1.12.7-php8.4-bookworm AS frankenphp
 
 FROM php:8.4.27-zts-bookworm
 
-# git: clone and push of trongate.cloud git (modules/git runs git http-backend)
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends mailcap libcap2-bin libbrotli1 libstdc++6 git \
+    && apt-get install -y --no-install-recommends mailcap libcap2-bin libbrotli1 libstdc++6 \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 COPY --from=frankenphp /usr/local/lib/libwatcher-c.so* /usr/local/lib/
 COPY --from=frankenphp /usr/local/bin/frankenphp /usr/local/bin/install-php-extensions /usr/local/bin/

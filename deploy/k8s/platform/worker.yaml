@@ -81,10 +81,9 @@ spec:
             - name: registry
               mountPath: /home/worker/.docker
               readOnly: true
-            # trongate.cloud git: deploys read commits from it (PLATFORM_GIT_ROOT)
+            # trongate.cloud git (PLATFORM_GIT_ROOT): import_git writes it, deploys read it
             - name: git
               mountPath: /repos
-              readOnly: true
       volumes:
         - name: tmp
           emptyDir:

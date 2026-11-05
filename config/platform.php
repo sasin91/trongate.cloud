@@ -32,8 +32,8 @@ defined('KUBE_CA_FILE') || define('KUBE_CA_FILE', getenv('KUBE_CA_FILE') ?: '');
 // RWX StorageClass (JuiceFS) for per-project persistent paths
 defined('FILES_STORAGE_CLASS') || define('FILES_STORAGE_CLASS', getenv('FILES_STORAGE_CLASS') ?: 'tenant-files');
 // Where the internal git repositories live (Git_repo): one bare repository per
-// app built from trongate.cloud git, on the platform-git volume the panel
-// (clone and push, modules/git) and the worker (deploys) both mount
+// app built from trongate.cloud git, on the platform-git volume. Only the
+// worker mounts it: it writes the repositories (import_git) and deploys from them
 defined('PLATFORM_GIT_ROOT') || define('PLATFORM_GIT_ROOT', rtrim(getenv('PLATFORM_GIT_ROOT') ?: '/repos', '/'));
 // The platform deploying itself: a push to PLATFORM_SOURCE_BRANCH of this GitHub
 // repository ("owner/name", where the GitHub App is installed) makes the worker

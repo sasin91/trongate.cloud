@@ -1,8 +1,8 @@
 <?php
 
 /**
- * Tests for Git_repo (trongate.cloud git's bare repositories) and the CGI
- * response parsing of Git_http. Needs git on PATH.
+ * Tests for Git_repo (trongate.cloud git's bare repositories). Needs git on
+ * PATH.
  *
  * Run: php tests/Git_repo_test.php (exits non-zero on a failure)
  */
@@ -13,7 +13,6 @@ define('APPPATH', dirname(__DIR__) . '/');
 define('PLATFORM_GIT_ROOT', sys_get_temp_dir() . '/git-repo-test-' . getmypid());
 
 require_once APPPATH . 'modules/platform/git/Git_repo.php';
-require_once APPPATH . 'modules/git/Git_http.php';
 
 $root = PLATFORM_GIT_ROOT;
 $work = $root . '-work';
@@ -29,17 +28,31 @@ $git = function (string $dir, string ...$args): string {
     return trim($result['out']);
 };
 
-test('names: from an app id, a clone address and a request path', function () use ($root) {
+test('names: from an app id and from a source_url', function () use ($root) {
     assert_same('p12', Git_repo::for_app(12)->name);
     assert_same($root . '/p12.git', Git_repo::for_app(12)->path());
-    assert_same('https://trongate.cloud/git/p12.git', Git_repo::clone_url('https://trongate.cloud/', 12));
-    assert_same('p12', Git_repo::from_url('https://trongate.cloud/git/p12.git')?->name);
-    assert_same(12, Git_repo::from_url('https://trongate.cloud/git/p12.git')?->app_id());
+    assert_same('trongate-git:p12', Git_repo::for_app(12)->source_url());
+    assert_same('p12', Git_repo::from_url('trongate-git:p12')?->name);
+    assert_same(12, Git_repo::from_url('trongate-git:p12')?->app_id());
     assert_same(null, Git_repo::from_url('https://github.com/owner/name'));
-    assert_same('p7', Git_repo::from_path_name('p7.git')?->name);
-    assert_same(null, Git_repo::from_path_name('p0.git'));
-    assert_same(null, Git_repo::from_path_name('../p7.git'));
-    assert_same(null, Git_repo::from_path_name('p7'));
+    assert_same(null, Git_repo::from_url('trongate-git:p0'));
+    assert_same(null, Git_repo::from_url('trongate-git:../p7'));
+});
+
+test('fetch_branches: HTTPS addresses only, no local paths or transports', function () {
+    $repo = Git_repo::for_app(4);
+
+    foreach (['/etc', 'file:///etc', 'ext::sh -c id', '--upload-pack=id', 'http://github.com/a/b.git'] as $url) {
+        $refused = false;
+
+        try {
+            $repo->fetch_branches($url);
+        } catch (InvalidArgumentException) {
+            $refused = true;
+        }
+
+        assert_same(true, $refused, $url);
+    }
 });
 
 test('is_safe_ref: branch names and SHAs only', function () {
@@ -84,20 +97,6 @@ test('a push moves main: branch_heads, resolve, moved_branches and archive', fun
     $repo->archive($sha, $tar);
     $out = shell_exec('tar -tf ' . escapeshellarg($tar));
     assert_contains('public/index.php', (string) $out);
-});
-
-test('parse_cgi_head: Status becomes the code, the rest headers', function () {
-    $parsed = Git_http::parse_cgi_head("Status: 403 Forbidden\r\nContent-Type: text/plain\r\nExpires: Fri, 01 Jan 1980 00:00:00 GMT\r\n\r\n");
-
-    assert_same(403, $parsed['status']);
-    assert_same(['Content-Type: text/plain', 'Expires: Fri, 01 Jan 1980 00:00:00 GMT'], $parsed['headers']);
-    assert_same(200, Git_http::parse_cgi_head("Content-Type: application/x-git-upload-pack-advertisement\n\n")['status']);
-});
-
-test('head_end: the body starts after the blank line, not before', function () {
-    assert_same(null, Git_http::head_end("Status: 200 OK\r\nContent-Type: text/plain\r\n"));
-    assert_same(37, Git_http::head_end("Status: 200 OK\r\nContent-Type: x/y\r\n\r\nbody\n\nmore"));
-    assert_same(17, Git_http::head_end("Content-Type: x\n\nbody"));
 });
 
 shell_exec('rm -rf ' . escapeshellarg($root) . ' ' . escapeshellarg($work));

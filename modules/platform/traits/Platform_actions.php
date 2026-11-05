@@ -33,7 +33,7 @@ trait Platform_actions {
      * @throws RuntimeException when the app is not the project's or has no source
      */
     function queue_deploy(int $project_id, int $app_id, ?int $customer_id, string $trigger = 'manual', ?string $commit_sha = null): int {
-        if (!in_array($trigger, ['manual', 'webhook', 'mcp', 'rollback', 'reconcile', 'platform', 'push'], true)) {
+        if (!in_array($trigger, ['manual', 'webhook', 'mcp', 'rollback', 'reconcile', 'platform'], true)) {
             throw new InvalidArgumentException("Unknown deploy trigger: {$trigger}");
         }
 
@@ -533,6 +533,38 @@ trait Platform_actions {
             $this->_queue_task($project_id, $app_id, null, 'split_staging', [
                 'project_id' => $project_id,
                 'app_id' => $app_id,
+            ]);
+        }
+    }
+
+    /**
+     * Queue import_git: the app's GitHub repository, every branch with its
+     * history, is copied to trongate.cloud git, and the app and its staging
+     * app build from there. A move already waiting is not queued again.
+     *
+     * @throws RuntimeException when the app is not a production app on GitHub
+     */
+    function queue_git_import(int $project_id, int $app_id, ?int $customer_id): void {
+        $app = $this->_app_or_fail($project_id, $app_id);
+
+        if ($app->environment !== 'production' || $app->source_provider !== 'github') {
+            throw new RuntimeException('Only a production app deploying from GitHub can move to trongate.cloud git.');
+        }
+
+        $sql = <<<SQL
+            SELECT COUNT(*)
+            FROM tasks
+            WHERE app_id = :app_id
+              AND script = 'import_git'
+              AND completed_at IS NULL
+              AND failed_at IS NULL
+        SQL;
+
+        if ((int) $this->db->query_bind($sql, ['app_id' => $app_id], 'column') === 0) {
+            $this->_queue_task($project_id, $app_id, null, 'import_git', [
+                'project_id' => $project_id,
+                'app_id' => $app_id,
+                'customer_id' => $customer_id,
             ]);
         }
     }

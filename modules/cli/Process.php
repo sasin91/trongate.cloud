@@ -25,17 +25,6 @@
  * write big output to a file itself (`tar -f`, `pg_dump -f`, `sh -c 'cmd > file'`),
  * as the backup runtime does, or pass a callback.
  *
- * Input: pass a readable stream (a file, php://input) as $input and it is
- * written to the program's stdin while its output is read, so neither side
- * can stall the other; without one, stdin is closed at once.
- *
- *   (new Process(['git', 'http-backend'], env: $cgi, input: $body))
- *       ->stream(fn(string $chunk) => print $chunk);
- *
- * stream() hands stdout over byte for byte, in the pieces it arrives in, for
- * output that is passed on rather than read as lines (a CGI response, an
- * archive); stderr is kept, for error_output().
- *
  * On timeout the process gets SIGTERM, then SIGKILL KILL_AFTER_SECONDS later.
  * Like Symfony, that reaches the process itself, not what it started; wrap
  * the command in GNU `timeout` to stop a whole process tree.
@@ -72,35 +61,17 @@ final class Process {
     private ?int $exit_code = null;
     private bool $timed_out = false;
 
-    /** @var (callable(string $chunk): void)|null stdout as it comes, set by stream() */
-    private $raw_output = null;
-
     /**
      * @param list<string> $command
      * @param array<string, string>|null $env null: this script's own environment
      * @param float|null $timeout seconds, or null for none
-     * @param resource|null $input written to stdin, to its end
      */
     function __construct(
         private array $command,
         private ?string $cwd = null,
         private ?array $env = null,
         private ?float $timeout = 60,
-        private mixed $input = null,
     ) {
-    }
-
-    /**
-     * Runs the process to its end, handing each piece of stdout to
-     * $on_output exactly as it arrives
-     *
-     * @param callable(string $chunk): void $on_output
-     * @return int its exit code
-     */
-    function stream(callable $on_output): int {
-        $this->raw_output = $on_output;
-
-        return $this->run();
     }
 
     /**
@@ -123,16 +94,7 @@ final class Process {
             throw new RuntimeException('Cannot start ' . $this->command[0]);
         }
 
-        $stdin = null;
-        $pending_input = '';
-
-        if (is_resource($this->input)) {
-            $stdin = $pipes[0];
-            stream_set_blocking($stdin, false);
-        } else {
-            fclose($pipes[0]);
-        }
-
+        fclose($pipes[0]);
         stream_set_blocking($pipes[1], false);
         stream_set_blocking($pipes[2], false);
 
@@ -142,21 +104,11 @@ final class Process {
         // Both pipes are open at the start, so the loop runs at least once
         do {
             $read = array_values($open);
-            $write = $stdin === null ? null : [$stdin];
+            $write = null;
             $except = null;
 
             if (@stream_select($read, $write, $except, self::POLL_SECONDS) === false) {
                 break;
-            }
-
-            // A full pipe takes nothing this round; what is left is written next time
-            if ($stdin !== null) {
-                $pending_input = $this->write_input($stdin, $pending_input);
-
-                if ($pending_input === '' && feof($this->input)) {
-                    fclose($stdin);
-                    $stdin = null;
-                }
             }
 
             foreach ($open as $type => $pipe) {
@@ -174,10 +126,6 @@ final class Process {
 
         foreach ($open as $pipe) {
             fclose($pipe);
-        }
-
-        if ($stdin !== null) {
-            fclose($stdin);
         }
 
         return $this->exit_code = proc_close($process);
@@ -237,34 +185,9 @@ final class Process {
         return $is_plain ? $part : escapeshellarg($part);
     }
 
-    /**
-     * Write what is left of the last piece of input, or the next piece;
-     * returns what stdin did not take yet
-     *
-     * @param resource $stdin
-     */
-    private function write_input($stdin, string $pending): string {
-        if ($pending === '') {
-            $pending = (string) fread($this->input, self::READ_BYTES);
-        }
-
-        if ($pending === '') {
-            return '';
-        }
-
-        $written = @fwrite($stdin, $pending);
-
-        return $written === false ? $pending : substr($pending, $written);
-    }
-
     /** Keeps a chunk as it came, or hands its complete lines to the callback */
     private function take(string $type, string $chunk, ?callable $callback): void {
         if ($chunk === '') {
-            return;
-        }
-
-        if ($type === self::OUT && $this->raw_output !== null) {
-            ($this->raw_output)($chunk);
             return;
         }
 

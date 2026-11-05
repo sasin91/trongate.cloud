@@ -16,7 +16,7 @@ final class Deploy_source {
      * branch head, so a replayed (validly signed) old push cannot roll the app
      * back to an older commit. Reconcile deploys stand in for a missed push.
      */
-    const FOLLOWS_BRANCH = ['webhook', 'reconcile', 'push'];
+    const FOLLOWS_BRANCH = ['webhook', 'reconcile'];
 
     static function github_client(string $repo): Github {
         try {
@@ -65,7 +65,7 @@ final class Deploy_source {
         $resolved = $repo->resolve($ref);
 
         if ($resolved === null && $commit_sha === '') {
-            throw new RuntimeException("Branch {$branch} has no commits yet: push to it first");
+            throw new RuntimeException("Branch {$branch} has no commits yet");
         }
 
         return self::full_sha_or_fail((string) $resolved);
