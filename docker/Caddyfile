@@ -27,6 +27,12 @@
 		X-Content-Type-Options nosniff
 		Referrer-Policy strict-origin-when-cross-origin
 		-Server
+		# Trongate's login token cookie (login, trongate_tokens, the
+		# administrators module and impersonation) is set by stock modules with
+		# no flags. Add them here rather than patching those modules: out of
+		# reach of scripts, https only, not sent on cross-site POSTs. The
+		# session cookie gets the same from docker/php.ini.
+		>Set-Cookie "^(trongatetoken=.*)$" "$1; HttpOnly; Secure; SameSite=Lax"
 	}
 
 	# Serves existing files, otherwise falls back to index.php with REQUEST_URI intact.
