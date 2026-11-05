@@ -1,7 +1,6 @@
 <?php
 
 require_once APPPATH . 'modules/platform/git/Git_repo.php';
-require_once APPPATH . 'modules/log/Log.php';
 
 /**
  * Git's smart HTTP protocol for one repository: runs `git http-backend` as a
@@ -54,7 +53,7 @@ final class Git_http {
         @unlink($error_file);
 
         if ($code !== 0 && $errors !== '') {
-            (new Log([new Error_log_writer('[git] ')]))->error("git http-backend for {$repo->name} exited {$code}: {$errors}");
+            error_log("[git] git http-backend for {$repo->name} exited {$code}: {$errors}");
         }
     }
 

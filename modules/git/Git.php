@@ -2,7 +2,6 @@
 
 require_once APPPATH . 'modules/platform/git/Git_repo.php';
 require_once __DIR__ . '/Git_http.php';
-require_once APPPATH . 'modules/log/Log.php';
 
 /**
  * trongate.cloud git over HTTPS: git/p{app_id}.git, the repository an app on
@@ -108,7 +107,7 @@ class Git extends Trongate {
         try {
             $this->model->queue_deploy((int) $app->project_id, (int) $app->id, null, 'push', $sha);
         } catch (RuntimeException $e) {
-            (new Log([new Error_log_writer('[git] ')]))->error("Push: no deploy queued for app #{$app->id}: {$e->getMessage()}");
+            error_log("[git] Push: no deploy queued for app #{$app->id}: {$e->getMessage()}");
         }
     }
 

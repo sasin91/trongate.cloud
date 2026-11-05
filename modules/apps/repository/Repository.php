@@ -4,7 +4,6 @@ require_once APPPATH . 'modules/customer/traits/Customer_guard.php';
 require_once APPPATH . 'modules/apps/traits/App_page.php';
 require_once APPPATH . 'modules/apps/traits/App_rules.php';
 require_once APPPATH . 'modules/platform/git/Git_repo.php';
-require_once APPPATH . 'modules/log/Log.php';
 
 /**
  * Child module of apps: the app's repository.
@@ -150,7 +149,7 @@ class Repository extends Trongate {
         try {
             return $this->model->create_internal_app($project_id, trim((string) post('label', true)), (string) post('type', true));
         } catch (RuntimeException $e) {
-            (new Log([new Error_log_writer('[git] ')]))->error("New app on trongate.cloud git in project #{$project_id} by customer #{$customer_id} failed: {$e->getMessage()}");
+            error_log("[git] New app on trongate.cloud git in project #{$project_id} by customer #{$customer_id} failed: {$e->getMessage()}");
 
             return null;
         }
