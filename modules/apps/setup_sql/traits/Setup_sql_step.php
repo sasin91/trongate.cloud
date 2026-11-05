@@ -1,6 +1,7 @@
 <?php
 
 require_once APPPATH . 'modules/platform/live/Setup_sql_plan.php';
+require_once APPPATH . 'modules/log/Log.php';
 
 /**
  * The new-app wizard's optional Database question: .sql files from the
@@ -81,7 +82,7 @@ trait Setup_sql_step {
         try {
             $paths = array_keys($source['client']->tree($repository, $branch));
         } catch (Client_Error | RuntimeException $e) {
-            error_log("New app: could not list the .sql files of {$repository}@{$branch}: {$e->getMessage()}");
+            Log::warn("New app: could not list the .sql files of {$repository}@{$branch}: {$e->getMessage()}");
             $read_failed = true;
         }
 
@@ -366,7 +367,7 @@ trait Setup_sql_step {
         try {
             $tree = $client->tree($repository, $branch);
         } catch (Client_Error | RuntimeException $e) {
-            error_log("New app: could not list the files of {$repository}@{$branch}: {$e->getMessage()}");
+            Log::warn("New app: could not list the files of {$repository}@{$branch}: {$e->getMessage()}");
 
             return 'We could not read ' . $repository . ' on GitHub to get the SQL files. Please try again.';
         }
@@ -381,7 +382,7 @@ trait Setup_sql_step {
             try {
                 $files[$path] = $client->blob($repository, $tree[$path]);
             } catch (Client_Error | RuntimeException $e) {
-                error_log("New app: could not read {$path} of {$repository}@{$branch}: {$e->getMessage()}");
+                Log::warn("New app: could not read {$path} of {$repository}@{$branch}: {$e->getMessage()}");
 
                 return 'We could not read ' . $path . ' from GitHub. Please try again.';
             }

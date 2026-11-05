@@ -4,7 +4,7 @@ an unknown level is written as info
 <?php
 require __DIR__ . '/setup.inc';
 $kept = new Kept_lines();
-(new Log([$kept]))->write('loud', 'x');
+(new Logger([$kept]))->write('loud', 'x');
 echo implode("\n", $kept->lines), "\n";
 ?>
 --EXPECT--

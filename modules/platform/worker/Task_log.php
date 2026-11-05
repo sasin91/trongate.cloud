@@ -6,12 +6,12 @@ require_once __DIR__ . '/Task_log_writer.php';
 /**
  * Task Log
  *
- * The log of one task (modules/log Log): its messages go into task_logs
+ * The log of one task (modules/log Logger): its messages go into task_logs
  * (Task_log_writer, streamed to the UI and MCP) and to STDOUT for the
  * worker's container logs. A message that cannot be written to task_logs still
  * reaches STDOUT, and never breaks the running task.
  */
-class Task_log extends Log {
+class Task_log extends Logger {
     const LEVELS = ['info', 'warn', 'error', 'step'];
 
     function __construct(PDO $db, private int $task_id) {

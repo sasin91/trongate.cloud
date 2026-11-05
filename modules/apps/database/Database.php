@@ -9,6 +9,7 @@ require_once __DIR__ . '/traits/App_database_diagram.php';
 require_once __DIR__ . '/traits/App_database_schema.php';
 require_once __DIR__ . '/traits/App_database_import.php';
 require_once __DIR__ . '/traits/App_database_credentials.php';
+require_once APPPATH . 'modules/log/Log.php';
 
 /**
  * Child module of apps: apps/{id}/database, browse and edit an app's own
@@ -427,7 +428,7 @@ class Database extends Trongate {
             $count = $this->_copy_production_tables($app);
         } catch (PDOException | RuntimeException $e) {
             $message = $e instanceof PDOException ? $this->_database_error($e) : $e->getMessage();
-            error_log("Copying production's tables to staging app #{$app->id} failed: {$message}");
+            Log::error("Copying production's tables to staging app #{$app->id} failed: {$message}");
             set_flashdata(htmlspecialchars('Could not copy the tables: ' . $message));
             redirect($this->_database_url($app));
         }
