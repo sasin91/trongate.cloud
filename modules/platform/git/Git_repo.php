@@ -23,7 +23,8 @@ final class Git_repo {
     /** A source_url that names an internal repository, e.g. https://trongate.cloud/git/p12.git */
     const URL_PATTERN = '#/git/(p[1-9][0-9]{0,9})\.git$#';
 
-    private function __construct(public readonly string $name, private readonly string $root) {}
+    private function __construct(public readonly string $name, private readonly string $root) {
+    }
 
     static function for_app(int $app_id, string $root = PLATFORM_GIT_ROOT): self {
         if ($app_id < 1) {
