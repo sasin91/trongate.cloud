@@ -1,9 +1,8 @@
-# trongate.cloud git (modules/git, Git_repo): one bare repository per app on
-# trongate.cloud git, p{app id}.git. The panel creates them and serves clone and
-# push (as www-data, uid 33); the worker reads commits for deploys (uid 1000,
-# with git's safe.directory=*, so it may read repositories it does not own).
-# On the tenant-files JuiceFS class: RWX for both panel pods and the worker,
-# kept in object storage, and the directory survives a deleted claim.
+# trongate.cloud git (Git_repo): one bare repository per app on trongate.cloud
+# git, p{app id}.git. Only the worker mounts it: import_git (and later project
+# generation) writes the repositories, deploys read them with git archive.
+# On the tenant-files JuiceFS class (RWX, kept in object storage); the
+# directory survives a deleted claim.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

@@ -65,14 +65,7 @@ class Repository extends Trongate {
             return;
         }
 
-        try {
-            $this->model->queue_git_import((int) $app->project_id, (int) $app->id, (int) $customer->id);
-        } catch (RuntimeException $e) {
-            error_log("[git] Move of app #{$app->id} to trongate.cloud git refused: {$e->getMessage()}");
-            set_flashdata(htmlspecialchars($e->getMessage()));
-            redirect('apps/' . $app->id . '/git');
-        }
-
+        $this->model->queue_git_import((int) $app->project_id, (int) $app->id, (int) $customer->id);
         set_flashdata('Moving to trongate.cloud git. A deploy from the copied repository follows.');
         redirect('apps/' . $app->id . '/git');
     }

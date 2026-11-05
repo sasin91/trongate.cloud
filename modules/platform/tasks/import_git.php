@@ -21,7 +21,7 @@
  */
 
 require_once __DIR__ . '/lib/Platform_task.php';
-require_once __DIR__ . '/lib/Deploy_source.php';
+require_once __DIR__ . '/lib/source/Github_source.php';
 require_once __DIR__ . '/../worker/Worker_actions.php';
 
 return function (Task_log $log) use ($payload, $runtime): int {
@@ -47,25 +47,25 @@ return function (Task_log $log) use ($payload, $runtime): int {
         throw new RuntimeException('Move the production app; its staging app moves with it');
     }
 
-    $github_repo = Platform_task::github_repo($app);
-    $github = Deploy_source::github_client($github_repo);
-    $size_kib = $github->repository_size_kib($github_repo);
+    $github = Github_source::for_app($app);
+    $name = $github->name();
+    $size_kib = $github->size_kib();
 
     if ($size_kib > $max_size_kib) {
-        throw new RuntimeException("{$github_repo} is " . round($size_kib / 1024) . ' MiB on GitHub, too big to move to trongate.cloud git');
+        throw new RuntimeException($name . ' is ' . round($size_kib / 1024) . ' MiB on GitHub, too big to move to trongate.cloud git');
     }
 
     $repo = Git_repo::for_app($app_id);
     $branch = (string) ($app['source_branch'] ?: 'main');
 
     $repo->create();
-    $repo->fetch_branches($github->url($github_repo) . '.git', $github->git_http_header());
+    $github->fetch_into($repo);
 
     $heads = $repo->branch_heads();
-    $log->info('Copied ' . count($heads) . " branches of {$github_repo} into trongate.cloud git ({$repo->name})");
+    $log->info('Copied ' . count($heads) . " branches of {$name} into trongate.cloud git ({$repo->name})");
 
     if (!isset($heads[$branch])) {
-        throw new RuntimeException("{$github_repo} has no branch {$branch}");
+        throw new RuntimeException("{$name} has no branch {$branch}");
     }
 
     // The staging app builds from the same repository, its own branch

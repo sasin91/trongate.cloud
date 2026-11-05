@@ -540,17 +540,10 @@ trait Platform_actions {
     /**
      * Queue import_git: the app's GitHub repository, every branch with its
      * history, is copied to trongate.cloud git, and the app and its staging
-     * app build from there. A move already waiting is not queued again.
-     *
-     * @throws RuntimeException when the app is not a production app on GitHub
+     * app build from there. A move already waiting is not queued again. The
+     * task itself refuses an app it cannot move (not production, not GitHub).
      */
     function queue_git_import(int $project_id, int $app_id, ?int $customer_id): void {
-        $app = $this->_app_or_fail($project_id, $app_id);
-
-        if ($app->environment !== 'production' || $app->source_provider !== 'github') {
-            throw new RuntimeException('Only a production app deploying from GitHub can move to trongate.cloud git.');
-        }
-
         $sql = <<<SQL
             SELECT COUNT(*)
             FROM tasks

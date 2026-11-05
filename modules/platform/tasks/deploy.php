@@ -8,7 +8,7 @@
  * and rolls it out to its project's namespace. GitHub is read with an
  * installation token of the trongate.cloud GitHub App, or without a token
  * when the App is not installed on a public repository (a pasted link);
- * trongate.cloud git straight from its bare repository (Deploy_source).
+ * trongate.cloud git straight from its bare repository (Deploy_sources).
  *
  * Payload: {deployment_id, app_id, project_id, commit_sha?}
  *
@@ -17,7 +17,7 @@
  */
 
 require_once __DIR__ . '/lib/Platform_task.php';
-require_once __DIR__ . '/lib/Deploy_source.php';
+require_once __DIR__ . '/lib/source/Deploy_sources.php';
 require_once __DIR__ . '/../manifests/Config_editor.php';
 require_once __DIR__ . '/../manifests/Build_commands.php';
 
@@ -36,29 +36,10 @@ return function (Task_log $log) use ($payload, $runtime): int {
 
     $log->step('source');
 
-    $provider = (string) ($app['source_provider'] ?? '');
-    $source_url = rtrim((string) ($app['source_url'] ?? ''), '/');
     $branch = (string) ($app['source_branch'] ?: 'main');
-
-    $internal_repo = null;
-    $github = null;
-
-    if ($provider === Git_repo::PROVIDER) {
-        $internal_repo = Git_repo::from_url($source_url);
-
-        if ($internal_repo === null || !$internal_repo->exists()) {
-            throw new RuntimeException('The app\'s trongate.cloud git repository was not found');
-        }
-
-        $repo = $internal_repo->name . '.git';
-        $commit_sha = Deploy_source::internal_commit($internal_repo, $branch, $deployment, (string) ($payload['commit_sha'] ?? ''), $log);
-    } elseif ($provider === 'github') {
-        $repo = Platform_task::github_repo($app);
-        $github = Deploy_source::github_client($repo);
-        $commit_sha = Deploy_source::github_commit($github, $repo, $branch, $deployment, (string) ($payload['commit_sha'] ?? ''), $log);
-    } else {
-        throw new RuntimeException("Unsupported source provider: {$provider}");
-    }
+    $source = Deploy_sources::for_app($app);
+    $repo = $source->name();
+    $commit_sha = $source->commit($branch, $deployment, (string) ($payload['commit_sha'] ?? ''), $log);
 
     $short_sha = substr($commit_sha, 0, 7);
     $runtime->set_deployment_status($deployment_id, 'building', ['commit_sha' => $commit_sha]);
@@ -79,11 +60,7 @@ return function (Task_log $log) use ($payload, $runtime): int {
             throw new RuntimeException('Could not create the build directory');
         }
 
-        if ($internal_repo !== null) {
-            Deploy_source::extract_internal($runtime, $log, $internal_repo, $commit_sha, $work, $src);
-        } elseif ($github !== null) {
-            Deploy_source::extract_github($runtime, $log, $github, $source_url, $commit_sha, $work, $src);
-        }
+        $source->extract($runtime, $log, $commit_sha, $work, $src);
 
         // The tree is untrusted: PHP file calls below (and the build context) would
         // follow its symlinks, so refuse any that point outside the source dir.
