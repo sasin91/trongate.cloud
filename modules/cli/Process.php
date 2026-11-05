@@ -149,7 +149,8 @@ final class Process {
                 break;
             }
 
-            if ($stdin !== null && $write !== null && $write !== []) {
+            // A full pipe takes nothing this round; what is left is written next time
+            if ($stdin !== null) {
                 $pending_input = $this->write_input($stdin, $pending_input);
 
                 if ($pending_input === '' && feof($this->input)) {
@@ -253,7 +254,7 @@ final class Process {
 
         $written = @fwrite($stdin, $pending);
 
-        return $written === false ? '' : substr($pending, $written);
+        return $written === false ? $pending : substr($pending, $written);
     }
 
     /** Keeps a chunk as it came, or hands its complete lines to the callback */
