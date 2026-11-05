@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/../../cli/Process.php';
+
 /**
  * One internal git repository: a bare repository under PLATFORM_GIT_ROOT for an
  * app built from trongate.cloud git (app.source_provider 'internal').
@@ -14,6 +16,9 @@
  * without a shell, with its arguments as a list.
  */
 final class Git_repo {
+
+    /** Long enough for git archive of a big app */
+    const TIMEOUT_SECONDS = 300;
 
     const PROVIDER = 'internal';
 
@@ -228,20 +233,15 @@ final class Git_repo {
      * @return array{code: int, out: string, err: string}
      */
     static function git(array $args): array {
-        $command = ['git', '-c', 'safe.directory=*', ...$args];
-        $pipes = [];
-        $process = proc_open($command, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, null, self::environment());
+        $process = new Process(['git', '-c', 'safe.directory=*', ...$args], env: self::environment(), timeout: self::TIMEOUT_SECONDS);
 
-        if (!is_resource($process)) {
-            return ['code' => 127, 'out' => '', 'err' => 'git could not be started'];
+        try {
+            $code = $process->run();
+        } catch (RuntimeException $e) {
+            return ['code' => 127, 'out' => '', 'err' => $e->getMessage()];
         }
 
-        $out = (string) stream_get_contents($pipes[1]);
-        $err = (string) stream_get_contents($pipes[2]);
-        fclose($pipes[1]);
-        fclose($pipes[2]);
-
-        return ['code' => proc_close($process), 'out' => $out, 'err' => $err];
+        return ['code' => $code, 'out' => $process->output(), 'err' => $process->error_output()];
     }
 
     /**
