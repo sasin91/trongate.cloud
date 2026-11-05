@@ -94,6 +94,12 @@ test('parse_cgi_head: Status becomes the code, the rest headers', function () {
     assert_same(200, Git_http::parse_cgi_head("Content-Type: application/x-git-upload-pack-advertisement\n\n")['status']);
 });
 
+test('head_end: the body starts after the blank line, not before', function () {
+    assert_same(null, Git_http::head_end("Status: 200 OK\r\nContent-Type: text/plain\r\n"));
+    assert_same(37, Git_http::head_end("Status: 200 OK\r\nContent-Type: x/y\r\n\r\nbody\n\nmore"));
+    assert_same(16, Git_http::head_end("Content-Type: x\n\nbody"));
+});
+
 shell_exec('rm -rf ' . escapeshellarg($root) . ' ' . escapeshellarg($work));
 
 finish_tests();

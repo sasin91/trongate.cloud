@@ -1,10 +1,12 @@
 <?php
 
 require_once APPPATH . 'modules/platform/git/Git_repo.php';
+require_once APPPATH . 'modules/cli/Process.php';
 
 /**
  * Git's smart HTTP protocol for one repository: runs `git http-backend` as a
- * CGI program, streams the request body into it and its response back out.
+ * CGI program (Process), feeds it the request body and passes its response
+ * on as it comes.
  *
  * Clone and fetch (git-upload-pack) and push (git-receive-pack) both go
  * through here; Git (the controller) has checked the token first.
@@ -12,49 +14,72 @@ require_once APPPATH . 'modules/platform/git/Git_repo.php';
 final class Git_http {
 
     /** A push larger than this is refused: generated and hand-written Trongate apps are a few MB */
-    const MAX_REQUEST_BYTES = 268435456;
+    const MAX_REQUEST_BYTES = 104857600;
 
-    const READ_BYTES = 65536;
+    /** A clone of a big repository, or a push over a slow line */
+    const TIMEOUT_SECONDS = 600;
+
+    /** http-backend's CGI head, until the blank line that ends it */
+    private string $head = '';
+
+    private bool $head_sent = false;
 
     /**
      * Serve one request for $repo. $service_path is what follows the
      * repository in the URL: info/refs, git-upload-pack or git-receive-pack.
      */
     static function serve(Git_repo $repo, string $service_path, string $remote_user): void {
-        $environment = self::cgi_environment($repo, $service_path, $remote_user);
-        // git's messages go to a file, so a full stderr pipe can never stall it
-        // while the request body is still being written
-        $error_file = (string) tempnam(sys_get_temp_dir(), 'git-http-');
-        $pipes = [];
-        $process = proc_open(['git', '-c', 'safe.directory=*', 'http-backend'], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['file', $error_file, 'w']], $pipes, null, $environment);
+        $body = self::request_body();
 
-        if (!is_resource($process)) {
-            @unlink($error_file);
-            self::refuse(500, 'git could not be started');
-            return;
-        }
-
-        $copied = self::copy_request_body($pipes[0]);
-        fclose($pipes[0]);
-
-        if ($copied === false) {
-            proc_terminate($process);
-            proc_close($process);
-            @unlink($error_file);
+        if ($body === null) {
             self::refuse(413, 'This push is too large.');
             return;
         }
 
-        self::send_response($pipes[1]);
-        fclose($pipes[1]);
+        $environment = self::cgi_environment($repo, $service_path, $remote_user);
+        $process = new Process(['git', '-c', 'safe.directory=*', 'http-backend'], env: $environment, timeout: self::TIMEOUT_SECONDS, input: $body);
+        $response = new self();
 
-        $code = proc_close($process);
-        $errors = trim((string) file_get_contents($error_file, false, null, 0, 4096));
-        @unlink($error_file);
-
-        if ($code !== 0 && $errors !== '') {
-            error_log("[git] git http-backend for {$repo->name} exited {$code}: {$errors}");
+        try {
+            $code = $process->stream($response->pass_on(...));
+        } catch (RuntimeException $e) {
+            self::refuse(500, 'git could not be started');
+            return;
         }
+
+        $response->finish();
+
+        if ($code !== 0) {
+            error_log("[git] git http-backend for {$repo->name} exited {$code}: " . trim($process->error_output()));
+        }
+    }
+
+    /**
+     * The request body in a temporary stream, or null when it is larger than
+     * MAX_REQUEST_BYTES. Without a Content-Length (a chunked push) it is read
+     * to its end.
+     *
+     * @return resource|null
+     */
+    static function request_body() {
+        $input = fopen('php://input', 'rb');
+        $body = fopen('php://temp', 'w+b');
+
+        if ($input === false || $body === false) {
+            return null;
+        }
+
+        $copied = stream_copy_to_stream($input, $body, self::MAX_REQUEST_BYTES + 1);
+        fclose($input);
+
+        if ($copied === false || $copied > self::MAX_REQUEST_BYTES) {
+            fclose($body);
+            return null;
+        }
+
+        rewind($body);
+
+        return $body;
     }
 
     /**
@@ -84,64 +109,39 @@ final class Git_http {
     }
 
     /**
-     * Copy the request body into git's stdin, at most MAX_REQUEST_BYTES.
-     * Without a Content-Length (a chunked push) git reads until the end.
-     *
-     * @param resource $stdin
+     * One piece of http-backend's output: collect the CGI head, send it as
+     * the response's status and headers, then pass the body on
      */
-    static function copy_request_body($stdin): bool {
-        $input = fopen('php://input', 'rb');
-
-        if ($input === false) {
-            return true;
+    function pass_on(string $chunk): void {
+        if ($this->head_sent) {
+            echo $chunk;
+            flush();
+            return;
         }
 
-        $total = 0;
+        $this->head .= $chunk;
+        $end = self::head_end($this->head);
 
-        while (!feof($input)) {
-            $chunk = fread($input, self::READ_BYTES);
-
-            if ($chunk === false || $chunk === '') {
-                break;
-            }
-
-            $total += strlen($chunk);
-
-            if ($total > self::MAX_REQUEST_BYTES) {
-                fclose($input);
-                return false;
-            }
-
-            fwrite($stdin, $chunk);
+        if ($end === null) {
+            return;
         }
 
-        fclose($input);
-
-        return true;
+        $rest = substr($this->head, $end);
+        $this->send_head(substr($this->head, 0, $end));
+        $this->pass_on($rest);
     }
 
     /**
-     * Turn http-backend's CGI headers into response headers, then pass the body through
-     *
-     * @param resource $stdout
+     * After http-backend exits: a response that never finished its head
+     * still goes out
      */
-    static function send_response($stdout): void {
-        $head = '';
-
-        while (!feof($stdout) && !str_contains($head, "\r\n\r\n") && !str_contains($head, "\n\n")) {
-            $line = fgets($stdout);
-
-            if ($line === false) {
-                break;
-            }
-
-            $head .= $line;
-
-            if ($line === "\r\n" || $line === "\n") {
-                break;
-            }
+    function finish(): void {
+        if (!$this->head_sent) {
+            $this->send_head($this->head);
         }
+    }
 
+    function send_head(string $head): void {
         $parsed = self::parse_cgi_head($head);
         http_response_code($parsed['status']);
 
@@ -149,16 +149,23 @@ final class Git_http {
             header($header);
         }
 
-        while (!feof($stdout)) {
-            $chunk = fread($stdout, self::READ_BYTES);
+        $this->head = '';
+        $this->head_sent = true;
+    }
 
-            if ($chunk === false || $chunk === '') {
-                break;
+    /**
+     * Where the body starts: just past the blank line that ends the head
+     */
+    static function head_end(string $output): ?int {
+        foreach (["\r\n\r\n", "\n\n"] as $blank_line) {
+            $at = strpos($output, $blank_line);
+
+            if ($at !== false) {
+                return $at + strlen($blank_line);
             }
-
-            echo $chunk;
-            flush();
         }
+
+        return null;
     }
 
     /**
