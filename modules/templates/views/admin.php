@@ -30,6 +30,7 @@ $admin_nav = [
         'app_process/manage' => 'Processes',
         'app_runtime/manage' => 'Runtime settings',
         'app_setup_sql/manage' => 'Setup SQL',
+        'app_git_token/manage' => 'Git access tokens',
         'service/manage' => 'Services',
         'app_upgrade/manage' => 'Upgrades',
         'app_mail/manage' => 'Captured mail',

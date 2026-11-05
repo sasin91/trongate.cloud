@@ -20,6 +20,7 @@ $new_app_href = 'projects/' . (int) $project->id . '/apps/new';
             </div>
         </div>
         <div class="ov-actions">
+            <a href="<?= $e($new_app_href) ?>-git" class="btn-secondary">New app on trongate.cloud git</a>
             <a href="<?= $e($new_app_href) ?>" class="btn-primary">New app</a>
         </div>
     </div>

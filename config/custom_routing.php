@@ -12,6 +12,11 @@ $routes = [
     'auth/github/callback' => 'github_auth/callback',
     'auth/github/installed' => 'github_auth/installed',
 
+    // trongate.cloud git over HTTPS: clone, fetch and push (git module, Git_http)
+    'git/(:any)/info/refs' => 'git/info_refs/$1',
+    'git/(:any)/git-upload-pack' => 'git/upload_pack/$1',
+    'git/(:any)/git-receive-pack' => 'git/receive_pack/$1',
+
     // Live SQL check of any SQL box (sql_check module)
     'sql/check' => 'sql_check/check',
 
@@ -41,6 +46,8 @@ $routes = [
     // Projects (apps grouped in one namespace, with members)
     'projects/new' => 'projects/create',
     'projects/new/submit' => 'projects/submit',
+    'projects/(:num)/apps/new-git' => 'apps-repository/create/$1',
+    'projects/(:num)/apps/new-git/submit' => 'apps-repository/submit_create/$1',
     'projects/(:num)/apps/new' => 'apps/create/$1',
     'projects/(:num)/apps/new/reset' => 'apps/reset/$1',
     'projects/(:num)/apps/new/(:any)' => 'apps/create/$1/$2',
@@ -93,6 +100,9 @@ $routes = [
     'apps/(:num)/domain/submit' => 'apps-domain/submit/$1',
     'apps/(:num)/domain/verify' => 'apps-domain/verify/$1',
     'apps/(:num)/staging/submit' => 'apps-staging/submit/$1',
+    'apps/(:num)/git' => 'apps-repository/index/$1',
+    'apps/(:num)/git/tokens/submit' => 'apps-repository/create_token/$1',
+    'apps/(:num)/git/tokens/revoke' => 'apps-repository/revoke_token/$1',
     'apps/(:num)/database' => 'apps-database/index/$1',
     'apps/(:num)/database/query' => 'apps-database/query/$1',
     'apps/(:num)/database/copy-tables' => 'apps-database/copy_tables/$1',

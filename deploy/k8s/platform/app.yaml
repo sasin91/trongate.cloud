@@ -25,6 +25,8 @@ spec:
         runAsNonRoot: true
         runAsUser: 33
         runAsGroup: 33
+        # platform-git: repositories the panel creates stay writable by its user
+        fsGroup: 33
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -88,10 +90,16 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            # trongate.cloud git: clone and push (PLATFORM_GIT_ROOT)
+            - name: git
+              mountPath: /repos
       volumes:
         - name: tmp
           emptyDir:
             sizeLimit: 256Mi
+        - name: git
+          persistentVolumeClaim:
+            claimName: platform-git
 ---
 apiVersion: v1
 kind: Service

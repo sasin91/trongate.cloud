@@ -23,6 +23,7 @@ $hidden = [
     'secrets' => ['variables'],
     'mcp_oauth_client' => ['client_secret_hash'],
     'mcp_oauth_token' => ['token_hash', 'code_challenge'],
+    'app_git_token' => ['token_hash'],
     'app_mail' => ['raw'],
     'app_database_backup' => ['manifest', 'data'],
     'deployment' => ['config_files'],

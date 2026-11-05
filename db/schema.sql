@@ -264,8 +264,11 @@ CREATE TABLE app (
   domain_dns_failures TINYINT UNSIGNED NOT NULL DEFAULT 0,
   domain_checked_at TIMESTAMP NULL DEFAULT NULL,
 
-  -- Source: a repository the GitHub App is installed on. Builds read it with an
-  -- installation token; the App's webhook delivers its pushes.
+  -- Source: a repository the GitHub App is installed on (source_provider
+  -- 'github'). Builds read it with an installation token; the App's webhook
+  -- delivers its pushes. Or source_provider 'internal': trongate.cloud git,
+  -- source_url {BASE_URL}git/p{app id}.git, a bare repository on the
+  -- platform-git volume (Git_repo) that members push to (app_git_token).
   source_url VARCHAR(500) NULL,
   source_branch VARCHAR(100) DEFAULT 'main',
   source_provider VARCHAR(100) NULL,
@@ -402,7 +405,8 @@ CREATE TABLE deployment (
   -- Trongate_config::CONFIG_VERSION it was last applied with; NULL before that was recorded
   config_version INT NULL,
   -- platform: redeploy_outdated_apps, the same commit again after the platform's app config changed
-  trigger_type ENUM('manual', 'webhook', 'mcp', 'rollback', 'reconcile', 'platform') NOT NULL DEFAULT 'manual',
+  -- push: a push to the app's trongate.cloud git repository (modules/git)
+  trigger_type ENUM('manual', 'webhook', 'mcp', 'rollback', 'reconcile', 'platform', 'push') NOT NULL DEFAULT 'manual',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   completed_at TIMESTAMP NULL DEFAULT NULL,
   KEY idx_app_status (app_id, status),
@@ -564,6 +568,24 @@ CREATE TABLE mcp_oauth_token (
   CONSTRAINT fk_mcp_token_grant FOREIGN KEY (grant_id) REFERENCES mcp_oauth_grant (id) ON DELETE CASCADE
 );
 
+-- trongate.cloud git access tokens (modules/git): HTTPS clone and push of an
+-- internal repository. Only the SHA-256 of a token is kept.
+CREATE TABLE app_git_token (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  app_id INT NOT NULL COMMENT 'the app whose repository it opens (p{app_id}.git)',
+  customer_id INT NOT NULL COMMENT 'who made it; it stops working once they leave the project',
+  label VARCHAR(60) NOT NULL DEFAULT '',
+  token_hash CHAR(64) NOT NULL,
+  last_four CHAR(4) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  last_used_at TIMESTAMP NULL DEFAULT NULL,
+  revoked_at TIMESTAMP NULL DEFAULT NULL,
+  UNIQUE KEY unique_token_hash (token_hash),
+  KEY idx_app (app_id),
+  CONSTRAINT fk_app_git_token_app FOREIGN KEY (app_id) REFERENCES app (id),
+  CONSTRAINT fk_app_git_token_customer FOREIGN KEY (customer_id) REFERENCES customer (id)
+);
+
 -- Migrations (db/migrations) already contained in this file; the worker
 -- applies the rest on startup (Migrations::apply)
 CREATE TABLE schema_migrations (
@@ -591,4 +613,5 @@ INSERT INTO schema_migrations (name) VALUES
   ('0017_app_database_log_credentials'),
   ('0018_app_default_module'),
   ('0019_task_log_steps'),
-  ('0020_backup');
+  ('0020_backup'),
+  ('0021_app_git_token');

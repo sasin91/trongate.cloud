@@ -67,6 +67,7 @@ $tabs = [
     [$app_href . '/mail', 'Mail', $active_tab === 'mail'],
     [$app_href . '/upgrade', 'Upgrade', $active_tab === 'upgrade'],
     [$app_href . '/domain', 'Domain', $active_tab === 'domain'],
+    [$app_href . '/git', 'Git', $active_tab === 'git'],
     [$app_href . '/settings', 'Settings', false],
 ];
 $tabs_label = 'App sections';

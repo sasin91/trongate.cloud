@@ -19,8 +19,9 @@ ARG TARGETARCH
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
+# git: deploys read apps on trongate.cloud git from their bare repositories (Git_repo)
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libsodium-dev ca-certificates curl diffutils \
+    && apt-get install -y --no-install-recommends libsodium-dev ca-certificates curl diffutils git \
     && docker-php-ext-install pcntl sodium pdo_mysql \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 

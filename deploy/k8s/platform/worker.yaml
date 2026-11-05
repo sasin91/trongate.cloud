@@ -81,6 +81,10 @@ spec:
             - name: registry
               mountPath: /home/worker/.docker
               readOnly: true
+            # trongate.cloud git: deploys read commits from it (PLATFORM_GIT_ROOT)
+            - name: git
+              mountPath: /repos
+              readOnly: true
       volumes:
         - name: tmp
           emptyDir:
@@ -91,3 +95,6 @@ spec:
             items:
               - key: .dockerconfigjson
                 path: config.json
+        - name: git
+          persistentVolumeClaim:
+            claimName: platform-git

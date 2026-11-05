@@ -33,7 +33,7 @@ trait Platform_actions {
      * @throws RuntimeException when the app is not the project's or has no source
      */
     function queue_deploy(int $project_id, int $app_id, ?int $customer_id, string $trigger = 'manual', ?string $commit_sha = null): int {
-        if (!in_array($trigger, ['manual', 'webhook', 'mcp', 'rollback', 'reconcile', 'platform'], true)) {
+        if (!in_array($trigger, ['manual', 'webhook', 'mcp', 'rollback', 'reconcile', 'platform', 'push'], true)) {
             throw new InvalidArgumentException("Unknown deploy trigger: {$trigger}");
         }
 
