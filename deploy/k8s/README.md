@@ -172,6 +172,20 @@ local `.env`; copy those values into the encrypted `trongate-cloud-env` and
 
 ## Deploying the platform
 
+### GitHub Actions release pipeline
+
+The CI workflow publishes all three platform images from the exact tested `main`
+commit after PHP, shell, Dockerfile and migration checks pass. Create the GitHub
+`production` environment and set `REGISTRY_USERNAME` and `REGISTRY_PASSWORD`
+as environment secrets using the registry push account. Restrict deployments to
+`main`. Flux consumes the same timestamped tags as before; no cluster credentials
+are needed by Actions. Verify both Deployments and the live site after the first
+successful publish. Once verified, disable the old self-build path by setting
+`PLATFORM_SOURCE_REPOSITORY` to an empty string in the production configuration.
+Until that cutover, the legacy webhook may still publish independently of CI.
+
+### Legacy self-build path (during migration)
+
 A push to `main` of this repository deploys it, built by the platform itself:
 
 1. The GitHub App's push webhook (the App must be installed on this
